@@ -1,0 +1,35 @@
+name: Dependency Review
+
+# GitHub's dependency-review action: on every PR, diffs the dependency
+# closure against ``main`` and fails if a new dep introduces a known
+# vulnerability or carries a non-permissive license. Belt-and-suspenders
+# alongside Dependabot alerts — Dependabot tells you about existing
+# deps; this catches new ones at PR time before they land.
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  dependency-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/dependency-review-action@67d4f4bd7a9b17a0db54d2a7519187c65e339de8 # v4
+        with:
+          # Block the merge if a new dep introduces a moderate-or-worse
+          # vulnerability. Existing high/critical advisories already
+          # surface via Dependabot.
+          fail-on-severity: moderate
+          # SDK ships under Apache-2.0; new deps need to be license
+          # compatible. Permitted set matches what Apache-2.0 + BSD-2/3
+          # + MIT + ISC + 0BSD compose cleanly with — the standard
+          # OSI-approved permissive licenses. Anything outside (GPL,
+          # LGPL, AGPL, MPL, SSPL, custom) needs a deliberate review.
+          allow-licenses: Apache-2.0, MIT, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, CC0-1.0, Unlicense, Python-2.0, Python-2.0.1
+          comment-summary-in-pr: on-failure
