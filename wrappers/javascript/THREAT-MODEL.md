@@ -284,7 +284,7 @@ Evidence that the mitigations work:
   `audit.toml`.
 - **No outstanding high-severity issues at the time of this review.**
   Vulnerabilities are disclosed at
-  `https://github.com/checkrd/checkrd/security/advisories`.
+  `https://github.com/checkrd-io/checkrd-sdk/security/advisories`.
 
 Review triggers (when this document is updated):
 

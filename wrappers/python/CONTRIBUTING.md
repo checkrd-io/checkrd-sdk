@@ -9,7 +9,7 @@ binary update.
 ## Getting set up
 
 ```bash
-git clone https://github.com/checkrd/checkrd.git
+git clone https://github.com/checkrd-io/checkrd-sdk.git
 cd checkrd/wrappers/python
 pip install -e ".[test]"
 ```
