@@ -1,0 +1,461 @@
+{
+  "name": "checkrd",
+  "version": "0.3.0",
+  "description": "Policy enforcement, kill switch, and telemetry for AI agent API calls. Intercepts fetch(), evaluates against a signed policy in a WASM sandbox, and emits signed telemetry.",
+  "keywords": [
+    "ai",
+    "agents",
+    "policy",
+    "security",
+    "observability",
+    "openai",
+    "anthropic",
+    "llm",
+    "proxy",
+    "kill-switch"
+  ],
+  "license": "Apache-2.0",
+  "author": "Checkrd <hello@checkrd.dev>",
+  "homepage": "https://checkrd.io",
+  "bugs": "https://github.com/checkrd-io/checkrd-sdk/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/checkrd-io/checkrd-sdk.git",
+    "directory": "wrappers/javascript"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "typesVersions": {
+    "<5.0": {
+      "*": [
+        "dist/types-ts3.8/*"
+      ]
+    }
+  },
+  "exports": {
+    ".": {
+      "workerd": {
+        "import": {
+          "types": "./dist/index.d.ts",
+          "default": "./dist/index.js"
+        },
+        "require": {
+          "types": "./dist/index.d.cts",
+          "default": "./dist/index.cjs"
+        }
+      },
+      "deno": {
+        "import": {
+          "types": "./dist/index.d.ts",
+          "default": "./dist/index.js"
+        }
+      },
+      "bun": {
+        "import": {
+          "types": "./dist/index.d.ts",
+          "default": "./dist/index.js"
+        },
+        "require": {
+          "types": "./dist/index.d.cts",
+          "default": "./dist/index.cjs"
+        }
+      },
+      "browser": {
+        "import": {
+          "types": "./dist/index.d.ts",
+          "default": "./dist/index.js"
+        },
+        "require": {
+          "types": "./dist/index.d.cts",
+          "default": "./dist/index.cjs"
+        }
+      },
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./openai": {
+      "import": {
+        "types": "./dist/integrations/_openai.d.ts",
+        "default": "./dist/integrations/_openai.js"
+      },
+      "require": {
+        "types": "./dist/integrations/_openai.d.cts",
+        "default": "./dist/integrations/_openai.cjs"
+      }
+    },
+    "./anthropic": {
+      "import": {
+        "types": "./dist/integrations/_anthropic.d.ts",
+        "default": "./dist/integrations/_anthropic.js"
+      },
+      "require": {
+        "types": "./dist/integrations/_anthropic.d.cts",
+        "default": "./dist/integrations/_anthropic.cjs"
+      }
+    },
+    "./cohere": {
+      "import": {
+        "types": "./dist/integrations/_cohere.d.ts",
+        "default": "./dist/integrations/_cohere.js"
+      },
+      "require": {
+        "types": "./dist/integrations/_cohere.d.cts",
+        "default": "./dist/integrations/_cohere.cjs"
+      }
+    },
+    "./groq": {
+      "import": {
+        "types": "./dist/integrations/_groq.d.ts",
+        "default": "./dist/integrations/_groq.js"
+      },
+      "require": {
+        "types": "./dist/integrations/_groq.d.cts",
+        "default": "./dist/integrations/_groq.cjs"
+      }
+    },
+    "./mistral": {
+      "import": {
+        "types": "./dist/integrations/_mistral.d.ts",
+        "default": "./dist/integrations/_mistral.js"
+      },
+      "require": {
+        "types": "./dist/integrations/_mistral.d.cts",
+        "default": "./dist/integrations/_mistral.cjs"
+      }
+    },
+    "./together": {
+      "import": {
+        "types": "./dist/integrations/_together.d.ts",
+        "default": "./dist/integrations/_together.js"
+      },
+      "require": {
+        "types": "./dist/integrations/_together.d.cts",
+        "default": "./dist/integrations/_together.cjs"
+      }
+    },
+    "./google-genai": {
+      "import": {
+        "types": "./dist/integrations/_google_genai.d.ts",
+        "default": "./dist/integrations/_google_genai.js"
+      },
+      "require": {
+        "types": "./dist/integrations/_google_genai.d.cts",
+        "default": "./dist/integrations/_google_genai.cjs"
+      }
+    },
+    "./ai-sdk": {
+      "import": {
+        "types": "./dist/integrations/_ai_sdk.d.ts",
+        "default": "./dist/integrations/_ai_sdk.js"
+      },
+      "require": {
+        "types": "./dist/integrations/_ai_sdk.d.cts",
+        "default": "./dist/integrations/_ai_sdk.cjs"
+      }
+    },
+    "./next": {
+      "import": {
+        "types": "./dist/integrations/_next.d.ts",
+        "default": "./dist/integrations/_next.js"
+      },
+      "require": {
+        "types": "./dist/integrations/_next.d.cts",
+        "default": "./dist/integrations/_next.cjs"
+      }
+    },
+    "./cloudflare": {
+      "import": {
+        "types": "./dist/integrations/_cloudflare.d.ts",
+        "default": "./dist/integrations/_cloudflare.js"
+      },
+      "require": {
+        "types": "./dist/integrations/_cloudflare.d.cts",
+        "default": "./dist/integrations/_cloudflare.cjs"
+      }
+    },
+    "./hono": {
+      "import": {
+        "types": "./dist/integrations/_hono.d.ts",
+        "default": "./dist/integrations/_hono.js"
+      },
+      "require": {
+        "types": "./dist/integrations/_hono.d.cts",
+        "default": "./dist/integrations/_hono.cjs"
+      }
+    },
+    "./mastra": {
+      "import": {
+        "types": "./dist/integrations/_mastra.d.ts",
+        "default": "./dist/integrations/_mastra.js"
+      },
+      "require": {
+        "types": "./dist/integrations/_mastra.d.cts",
+        "default": "./dist/integrations/_mastra.cjs"
+      }
+    },
+    "./mcp": {
+      "import": {
+        "types": "./dist/integrations/_mcp.d.ts",
+        "default": "./dist/integrations/_mcp.js"
+      },
+      "require": {
+        "types": "./dist/integrations/_mcp.d.cts",
+        "default": "./dist/integrations/_mcp.cjs"
+      }
+    },
+    "./langchain": {
+      "import": {
+        "types": "./dist/integrations/_langchain.d.ts",
+        "default": "./dist/integrations/_langchain.js"
+      },
+      "require": {
+        "types": "./dist/integrations/_langchain.d.cts",
+        "default": "./dist/integrations/_langchain.cjs"
+      }
+    },
+    "./openai-agents": {
+      "import": {
+        "types": "./dist/integrations/_openai_agents.d.ts",
+        "default": "./dist/integrations/_openai_agents.js"
+      },
+      "require": {
+        "types": "./dist/integrations/_openai_agents.d.cts",
+        "default": "./dist/integrations/_openai_agents.cjs"
+      }
+    },
+    "./claude-agent-sdk": {
+      "import": {
+        "types": "./dist/integrations/_claude_agent_sdk.d.ts",
+        "default": "./dist/integrations/_claude_agent_sdk.js"
+      },
+      "require": {
+        "types": "./dist/integrations/_claude_agent_sdk.d.cts",
+        "default": "./dist/integrations/_claude_agent_sdk.cjs"
+      }
+    },
+    "./advanced": {
+      "import": {
+        "types": "./dist/advanced.d.ts",
+        "default": "./dist/advanced.js"
+      },
+      "require": {
+        "types": "./dist/advanced.d.cts",
+        "default": "./dist/advanced.cjs"
+      }
+    },
+    "./*": {
+      "import": {
+        "types": "./dist/*.d.ts",
+        "default": "./dist/*.js"
+      },
+      "require": {
+        "types": "./dist/*.d.cts",
+        "default": "./dist/*.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/",
+    "checkrd_core.wasm",
+    "LICENSE",
+    "README.md",
+    "SECURITY.md",
+    "CHANGELOG.md"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup && npm run build:downlevel-dts",
+    "build:downlevel-dts": "downlevel-dts dist dist/types-ts3.8 --to=3.8",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src tests",
+    "lint:fix": "eslint src tests --fix",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "audit:deps": "npm audit --omit=dev --audit-level=high",
+    "publint": "publint --strict",
+    "attw": "attw --pack . --profile node16 --ignore-rules=cjs-resolves-to-esm",
+    "sbom": "cyclonedx-npm --output-file artifacts/sbom.json --omit dev",
+    "pack:smoke": "node scripts/install-sanity.mjs",
+    "size": "size-limit",
+    "ci": "npm run typecheck && npm run lint && npm run test:coverage && npm run build && npm run publint && npm run attw && npm run size"
+  },
+  "size-limit": [
+    {
+      "name": "main (ESM)",
+      "path": "dist/index.js",
+      "limit": "60 KB",
+      "gzip": true
+    },
+    {
+      "name": "main (CJS)",
+      "path": "dist/index.cjs",
+      "limit": "60 KB",
+      "gzip": true
+    },
+    {
+      "name": "checkrd/openai",
+      "path": "dist/integrations/_openai.js",
+      "limit": "8 KB",
+      "gzip": true
+    },
+    {
+      "name": "checkrd/anthropic",
+      "path": "dist/integrations/_anthropic.js",
+      "limit": "8 KB",
+      "gzip": true
+    },
+    {
+      "name": "checkrd/cohere",
+      "path": "dist/integrations/_cohere.js",
+      "limit": "8 KB",
+      "gzip": true
+    },
+    {
+      "name": "checkrd/groq",
+      "path": "dist/integrations/_groq.js",
+      "limit": "8 KB",
+      "gzip": true
+    },
+    {
+      "name": "checkrd/mistral",
+      "path": "dist/integrations/_mistral.js",
+      "limit": "8 KB",
+      "gzip": true
+    },
+    {
+      "name": "checkrd/together",
+      "path": "dist/integrations/_together.js",
+      "limit": "8 KB",
+      "gzip": true
+    },
+    {
+      "name": "checkrd/google-genai",
+      "path": "dist/integrations/_google_genai.js",
+      "limit": "8 KB",
+      "gzip": true
+    },
+    {
+      "name": "checkrd/ai-sdk",
+      "path": "dist/integrations/_ai_sdk.js",
+      "limit": "12 KB",
+      "gzip": true
+    },
+    {
+      "name": "checkrd/next",
+      "path": "dist/integrations/_next.js",
+      "limit": "12 KB",
+      "gzip": true
+    },
+    {
+      "name": "checkrd/cloudflare",
+      "path": "dist/integrations/_cloudflare.js",
+      "limit": "8 KB",
+      "gzip": true
+    },
+    {
+      "name": "checkrd/hono",
+      "path": "dist/integrations/_hono.js",
+      "limit": "8 KB",
+      "gzip": true
+    },
+    {
+      "name": "checkrd/mastra",
+      "path": "dist/integrations/_mastra.js",
+      "limit": "12 KB",
+      "gzip": true
+    },
+    {
+      "name": "checkrd/mcp",
+      "path": "dist/integrations/_mcp.js",
+      "limit": "16 KB",
+      "gzip": true
+    },
+    {
+      "name": "checkrd/langchain",
+      "path": "dist/integrations/_langchain.js",
+      "limit": "16 KB",
+      "gzip": true
+    },
+    {
+      "name": "checkrd/openai-agents",
+      "path": "dist/integrations/_openai_agents.js",
+      "limit": "12 KB",
+      "gzip": true
+    },
+    {
+      "name": "checkrd/claude-agent-sdk",
+      "path": "dist/integrations/_claude_agent_sdk.js",
+      "limit": "12 KB",
+      "gzip": true
+    }
+  ],
+  "dependencies": {
+    "@bjorn3/browser_wasi_shim": "^0.3.0",
+    "yaml": "^2.6.0"
+  },
+  "peerDependencies": {
+    "@anthropic-ai/claude-agent-sdk": ">=0.1.0",
+    "@anthropic-ai/sdk": ">=0.20.0",
+    "@langchain/core": ">=0.3.0",
+    "@openai/agents": ">=0.1.0",
+    "openai": ">=4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@anthropic-ai/sdk": {
+      "optional": true
+    },
+    "@anthropic-ai/claude-agent-sdk": {
+      "optional": true
+    },
+    "@langchain/core": {
+      "optional": true
+    },
+    "@openai/agents": {
+      "optional": true
+    },
+    "openai": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.1.0",
+    "@anthropic-ai/sdk": "^0.30.0",
+    "@arethetypeswrong/cli": "^0.17.0",
+    "@cyclonedx/cyclonedx-npm": "^2.0.0",
+    "@edge-runtime/vm": "^5.0.0",
+    "@langchain/core": "^0.3.0",
+    "@openai/agents": "^0.1.0",
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/sdk-trace-base": "^2.7.0",
+    "@size-limit/file": "^12.1.0",
+    "@types/node": "^20.17.0",
+    "@vitest/coverage-v8": "^2.1.0",
+    "downlevel-dts": "^0.11.0",
+    "eslint": "^9.15.0",
+    "eslint-plugin-jsdoc": "^50.6.0",
+    "fast-check": "^3.23.0",
+    "miniflare": "^3.20250718.3",
+    "msw": "^2.6.0",
+    "openai": "^4.73.0",
+    "publint": "^0.2.12",
+    "size-limit": "^12.1.0",
+    "tsup": "^8.3.0",
+    "typescript": "^5.6.0",
+    "typescript-eslint": "^8.16.0",
+    "vitest": "^2.1.0"
+  }
+}

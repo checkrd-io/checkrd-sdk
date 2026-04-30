@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/checkrd-io/checkrd-sdk/security/advisories/new
+    about: Report a vulnerability privately. Do not open a public issue.
+  - name: Documentation
+    url: https://docs.checkrd.io
+    about: Read the API reference and integration guides.
+  - name: Discussions
+    url: https://github.com/checkrd-io/checkrd-sdk/discussions
+    about: Ask questions, share use cases, or propose ideas.

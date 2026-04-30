@@ -1,0 +1,29 @@
+# Default owner for the entire repository. The maintainer team review
+# every PR by default; per-area owners below override for files in
+# their domain so the right reviewer is auto-requested.
+* @akshayaravindan
+
+# Cryptographic primitives + trust roots — every change here needs an
+# owner who has read the threat model and KEY-CUSTODY runbook.
+/wrappers/python/src/checkrd/_trust.py @akshayaravindan
+/wrappers/javascript/src/_trust.ts @akshayaravindan
+/crates/core/src/dsse_verify.rs @akshayaravindan
+/wrappers/python/src/checkrd/identity.py @akshayaravindan
+/wrappers/javascript/src/identity.ts @akshayaravindan
+
+# WASM engine surface — security-critical pure computation. Every
+# behavioural change has to be mirrored across both SDK wrappers'
+# tests, so reviews surface the cross-language consistency check.
+/crates/core/ @akshayaravindan
+/crates/shared/ @akshayaravindan
+
+# Release pipeline. Touching any of these affects supply-chain
+# attestations (provenance, SBOM, Trusted Publishing) — single-owner
+# review until we have a release engineer.
+/.github/workflows/publish-python.yml @akshayaravindan
+/.github/workflows/publish-javascript.yml @akshayaravindan
+/.github/workflows/test.yml @akshayaravindan
+
+# Schemas — the wire format between SDKs and control plane. Changes
+# here are breaking by definition.
+/schemas/ @akshayaravindan

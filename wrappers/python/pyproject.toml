@@ -1,0 +1,325 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "checkrd"
+dynamic = ["version"]
+description = "Proxy layer for AI agent API calls. Policy enforcement, kill switch, and observability."
+readme = "README.md"
+license = "Apache-2.0"
+authors = [{ name = "Checkrd", email = "hello@checkrd.dev" }]
+requires-python = ">=3.10"
+keywords = ["ai", "agents", "proxy", "policy", "security", "observability"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: System :: Monitoring",
+    "Typing :: Typed",
+]
+
+dependencies = [
+    "httpx>=0.24.0,<2",
+    "httpx-sse>=0.4.0,<1",
+    "wasmtime>=21.0.0,<30",
+    "pyyaml>=6.0,<7",
+]
+
+[project.urls]
+Homepage = "https://checkrd.io"
+Documentation = "https://docs.checkrd.io"
+Changelog = "https://github.com/checkrd-io/checkrd-sdk/blob/main/wrappers/python/CHANGELOG.md"
+Issues = "https://github.com/checkrd-io/checkrd-sdk/issues"
+Source = "https://github.com/checkrd-io/checkrd-sdk"
+"Security Policy" = "https://github.com/checkrd-io/checkrd-sdk/blob/main/wrappers/python/SECURITY.md"
+
+[project.optional-dependencies]
+# Filesystem watcher backend. When installed, ``PolicyFileWatcher`` /
+# ``KillSwitchFileWatcher`` use inotify (Linux) / FSEvents (macOS) /
+# ReadDirectoryChangesW (Windows) for sub-millisecond reaction to
+# policy / kill-switch file changes — vs the default 5-second
+# mtime-polling window. Recommended for air-gapped Tier 3 deployments
+# where policy changes must propagate immediately. Pin a recent major
+# range; watchdog has had stable APIs across 4.x and 5.x.
+watchdog = ["watchdog>=4.0,<7"]
+
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+    "pytest-cov>=4.0",
+    "pytest-timeout>=2.1",
+    "pytest-xdist>=3.0",
+    "pytest-randomly>=3.15",
+    "hypothesis>=6.0",
+    "ruff>=0.4.0",
+    "mypy>=1.0",
+    "types-PyYAML>=6.0",
+    "interrogate>=1.7",
+    "pip-audit>=2.7",
+    # Pull watchdog into the dev install so the auto-detection path
+    # has both backends available. Production installs that omit the
+    # ``[watchdog]`` extra fall back to mtime polling.
+    "watchdog>=4.0,<7",
+]
+otlp = [
+    "opentelemetry-sdk>=1.20",
+    "opentelemetry-exporter-otlp-proto-http>=1.20",
+]
+# Vendor-SDK extras. Upper bounds are pinned to the next major we
+# have NOT yet smoke-tested against — when a vendor releases a new
+# major, bump the cap here AND in the [test] extras below ONLY after
+# the smoke tests at ``tests/integrations/`` pass against the new
+# major locally. Without that discipline a Stainless regen that moves
+# methods around will silently break instrumentation in production.
+# Mirrors the JS SDK's ``peerDependencies`` policy.
+openai = ["openai>=1.0,<3"]
+anthropic = ["anthropic>=0.20,<1"]
+cohere = ["cohere>=5.0,<7"]
+groq = ["groq>=0.4,<2"]
+mistral = ["mistralai>=0.2,<2"]
+together = ["together>=1.0,<3"]
+google-genai = ["google-genai>=0.1,<2"]
+# Agent-framework integration extras. Each is the canonical extension
+# point of its framework — LangChain BaseCallbackHandler, OpenAI Agents
+# SDK TracingProcessor + Guardrail, Claude Agent SDK hooks, MCP
+# ClientSession subclass + handler wrap. Same upper-bound discipline
+# as the vendor extras: bump only after smoke tests pass against the
+# new major.
+langchain = ["langchain-core>=0.3,<1"]
+openai-agents = ["openai-agents>=0.1,<2"]
+claude-agent-sdk = ["claude-agent-sdk>=0.1,<2"]
+mcp = ["mcp>=1.0,<2"]
+all = [
+    "openai>=1.0,<3",
+    "anthropic>=0.20,<1",
+    "cohere>=5.0,<7",
+    "groq>=0.4,<2",
+    "mistralai>=0.2,<2",
+    "together>=1.0,<3",
+    "google-genai>=0.1,<2",
+    "langchain-core>=0.3,<1",
+    "openai-agents>=0.1,<2",
+    "claude-agent-sdk>=0.1,<2",
+    "mcp>=1.0,<2",
+]
+# Full test suite with zero skipped tests. Includes dev tooling, every
+# optional AI SDK, OTLP exporter, and the cryptography library used for
+# Ed25519 signature verification interop tests.
+test = [
+    # dev tooling
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+    "pytest-cov>=4.0",
+    "pytest-timeout>=2.1",
+    "pytest-xdist>=3.0",
+    "pytest-randomly>=3.15",
+    "hypothesis>=6.0",
+    "ruff>=0.4.0",
+    "mypy>=1.0",
+    "types-PyYAML>=6.0",
+    "interrogate>=1.7",
+    "pip-audit>=2.7",
+    # Filesystem watcher backend (covered by tests/test_watchers_backend.py).
+    # Mirror of the ``[watchdog]`` extra so the watchdog-backed code path is
+    # actually exercised in CI rather than silently skipping.
+    "watchdog>=4.0,<7",
+    # AI SDK integrations (smoke tests)
+    "openai>=1.0,<3",
+    "anthropic>=0.20,<1",
+    "cohere>=5.0,<7",
+    "groq>=0.4,<2",
+    "mistralai>=0.2,<2",
+    "together>=1.0,<3",
+    "google-genai>=0.1,<2",
+    # Agent-framework integrations (smoke tests).
+    "langchain-core>=0.3,<1",
+    "openai-agents>=0.1,<2",
+    "claude-agent-sdk>=0.1,<2",
+    "mcp>=1.0,<2",
+    # OTLP sink tests
+    "opentelemetry-sdk>=1.20",
+    "opentelemetry-exporter-otlp-proto-http>=1.20",
+    # Ed25519 signature interop tests
+    "cryptography>=41.0",
+]
+
+[project.scripts]
+# Console script entry point. After `pip install checkrd`, the `checkrd` binary
+# is on PATH and exposes operator subcommands (today: `checkrd keygen`).
+# `python -m checkrd` is also supported via __main__.py for environments
+# where the script directory isn't on PATH (containers, air-gapped installs).
+checkrd = "checkrd.cli:main"
+
+[tool.hatch.version]
+source = "regex"
+path = "src/checkrd/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/checkrd"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/checkrd/checkrd_core.wasm" = "checkrd/checkrd_core.wasm"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+strict_markers = true
+# Per-test timeout: catches hangs that would block CI indefinitely.
+# 30s is generous -- most tests finish in <1s, threading tests in <3s.
+timeout = 30
+# Default options applied to every pytest invocation. Keeping local and CI in
+# sync prevents "works on my machine" failures: developers see the same parallel
+# execution and randomized ordering that CI uses.
+#   -n auto       : pytest-xdist parallelism, one worker per CPU
+#   -p randomly   : pytest-randomly, randomized test order to catch hidden
+#                   ordering dependencies
+#   --strict-markers : fail on unknown markers (also set above for safety)
+# --dist loadgroup : respect `xdist_group` markers so timing-sensitive
+# tests (threading, async races) that mark themselves with the `serial`
+# group run on a single worker. Without this, two workers running
+# 8-thread tests concurrently can oversubscribe CPU and flake on slow
+# runners. Non-grouped tests still fan out across all workers.
+addopts = "-n auto --dist loadgroup -p randomly --strict-markers -W error::DeprecationWarning -W error::PendingDeprecationWarning"
+markers = [
+    "requires_wasm: test needs the compiled checkrd_core.wasm binary",
+    "slow: tests that take >1s (threading, backoff, concurrency)",
+    "serial: pin test to a single xdist worker to avoid cross-worker CPU contention (threading, filesystem-mtime, real-timer tests)",
+    "e2e: end-to-end staging-canary test; skipped unless CHECKRD_STAGING_URL is set. The nightly e2e-canary workflow runs these against a real staging control plane",
+]
+filterwarnings = [
+    # Promote deprecation warnings to errors so they surface before a dep
+    # upgrade breaks us. Keep targeted — "error" alone catches pytest's own
+    # config warnings and breaks on older pytest versions.
+    "error::DeprecationWarning",
+    "error::PendingDeprecationWarning",
+    # Third-party packages that emit deprecation warnings on Python 3.14+
+    # from their own internals (asyncio.iscoroutinefunction, typing, etc).
+    # We can't fix these — ignore them so the real assertion failures in
+    # smoke tests surface cleanly. The ``.*`` module pattern catches all
+    # submodules (e.g. cohere.client, google.genai._api_client).
+    "ignore::DeprecationWarning:wasmtime.*",
+    "ignore::DeprecationWarning:cohere.*",
+    "ignore::DeprecationWarning:mistralai.*",
+    "ignore::DeprecationWarning:google.*",
+    "ignore::DeprecationWarning:httpcore.*",
+    "ignore::DeprecationWarning:pydantic.*",
+    "ignore::DeprecationWarning:together.*",
+]
+
+[tool.coverage.run]
+source = ["checkrd"]
+omit = ["*/checkrd_core.wasm"]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "@overload",
+]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+
+[tool.ruff.lint.per-file-ignores]
+# Re-export modules: imports here exist solely to surface the symbol
+# at the package root. F401 fires because ruff sees no local use.
+# Adding everything to ``__all__`` is one alternative; per-file-ignore
+# is the convention used by Stripe / OpenAI / Anthropic SDKs.
+"**/__init__.py" = ["F401"]
+# Tests that pre-flight optional vendor SDKs with ``pytest.importorskip``
+# legitimately have module-level imports below the importorskip call.
+# E402 (imports not at top) is the cost of doing this safely.
+"tests/test_otel_span_sink.py" = ["E402"]
+
+[tool.pyright]
+# Strict static type checking, complementary to mypy. Pyright is what
+# Pylance / VS Code use under the hood, and it catches a different
+# class of errors than mypy (more aggressive narrowing, attribute
+# typing, generic variance). Running both in CI matches the discipline
+# of OpenAI / Anthropic / Stripe Python SDKs.
+#
+# Scope:
+#   - ``include`` covers the production source only. Tests live in a
+#     separate analysis budget — they're allowed dict-literal fixtures
+#     and untyped mocks that pyright would (correctly) flag in strict
+#     mode but cost more to fix than they save.
+#   - ``pythonVersion = "3.10"`` matches ``requires-python``. Pyright
+#     refuses to use 3.11+ syntax features on this floor, which mirrors
+#     what end users get on 3.10.
+#
+# Mode: ``standard`` (basic + most common rules). ``strict`` enables
+# every check including ``reportUnknownVariableType`` which fires on
+# many legitimate ``hasattr``-then-call patterns. Standard catches
+# real bugs without the noise.
+include = ["src"]
+exclude = [
+    "**/__pycache__",
+    "**/.pytest_cache",
+    "**/.mypy_cache",
+    "**/.ruff_cache",
+    "**/.venv",
+    "**/dist",
+    "**/build",
+]
+pythonVersion = "3.10"
+typeCheckingMode = "standard"
+
+[tool.mypy]
+# Matches ``requires-python`` exactly. SDK supports Python 3.10+ only;
+# 3.9 reached EOL October 2025 and the agent-framework adapters need
+# 3.10+ syntax in their own deps.
+python_version = "3.10"
+strict = true
+
+# Optional-dependency modules are imported inside try/except ImportError at
+# runtime. Mypy still type-checks the import lines statically, which fails
+# when the extras aren't installed. Suppress import-not-found for these files.
+[[tool.mypy.overrides]]
+module = ["checkrd.sinks"]
+disable_error_code = ["import-not-found"]
+
+[tool.interrogate]
+# Docstring coverage gate. The public SDK surface needs docstrings so
+# hover help in IDEs surfaces usable docs without users having to read
+# the source. Private helpers (`_foo`), dunder methods, and the
+# autogenerated integrity file are ignored.
+#
+# Excluded: the four agent-framework adapters under
+# ``src/checkrd/integrations/{langchain,openai_agents,claude_agent_sdk,mcp}.py``.
+# Those classes implement framework-side extension points
+# (``BaseCallbackHandler.on_llm_start``, ``TracingProcessor.on_span_start``,
+# Claude Agent SDK ``HookCallback`` signatures, etc.) — the canonical
+# docs live in each framework's own reference, and our methods are
+# behaviour-preserving overrides. Holding them to 80% here would
+# duplicate framework docs in docstrings that go stale on every
+# upstream rev. The vendor instrumentors (``integrations/_anthropic.py``,
+# ``_openai.py``, etc.) stay in scope and keep the bar.
+fail-under = 80
+ignore-init-method = true
+ignore-init-module = true
+ignore-magic = true
+ignore-private = true
+ignore-nested-functions = true
+exclude = [
+    "tests",
+    "src/checkrd/_wasm_integrity.py",
+    "src/checkrd/integrations/langchain.py",
+    "src/checkrd/integrations/openai_agents.py",
+    "src/checkrd/integrations/claude_agent_sdk.py",
+    "src/checkrd/integrations/mcp.py",
+]
+verbose = 2

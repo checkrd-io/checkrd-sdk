@@ -1,0 +1,44 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "types": ["node"],
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "outDir": "dist",
+    "noEmit": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    // TODO: enable `noPropertyAccessFromIndexSignature: true` to match
+    // OpenAI's full strict-mode set. Surfaced ~84 sites in source +
+    // tests where dynamic `Record<string, unknown>` payloads are
+    // accessed via `.foo` instead of `["foo"]`. The conversion is
+    // mechanical but per-site (a blind sed would break legitimate
+    // typed-object property reads like `request.url`). Tracked as
+    // a dedicated typing-tightening pass — out of Phase 2 scope.
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true
+  },
+  "include": ["src/**/*.ts", "tests/**/*.ts"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "scripts",
+    "tests/runtime/deno_smoke.ts",
+    "tests/runtime/bun_smoke.ts"
+  ]
+}
