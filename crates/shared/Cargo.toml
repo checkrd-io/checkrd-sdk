@@ -1,0 +1,32 @@
+[package]
+name = "checkrd-shared"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+uuid = { version = "1", features = ["serde"] }
+# sha2 and base64 are pure-compute crates that compile to wasm32-wasip1 cleanly.
+# Used by the http_sig and dsse modules for signature base construction and
+# DSSE envelope encoding. Both are workspace deps so versions stay aligned.
+sha2 = { workspace = true }
+base64 = { workspace = true }
+# typeshare emits TypeScript bindings for the dashboard. The derive itself
+# is a no-op; the CLI scans source to generate the .ts file. Pure compile
+# marker, no runtime cost. Safe for the wasm32-wasip1 target.
+typeshare = { workspace = true }
+
+[dev-dependencies]
+uuid = { version = "1", features = ["serde", "v4"] }
+
+[package.metadata.dist]
+# Internal workspace crate, not a release artifact. Suppresses
+# cargo-dist warnings about missing authors/homepage/MSI generation.
+dist = false

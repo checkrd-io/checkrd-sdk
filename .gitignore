@@ -1,0 +1,59 @@
+# Rust
+target/
+Cargo.lock.bak
+
+# Compiled WASM artefact (built locally / by CI; not committed)
+crates/core/target/
+wrappers/python/src/checkrd/checkrd_core.wasm
+wrappers/javascript/checkrd_core.wasm
+wrappers/python/src/checkrd/_wasm_integrity.py
+wrappers/javascript/src/_wasm_integrity.ts
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+build/
+dist/
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.venv/
+venv/
+.python-version
+
+# JavaScript / TypeScript
+node_modules/
+wrappers/javascript/dist/
+wrappers/javascript/coverage/
+wrappers/javascript/docs-html/
+wrappers/javascript/artifacts/
+*.tsbuildinfo
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Editors
+*~
+\#*\#
+.\#*
+
+# OS
+Thumbs.db
+ehthumbs.db
+desktop.ini
+
+# Local env files
+.env
+.env.local
+*.local

@@ -1,0 +1,75 @@
+name: Bug report
+description: Report a defect in the Python or JavaScript SDK.
+labels: [bug]
+body:
+  - type: dropdown
+    id: sdk
+    attributes:
+      label: SDK
+      options:
+        - Python (checkrd on PyPI)
+        - JavaScript (checkrd on npm)
+        - Rust core (crates/core)
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `pip show checkrd | grep Version` or `npm ls checkrd`.
+      placeholder: "0.4.1"
+    validations:
+      required: true
+
+  - type: input
+    id: runtime
+    attributes:
+      label: Runtime
+      description: Python version, Node version, or runtime (Bun, Deno, Workers, Edge).
+      placeholder: "Python 3.12 on macOS 15"
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: A clear description of the unexpected behaviour.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: |
+        The smallest piece of code that reproduces the issue. If your
+        reproduction is in a separate repository or gist, link it here.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Stack traces, debug output, or relevant log lines.
+      render: shell
+
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Confirmation
+      options:
+        - label: I have searched existing issues and this is not a duplicate.
+          required: true
+        - label: This is not a security vulnerability. (Security issues go to GitHub Security Advisories — see SECURITY.md.)
+          required: true

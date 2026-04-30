@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "telemetry-event",
+  "title": "Checkrd Telemetry Event",
+  "description": "Schema for telemetry events sent from proxy wrappers to the control plane. Designed for compatibility with the OpenTelemetry Span model.",
+  "type": "object",
+  "required": ["event_id", "agent_id", "instance_id", "timestamp", "request", "policy_result"],
+  "properties": {
+    "event_id": { "type": "string", "format": "uuid" },
+    "agent_id": { "type": "string" },
+    "instance_id": { "type": "string" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "request": {
+      "type": "object",
+      "required": ["url_host", "url_path", "method"],
+      "properties": {
+        "url_host": { "type": "string" },
+        "url_path": { "type": "string" },
+        "method": { "type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"] },
+        "body_hash": { "type": ["string", "null"] }
+      }
+    },
+    "response": {
+      "type": ["object", "null"],
+      "properties": {
+        "status_code": { "type": "integer" },
+        "latency_ms": { "type": "integer" }
+      }
+    },
+    "policy_result": { "type": "string", "enum": ["allowed", "denied"] },
+    "deny_reason": { "type": ["string", "null"] },
+    "matched_rule": {
+      "type": ["string", "null"],
+      "description": "Name of the policy rule that determined the decision. Null for default-action fallthrough."
+    },
+    "matched_rule_kind": {
+      "type": ["string", "null"],
+      "enum": ["allow", "deny", "rate_limit", "kill_switch", "default", null],
+      "description": "Category of the matched rule. Used for dashboard filtering and compliance audit."
+    },
+    "policy_mode": {
+      "type": ["string", "null"],
+      "enum": ["enforce", "dry_run", null],
+      "description": "Policy enforcement mode at evaluation time. dry_run decisions are logged but not enforced."
+    },
+    "evaluation_path": {
+      "type": "array",
+      "description": "Ordered trace of evaluation stages. Each entry records what the engine checked and the result.",
+      "items": {
+        "type": "object",
+        "required": ["stage", "result"],
+        "properties": {
+          "stage": { "type": "string", "description": "Evaluation stage: kill_switch, rate_limit, deny_rules, allow_rules, default" },
+          "rule": { "type": ["string", "null"], "description": "Name of the rule checked at this stage" },
+          "result": { "type": "string", "description": "Outcome: pass, exceeded, matched, no_match, skipped, active" },
+          "detail": { "type": ["string", "null"], "description": "Additional context (e.g., rate limit scope, dry_run reason)" }
+        }
+      }
+    },
+    "trace_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$",
+      "description": "OTEL trace ID -- 32 lowercase hex chars (128-bit, W3C Trace Context)"
+    },
+    "span_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{16}$",
+      "description": "OTEL span ID -- 16 lowercase hex chars (64-bit)"
+    },
+    "parent_span_id": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9a-f]{16}$",
+      "description": "OTEL parent span ID -- propagated from W3C traceparent header"
+    },
+    "span_name": {
+      "type": ["string", "null"],
+      "description": "OTEL span name -- low-cardinality operation identifier, e.g. 'GET api.stripe.com'. Maps to Datadog resource name, Grafana Tempo span name."
+    },
+    "span_kind": {
+      "type": ["string", "null"],
+      "enum": ["INTERNAL", "CLIENT", "SERVER", "PRODUCER", "CONSUMER", null],
+      "description": "OTEL span kind. Always 'INTERNAL' for Checkrd policy evaluation spans."
+    },
+    "span_status_code": {
+      "type": ["string", "null"],
+      "enum": ["OK", "ERROR", "UNSET", null],
+      "description": "OTEL span status. OK for 2xx-3xx responses, ERROR for 5xx, UNSET for denied/4xx."
+    },
+    "span_status_message": {
+      "type": ["string", "null"],
+      "description": "OTEL span status description. Set for ERROR (upstream details) and denied requests (policy reason)."
+    }
+  }
+}

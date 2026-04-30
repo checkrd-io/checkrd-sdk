@@ -1,0 +1,51 @@
+[package]
+name = "checkrd-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+checkrd-shared = { workspace = true }
+ed25519-dalek = { workspace = true }
+rand_core = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+# base64 for DSSE envelope payload encoding and Ed25519 signature encoding
+# in the sign_telemetry_batch FFI export. Pure-compute, wasm32-wasip1 friendly.
+base64 = { workspace = true }
+# regex for body/header pattern matching. Uses finite automata (DFA/NFA),
+# guaranteeing linear-time evaluation (no backtracking, no ReDoS).
+# Pure-compute, wasm32-wasip1 friendly.
+regex = "1"
+
+[features]
+# Compliance / cryptographic-conformance test suites. Skipped by default to
+# keep `cargo test` fast in everyday development; enable explicitly during
+# SOC 2 / ISO 27001 prep or before cutting a release that touches the
+# Ed25519 verify path:
+#
+#     cargo test --package checkrd-core --features security_audit
+#
+# Today this gates the Wycheproof Ed25519 compliance suite (150 vectors)
+# in `tests/wycheproof_ed25519.rs`. ed25519-dalek (the underlying primitive)
+# already has its own Wycheproof coverage upstream — our suite proves the
+# integration surface, not the curve arithmetic.
+security_audit = []
+
+[dev-dependencies]
+# proptest for fuzz-style property testing on the DSSE envelope parser and
+# verifier. Runs only in `cargo test`, not in WASM builds.
+proptest = "1"
+
+[package.metadata.dist]
+# Internal workspace crate, not a release artifact. Suppresses
+# cargo-dist warnings about missing authors/homepage/MSI generation.
+dist = false

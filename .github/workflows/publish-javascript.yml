@@ -1,0 +1,127 @@
+name: Publish JavaScript SDK
+
+on:
+  push:
+    tags:
+      - "javascript-v*"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # Matches ``engines.node: ">=20"`` in package.json. Node 18
+        # reached Maintenance LTS EOL April 2025.
+        node-version: [20, 22]
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          targets: wasm32-wasip1
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          shared-key: wasm-build
+      - run: cargo build --package checkrd-core --target wasm32-wasip1 --release
+      - run: ./scripts/copy-wasm.sh
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+          cache-dependency-path: wrappers/javascript/package-lock.json
+      - working-directory: wrappers/javascript
+        run: |
+          npm ci
+          npm run typecheck
+          npm run lint
+          npm audit --omit=dev --audit-level=high
+          # Build BEFORE tests: tests/edge_runtime.test.ts and
+          # tests/runtime/workers.test.ts load the published bundle
+          # (``dist/index.cjs``, ``dist/advanced.cjs``) into a
+          # @edge-runtime/vm and miniflare to verify the actual ship
+          # artefact runs on WinterCG / Workers. Running tests against
+          # source would defeat the property; the bundle has to exist
+          # first.
+          npm run build
+          npm run test:coverage
+          npm run publint
+          npm run attw
+          # Pre-publish guard: refuse to ship a release whose SDK
+          # would silently reject every signed policy update because
+          # ``PRODUCTION_TRUSTED_KEYS`` is empty.
+          node scripts/verify-trust-roots.mjs
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      # ``id-token: write`` is required for ``npm publish --provenance``
+      # — npm verifies the signed Sigstore attestation back to the
+      # GitHub Actions OIDC token. Public source repository visibility
+      # is also required (npm refuses provenance from private repos);
+      # this workflow lives in the public mirror at
+      # checkrd-io/checkrd-sdk for that reason.
+      id-token: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          targets: wasm32-wasip1
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          shared-key: wasm-build
+      - run: cargo build --package checkrd-core --target wasm32-wasip1 --release
+      - run: ./scripts/copy-wasm.sh
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: npm
+          cache-dependency-path: wrappers/javascript/package-lock.json
+
+      - name: Build + packaging hygiene
+        working-directory: wrappers/javascript
+        run: |
+          npm ci
+          npm run build
+          # publint: validates the package.json exports map, types
+          # conditions, dual-publish correctness.
+          npm run publint
+          # attw: verifies types resolve correctly under ESM, CJS,
+          # Node16, and Bundler module resolutions.
+          npm run attw
+
+      - name: Install sanity (fresh project, both import systems)
+        working-directory: wrappers/javascript
+        run: npm run pack:smoke
+
+      - name: Generate SBOM (CycloneDX)
+        working-directory: wrappers/javascript
+        run: |
+          mkdir -p artifacts
+          npm run sbom
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: checkrd-js-sbom
+          path: wrappers/javascript/artifacts/sbom.json
+          if-no-files-found: error
+
+      - name: Publish to npm
+        working-directory: wrappers/javascript
+        env:
+          # First publish uses the ``NPM_TOKEN`` repository secret
+          # (Granular Access Token with ``checkrd`` package +
+          # bypass-2FA scope). After the package exists on npm, switch
+          # to npm Trusted Publishing — register a Trusted Publisher
+          # on the package settings page pointing at this workflow +
+          # environment, then this step can drop ``NODE_AUTH_TOKEN``
+          # entirely. ``--provenance`` works either way because the
+          # repo is public.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance --access public
