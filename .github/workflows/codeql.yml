@@ -1,0 +1,64 @@
+name: CodeQL
+
+# CodeQL is GitHub's static analysis for security vulnerabilities. Free
+# for public repos. Catches a different class of bugs than ESLint /
+# clippy / mypy: dataflow-aware vulnerability patterns (SQL injection,
+# unsafe deserialisation, weak cryptography, prototype pollution, etc.)
+# that pure type / lint checkers miss.
+#
+# Runs on every PR + every push to main + a weekly scheduled scan so
+# new advisories surface against existing code without a code change.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly Monday 09:00 UTC. Cron drift is fine — we just want one
+    # scan per week independent of activity.
+    - cron: "0 9 * * 1"
+
+permissions:
+  # CodeQL needs to write security alerts back to the repo.
+  security-events: write
+  contents: read
+  actions: read
+
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # CodeQL has built-in support for these languages. The Rust
+        # core is excluded — CodeQL's Rust support is community-tier
+        # (still in beta as of 2026-Q1); ``cargo clippy`` plus the
+        # rust-tier audits in test.yml cover the same ground.
+        language: [python, javascript-typescript]
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@4e828ff8d448a8a6e532957b1811f387a63867e8 # v3
+        with:
+          languages: ${{ matrix.language }}
+          # ``security-extended`` adds the dataflow-aware queries
+          # GitHub recommends for security-positioned packages.
+          # ``security-and-quality`` is also available but adds a lot
+          # of style noise; the focused ``security-extended`` set is
+          # what Stripe / Anthropic / OpenAI SDK CIs use.
+          queries: security-extended
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@4e828ff8d448a8a6e532957b1811f387a63867e8 # v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@4e828ff8d448a8a6e532957b1811f387a63867e8 # v3
+        with:
+          category: "/language:${{ matrix.language }}"

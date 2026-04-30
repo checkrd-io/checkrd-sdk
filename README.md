@@ -4,6 +4,8 @@
 [![npm](https://img.shields.io/npm/v/checkrd?color=blue)](https://www.npmjs.com/package/checkrd)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Test](https://github.com/checkrd-io/checkrd-sdk/actions/workflows/test.yml/badge.svg)](https://github.com/checkrd-io/checkrd-sdk/actions/workflows/test.yml)
+[![CodeQL](https://github.com/checkrd-io/checkrd-sdk/actions/workflows/codeql.yml/badge.svg)](https://github.com/checkrd-io/checkrd-sdk/actions/workflows/codeql.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/checkrd-io/checkrd-sdk/badge)](https://scorecard.dev/viewer/?uri=github.com/checkrd-io/checkrd-sdk)
 
 Policy enforcement, kill switch, and signed telemetry for AI agent API
 calls. Drop-in instrumentors wrap the major LLM SDKs (OpenAI, Anthropic,

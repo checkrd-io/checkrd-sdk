@@ -1,0 +1,41 @@
+# Configuration for GitHub's "Generate release notes" button. Auto-
+# categorises merged PRs by label so the release page reads like a
+# Stripe/OpenAI changelog instead of a wall of commit subjects.
+#
+# Maintainers should label each merged PR with one of the categories
+# below; uncategorised PRs land under "Other Changes".
+
+changelog:
+  exclude:
+    labels:
+      - skip-changelog
+      - dependencies
+    authors:
+      - dependabot
+      - dependabot[bot]
+  categories:
+    - title: Breaking changes
+      labels:
+        - breaking-change
+        - semver-major
+    - title: New features
+      labels:
+        - enhancement
+        - feature
+    - title: Bug fixes
+      labels:
+        - bug
+        - fix
+    - title: Security
+      labels:
+        - security
+    - title: Performance
+      labels:
+        - performance
+    - title: Documentation
+      labels:
+        - documentation
+        - docs
+    - title: Other Changes
+      labels:
+        - "*"

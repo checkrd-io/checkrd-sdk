@@ -1,0 +1,59 @@
+name: OpenSSF Scorecard
+
+# OpenSSF Scorecard rates the security posture of an OSS project on
+# 18 dimensions (branch protection, code review, signed releases,
+# pinned actions, SAST coverage, secret scanning, etc.) and publishes
+# the score back as a GitHub security alert + an optional badge in
+# the README. Mandatory for projects that want to be picked up by
+# downstream "trusted upstream" lists at large enterprises.
+#
+# Runs on a weekly schedule (drift detection) and on every push to
+# main (immediate feedback after policy changes).
+
+on:
+  schedule:
+    - cron: "0 12 * * 1"   # Monday 12:00 UTC
+  push:
+    branches: [main]
+
+permissions: read-all
+
+jobs:
+  analysis:
+    name: Scorecard analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      # Required to upload the SARIF results to code-scanning.
+      security-events: write
+      # Required to publish the result as a GitHub workflow run badge.
+      id-token: write
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Run analysis
+        uses: ossf/scorecard-action@05b42c624433fc40578a4040d5cf5e36ddca8cde # v2.4.2
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          # ``publish_results`` opts the score into the OpenSSF
+          # transparency log so the badge in README.md (and any
+          # downstream "best practices" check) can read it without
+          # API keys.
+          publish_results: true
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: SARIF file
+          path: results.sarif
+          retention-days: 5
+
+      - name: Upload to code-scanning
+        uses: github/codeql-action/upload-sarif@4e828ff8d448a8a6e532957b1811f387a63867e8 # v3
+        with:
+          sarif_file: results.sarif
