@@ -871,10 +871,15 @@ def healthy() -> HealthCheck:
     sink = ctx.sink
     # ``TelemetrySink`` is a Protocol covering only ``enqueue``;
     # ``diagnostics`` is an optional extension some sinks expose.
-    # The hasattr gate is the runtime check; ``cast`` quiets the
-    # static checker without weakening any other assertion.
-    if sink is not None and hasattr(sink, "diagnostics"):
-        telemetry_stats = cast(TelemetryDiagnostics, sink.diagnostics())
+    # ``getattr`` is the right idiom for an optional attribute: mypy
+    # and pyright disagree on whether ``hasattr`` narrows attribute
+    # access (mypy yes, pyright no), but both treat
+    # ``getattr(x, name, default)`` uniformly.
+    diag_fn: Optional[Callable[[], TelemetryDiagnostics]] = (
+        getattr(sink, "diagnostics", None) if sink is not None else None
+    )
+    if diag_fn is not None:
+        telemetry_stats = diag_fn()
     # Classify post-init degradation. The engine loaded fine and a
     # context exists; what's potentially wrong now is the runtime
     # plumbing (control plane reachability, signing key availability,

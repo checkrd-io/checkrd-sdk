@@ -519,15 +519,19 @@ def _patch_server_handlers(server: T, options: McpPolicyOptions) -> T:
     it to the original registrar. The MCP SDK's internal handler
     dispatch is unchanged.
     """
-    # Low-level Server.set_request_handler(schema, handler)
-    if hasattr(server, "set_request_handler"):
-        original_set = server.set_request_handler
+    # Low-level Server.set_request_handler(schema, handler).
+    # ``getattr``/``setattr`` for monkey-patching: ``hasattr`` narrows
+    # attribute existence in mypy but not in pyright, and the
+    # behavioural invariant we care about is "the attribute is there
+    # at runtime" — exactly what ``getattr(...)`` is for.
+    original_set = getattr(server, "set_request_handler", None)
+    if original_set is not None:
 
         @functools.wraps(original_set)
         def patched_set(schema: Any, handler: Callable[..., Any]) -> Any:
             return original_set(schema, _wrap_server_handler(handler, options, "tool"))
 
-        server.set_request_handler = patched_set
+        setattr(server, "set_request_handler", patched_set)
 
     # Low-level Server.call_tool() / read_resource() / get_prompt() — these
     # are decorator factories; calling them returns a decorator the user
