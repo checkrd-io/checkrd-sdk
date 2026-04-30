@@ -82,11 +82,18 @@ jobs:
           EOF
       - working-directory: wrappers/python
         run: |
+          # Bring pip itself current before resolving any deps. Keeps
+          # pip-audit clean without --ignore-vuln accumulating against
+          # the installer (the runner ships an older pip that
+          # routinely has open advisories).
+          python -m pip install --upgrade pip
           pip install -e ".[test]"
           ruff check src/ tests/
           mypy src/
           pip install pyright
           pyright src/
+          # PYSEC-2022-42969: ReDoS in py.path.svnwc, transitive via
+          # ``interrogate``. The vulnerable code path is unreachable.
           pip-audit --ignore-vuln PYSEC-2022-42969
           interrogate src/
           pytest tests/ --cov --cov-fail-under=80
