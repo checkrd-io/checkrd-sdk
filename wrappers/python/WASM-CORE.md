@@ -325,7 +325,7 @@ via [Sigstore](https://sigstore.dev/) keyless signing. The signing
 identity is the workflow path:
 
 ```
-https://github.com/checkrd/checkrd/.github/workflows/publish-python.yml@refs/tags/v<VERSION>
+https://github.com/checkrd-io/checkrd-sdk/.github/workflows/publish-python.yml@refs/tags/v<VERSION>
 ```
 
 For the JavaScript SDK the identity is the same repository with
@@ -333,7 +333,7 @@ For the JavaScript SDK the identity is the same repository with
 
 Checkrd targets alignment with SLSA Build Level 3. The current
 attestation level is published in the
-[releases page](https://github.com/checkrd/checkrd/releases). A full
+[releases page](https://github.com/checkrd-io/checkrd-sdk/releases). A full
 compliance statement is not claimed.
 
 The Rust source, `Cargo.lock`, and build configuration are committed
@@ -380,7 +380,7 @@ cosign verify-blob-attestation \
   --bundle "checkrd_core.wasm.sigstore.json" \
   --new-bundle-format \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-  --certificate-identity-regexp="^https://github.com/checkrd/checkrd/.github/workflows/publish-python.yml" \
+  --certificate-identity-regexp="^https://github.com/checkrd-io/checkrd-sdk/.github/workflows/publish-python.yml" \
   checkrd_core.wasm
 ```
 

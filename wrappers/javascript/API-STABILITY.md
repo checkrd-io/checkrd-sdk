@@ -22,7 +22,7 @@ internal symbols without a major version bump.
 
 If you're importing an underscore-prefixed symbol or a non-exported
 file path, you're depending on internals. Open an
-[issue](https://github.com/checkrd/checkrd/issues) so we can promote
+[issue](https://github.com/checkrd-io/checkrd-sdk/issues) so we can promote
 it to public, or add the API you need.
 
 ## SemVer commitments
@@ -86,7 +86,7 @@ Deprecated symbols emit a one-time warning via the configured logger
 
 To suppress all deprecation warnings, set `CHECKRD_SUPPRESS_DEPRECATIONS=1`.
 
-Subscribe to [release notes](https://github.com/checkrd/checkrd/releases) to
+Subscribe to [release notes](https://github.com/checkrd-io/checkrd-sdk/releases) to
 discover deprecations before they become removals.
 
 ## Supported runtimes
@@ -126,7 +126,7 @@ or a non-exported file:
 ## Reporting a stability concern
 
 If a change you didn't expect breaks your code, open an
-[issue](https://github.com/checkrd/checkrd/issues) tagged
+[issue](https://github.com/checkrd-io/checkrd-sdk/issues) tagged
 `api-stability`. We treat unexpected breaks as bugs — even when the
 change technically falls within an exception above — and will either
 revert, ship a fix, or give you a migration path.

@@ -1427,7 +1427,7 @@ def __getattr__(name: str) -> Any:
             f"public SDK surface. Use the names in checkrd.__all__ "
             f"instead. If you need an internal hook for a legitimate "
             f"integration, open an issue at "
-            f"https://github.com/checkrd/checkrd/issues."
+            f"https://github.com/checkrd-io/checkrd-sdk/issues."
         )
     raise AttributeError(
         f"module 'checkrd' has no attribute {name!r}. "
