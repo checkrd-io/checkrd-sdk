@@ -198,8 +198,9 @@ export class PolicySignatureError extends CheckrdError {
 // ===========================================================================
 
 /**
- * Parsed control-plane error-response body. The Checkrd API uses a
- * Stripe-style envelope: ``{ error: { type, code, message, param } }``.
+ * Parsed control-plane error-response body. Matches the Stripe-style
+ * envelope at ``crates/api/src/errors.rs``:
+ * ``{ error: { type, code, message, param } }``.
  */
 export interface APIErrorBody {
   type?: string;

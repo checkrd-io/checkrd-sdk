@@ -5,10 +5,10 @@
  * reaches every runtime.
  *
  * The Checkrd control plane signs every policy update with an Ed25519
- * key held in the operator's secrets-management system. The SDK ships
- * with a list of trusted public keys — each with a key ID and a
- * validity window — and refuses to install any policy update whose
- * signature can't be verified against an in-window trusted key.
+ * key held in AWS Secrets Manager. The SDK ships with a list of trusted
+ * public keys — each with a key ID and a validity window — and refuses
+ * to install any policy update whose signature can't be verified against
+ * an in-window trusted key.
  *
  * This file is the trust root for the entire policy distribution path.
  * Compile-time pinning means an attacker who compromises the network or
@@ -52,10 +52,10 @@ export interface TrustedKey {
 // MUST verify this list is non-empty (see `productionTrustStatus`) —
 // shipping an empty list silently disables every signed policy update.
 const PRODUCTION_TRUSTED_KEYS: readonly TrustedKey[] = [
-  // Bootstrap key for the production control plane. The private half is
-  // held in the operator's secrets-management system and never leaves it;
-  // this entry is the public-key half pinned into the SDK so DSSE-signed
-  // policy bundles from api.checkrd.io verify on every install.
+  // Bootstrap key for the production control plane. Private half lives in
+  // AWS Secrets Manager `checkrd/prod/policy-signing-key`; this entry is
+  // the public-key half pinned into the SDK so DSSE-signed policy bundles
+  // from api.checkrd.io verify on every install.
   //
   // Validity window: 10 years — Sigstore Fulcio / Apple WWDR / TLS root CA
   // convention. Long-lived trust *roots* mean SDK versions in the field

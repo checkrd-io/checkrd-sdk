@@ -1,0 +1,189 @@
+from http import HTTPStatus
+from typing import Any
+from urllib.parse import quote
+from uuid import UUID
+
+import httpx
+
+from ... import errors
+from ...client import AuthenticatedClient, Client
+from ...models.error_response import ErrorResponse
+from ...models.success_response import SuccessResponse
+from ...types import Response
+
+
+def _get_kwargs(
+    org_id: UUID,
+) -> dict[str, Any]:
+
+    _kwargs: dict[str, Any] = {
+        "method": "delete",
+        "url": "/v1/orgs/{org_id}".format(
+            org_id=quote(str(org_id), safe=""),
+        ),
+    }
+
+    return _kwargs
+
+
+def _parse_response(
+    *, client: AuthenticatedClient | Client, response: httpx.Response
+) -> ErrorResponse | SuccessResponse | None:
+    if response.status_code == 200:
+        response_200 = SuccessResponse.from_dict(response.json())
+
+        return response_200
+
+    if response.status_code == 400:
+        response_400 = ErrorResponse.from_dict(response.json())
+
+        return response_400
+
+    if response.status_code == 401:
+        response_401 = ErrorResponse.from_dict(response.json())
+
+        return response_401
+
+    if response.status_code == 403:
+        response_403 = ErrorResponse.from_dict(response.json())
+
+        return response_403
+
+    if response.status_code == 404:
+        response_404 = ErrorResponse.from_dict(response.json())
+
+        return response_404
+
+    if client.raise_on_unexpected_status:
+        raise errors.UnexpectedStatus(response.status_code, response.content)
+    else:
+        return None
+
+
+def _build_response(
+    *, client: AuthenticatedClient | Client, response: httpx.Response
+) -> Response[ErrorResponse | SuccessResponse]:
+    return Response(
+        status_code=HTTPStatus(response.status_code),
+        content=response.content,
+        headers=response.headers,
+        parsed=_parse_response(client=client, response=response),
+    )
+
+
+def sync_detailed(
+    org_id: UUID,
+    *,
+    client: AuthenticatedClient,
+) -> Response[ErrorResponse | SuccessResponse]:
+    """Soft-delete a workspace. Requires the Owner role. Blocked when
+    the workspace is the caller's last owned workspace (would leave
+    the user orgless and unable to authenticate) — returns
+    `cannot_delete_last_org` (400) in that case.
+
+    Args:
+        org_id (UUID):
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        Response[ErrorResponse | SuccessResponse]
+    """
+
+    kwargs = _get_kwargs(
+        org_id=org_id,
+    )
+
+    response = client.get_httpx_client().request(
+        **kwargs,
+    )
+
+    return _build_response(client=client, response=response)
+
+
+def sync(
+    org_id: UUID,
+    *,
+    client: AuthenticatedClient,
+) -> ErrorResponse | SuccessResponse | None:
+    """Soft-delete a workspace. Requires the Owner role. Blocked when
+    the workspace is the caller's last owned workspace (would leave
+    the user orgless and unable to authenticate) — returns
+    `cannot_delete_last_org` (400) in that case.
+
+    Args:
+        org_id (UUID):
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        ErrorResponse | SuccessResponse
+    """
+
+    return sync_detailed(
+        org_id=org_id,
+        client=client,
+    ).parsed
+
+
+async def asyncio_detailed(
+    org_id: UUID,
+    *,
+    client: AuthenticatedClient,
+) -> Response[ErrorResponse | SuccessResponse]:
+    """Soft-delete a workspace. Requires the Owner role. Blocked when
+    the workspace is the caller's last owned workspace (would leave
+    the user orgless and unable to authenticate) — returns
+    `cannot_delete_last_org` (400) in that case.
+
+    Args:
+        org_id (UUID):
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        Response[ErrorResponse | SuccessResponse]
+    """
+
+    kwargs = _get_kwargs(
+        org_id=org_id,
+    )
+
+    response = await client.get_async_httpx_client().request(**kwargs)
+
+    return _build_response(client=client, response=response)
+
+
+async def asyncio(
+    org_id: UUID,
+    *,
+    client: AuthenticatedClient,
+) -> ErrorResponse | SuccessResponse | None:
+    """Soft-delete a workspace. Requires the Owner role. Blocked when
+    the workspace is the caller's last owned workspace (would leave
+    the user orgless and unable to authenticate) — returns
+    `cannot_delete_last_org` (400) in that case.
+
+    Args:
+        org_id (UUID):
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        ErrorResponse | SuccessResponse
+    """
+
+    return (
+        await asyncio_detailed(
+            org_id=org_id,
+            client=client,
+        )
+    ).parsed

@@ -1,0 +1,11 @@
+[2026-04-26T17:18:29.754Z] Error: Post-processor "Prettier" failed to run: spawnSync prettier ENOENT
+Stack:
+ConfigError: Post-processor "Prettier" failed to run: spawnSync prettier ENOENT
+    at postprocessOutput (file:///Users/akshayaravindan/repos/checkrd/wrappers/api-clients/javascript/node_modules/@hey-api/shared/dist/index.mjs:639:27)
+    at createClient$1 (file:///Users/akshayaravindan/repos/checkrd/wrappers/api-clients/javascript/node_modules/@hey-api/openapi-ts/dist/src-DlsTSwMY.mjs:149:4)
+    at async file:///Users/akshayaravindan/repos/checkrd/wrappers/api-clients/javascript/node_modules/@hey-api/openapi-ts/dist/src-DlsTSwMY.mjs:203:12
+    at async Promise.all (index 0)
+    at async createClient (file:///Users/akshayaravindan/repos/checkrd/wrappers/api-clients/javascript/node_modules/@hey-api/openapi-ts/dist/src-DlsTSwMY.mjs:201:21)
+    at async Command.<anonymous> (file:///Users/akshayaravindan/repos/checkrd/wrappers/api-clients/javascript/node_modules/@hey-api/openapi-ts/dist/run.mjs:35:8)
+    at async Command.parseAsync (/Users/akshayaravindan/repos/checkrd/wrappers/api-clients/javascript/node_modules/commander/lib/command.js:1122:5)
+    at async runCli (file:///Users/akshayaravindan/repos/checkrd/wrappers/api-clients/javascript/node_modules/@hey-api/openapi-ts/dist/run.mjs:39:3)

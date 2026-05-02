@@ -61,13 +61,12 @@ _logger = logging.getLogger("checkrd")
 # list is non-empty (see `production_trust_status`) — shipping an empty list
 # silently disables every signed policy update at the SDK side.
 #
-# Format: list of dicts matching the ``TrustedKey`` schema verified inside
-# the WASM core (see ``crates/core/src/dsse_verify.rs``).
+# Format: list of dicts matching crates/core/src/dsse_verify.rs::TrustedKey.
 _PRODUCTION_TRUSTED_KEYS: list[dict[str, Any]] = [
-    # Bootstrap key for the production control plane. The private half is
-    # held in the operator's secrets-management system and never leaves it;
-    # this entry is the public-key half pinned into the SDK so DSSE-signed
-    # policy bundles from api.checkrd.io verify on every install.
+    # Bootstrap key for the production control plane. Private half lives in
+    # AWS Secrets Manager `checkrd/prod/policy-signing-key`; this entry is
+    # the public-key half pinned into the SDK so DSSE-signed policy bundles
+    # from api.checkrd.io verify on every install.
     #
     # Validity window: 10 years. Trust *roots* (this entry — the SDK's
     # compile-time pin) follow the Sigstore Fulcio / Apple WWDR / TLS root

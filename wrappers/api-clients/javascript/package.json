@@ -1,0 +1,46 @@
+{
+  "name": "@checkrd/api",
+  "version": "0.1.1",
+  "description": "Generated REST client for the Checkrd control plane (`/v1/*`). Separate from the runtime SDK `checkrd` — this is the admin/programmability surface.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "generate": "scripts/generate.sh",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint src --max-warnings=0",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@hey-api/client-fetch": "^0.13.0"
+  },
+  "devDependencies": {
+    "@hey-api/openapi-ts": "^0.96.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.1.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "homepage": "https://checkrd.io",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/checkrd/checkrd.git",
+    "directory": "wrappers/api-clients/javascript"
+  }
+}
