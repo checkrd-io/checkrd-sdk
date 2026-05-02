@@ -121,14 +121,20 @@ The deprecated `CHECKRD_DEV=1` flag toggled both at once. It emits a
 ## Supply Chain
 
 - Python wheels are published to PyPI via **Trusted Publishing**
-  (GitHub OIDC). Long-lived API tokens are not used.
-- Release wheels are signed with **Sigstore**; attestations are
-  available on each GitHub Release and on PyPI.
+  (`pypa/gh-action-pypi-publish` + GitHub OIDC). Long-lived API
+  tokens are not used.
+- Wheels carry [PEP 740 attestations](https://peps.python.org/pep-0740/)
+  signed with Sigstore via the publishing OIDC flow. Available at
+  `https://pypi.org/integrity/checkrd/<version>/<file>/provenance` and
+  surfaced on the PyPI release page under "Sigstore signatures".
 - The WASM core binary shipped inside the wheel is verified at import
   time against a SHA-256 recorded at build time
   (`_wasm_integrity.py::EXPECTED_SHA256`). Independent verification
-  against the Sigstore attestation is documented in the WASM core's
-  `SECURITY.md`.
+  against the PEP 740 attestation (`pypi-attestations verify pypi …`)
+  is documented in [WASM-CORE.md § Integrity Verification](./WASM-CORE.md#integrity-verification).
+  Stand-alone GitHub attestations (`actions/attest-build-provenance`)
+  are on the roadmap, blocked on Enterprise-plan gating for private
+  orgs.
 - A CycloneDX SBOM is attached to each GitHub Release (generated via
   `cyclonedx-py` against the project's locked dependency set).
 - Runtime dependencies are version-range pinned in `pyproject.toml`;
