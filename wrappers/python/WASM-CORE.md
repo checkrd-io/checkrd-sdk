@@ -359,15 +359,17 @@ without trusting the wheel's self-declared digest:
 # Install the verification helper
 pip install pypi-attestations
 
-# Verify the signature on the wheel for the installed version
+# Verify the signature on the wheel for the installed version. The
+# `pypi:` prefix tells pypi-attestations to fetch the wheel directly
+# from files.pythonhosted.org and pull the matching attestation
+# bundle from the integrity endpoint.
 VERSION=$(python -c "import checkrd; print(checkrd.__version__)")
-WHEEL_URL=$(curl -sS "https://pypi.org/pypi/checkrd/${VERSION}/json" \
-  | jq -r '.urls[] | select(.packagetype=="bdist_wheel") | .url' | head -1)
-curl -sS -O "${WHEEL_URL}"
+WHEEL_NAME=$(curl -sS "https://pypi.org/pypi/checkrd/${VERSION}/json" \
+  | jq -r '.urls[] | select(.packagetype=="bdist_wheel") | .filename' | head -1)
 
 pypi-attestations verify pypi \
-  --repository checkrd-io/checkrd \
-  "$(basename "${WHEEL_URL}")"
+  --repository https://github.com/checkrd-io/checkrd \
+  "pypi:${WHEEL_NAME}"
 ```
 
 Exit code `0` confirms the wheel was signed by the GitHub Actions

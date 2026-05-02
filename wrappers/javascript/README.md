@@ -193,7 +193,7 @@ rules:
   - name: spend-cap
     limit:
       calls_per_minute: 60
-      per: agent
+      per: global
 
   - name: block-deletes-everywhere
     deny:
