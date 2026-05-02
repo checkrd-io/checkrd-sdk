@@ -556,7 +556,7 @@ def _extract_message(body: Any) -> Optional[str]:
     Handles two shapes:
 
     - ``{"error": {"message": "..."}}`` — Stripe's nested envelope, also
-      what the Checkrd control plane emits.
+      what ``crates/api/src/errors.rs`` emits.
     - ``{"message": "..."}`` — plain top-level message.
 
     Returns ``None`` if neither shape applies, leaving the caller to

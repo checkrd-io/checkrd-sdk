@@ -3,10 +3,10 @@
  *
  * The SSE receiver (`receiver.ts`) forwards every incoming event to
  * {@link handleControlEvent}. This module is the dispatch contract —
- * mapping wire-format event names emitted by the Checkrd control plane
- * to engine-side effects — so both the real SSE client and any custom
- * transports (LongPoll, WebSocket bridge, in-process test harness)
- * share one authoritative handler.
+ * mapping wire-format event names emitted by
+ * `crates/api/src/routes/control.rs` to engine-side effects — so both
+ * the real SSE client and any custom transports (LongPoll, WebSocket
+ * bridge, in-process test harness) share one authoritative handler.
  *
  * Every supported event is mirrored from the Python wrapper to keep the
  * two SDKs behaviorally identical:
