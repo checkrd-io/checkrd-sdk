@@ -368,7 +368,7 @@ WHEEL_NAME=$(curl -sS "https://pypi.org/pypi/checkrd/${VERSION}/json" \
   | jq -r '.urls[] | select(.packagetype=="bdist_wheel") | .filename' | head -1)
 
 pypi-attestations verify pypi \
-  --repository https://github.com/checkrd-io/checkrd \
+  --repository https://github.com/checkrd-io/checkrd-sdk \
   "pypi:${WHEEL_NAME}"
 ```
 

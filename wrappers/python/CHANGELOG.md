@@ -5,6 +5,17 @@ All notable changes to the Checkrd Python SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.3.1 (2026-05-02)
+
+### Changed
+
+- Republished from the public `checkrd-io/checkrd-sdk` mirror. The
+  Sigstore certificate identity in the PEP 740 attestation now points
+  at `https://github.com/checkrd-io/checkrd-sdk/.github/workflows/publish-python.yml`
+  — a repo end users can browse — instead of the private monorepo.
+  No SDK behaviour changes vs 0.3.0; verification recipes in
+  `WASM-CORE.md § Integrity Verification` now use this repo URL.
+
 ## 0.1.0 (2026-04-27)
 
 
