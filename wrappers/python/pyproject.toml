@@ -31,7 +31,7 @@ classifiers = [
 dependencies = [
     "httpx>=0.24.0,<2",
     "httpx-sse>=0.4.0,<1",
-    "wasmtime>=21.0.0,<30",
+    "wasmtime>=21.0.0,<45",
     "pyyaml>=6.0,<7",
 ]
 
@@ -86,7 +86,7 @@ openai = ["openai>=1.0,<3"]
 anthropic = ["anthropic>=0.20,<1"]
 cohere = ["cohere>=5.0,<7"]
 groq = ["groq>=0.4,<2"]
-mistral = ["mistralai>=0.2,<2"]
+mistral = ["mistralai>=0.2,<3"]
 together = ["together>=1.0,<3"]
 google-genai = ["google-genai>=0.1,<2"]
 # Agent-framework integration extras. Each is the canonical extension
@@ -95,7 +95,7 @@ google-genai = ["google-genai>=0.1,<2"]
 # ClientSession subclass + handler wrap. Same upper-bound discipline
 # as the vendor extras: bump only after smoke tests pass against the
 # new major.
-langchain = ["langchain-core>=0.3,<1"]
+langchain = ["langchain-core>=0.3,<2"]
 openai-agents = ["openai-agents>=0.1,<2"]
 claude-agent-sdk = ["claude-agent-sdk>=0.1,<2"]
 mcp = ["mcp>=1.0,<2"]
@@ -104,10 +104,10 @@ all = [
     "anthropic>=0.20,<1",
     "cohere>=5.0,<7",
     "groq>=0.4,<2",
-    "mistralai>=0.2,<2",
+    "mistralai>=0.2,<3",
     "together>=1.0,<3",
     "google-genai>=0.1,<2",
-    "langchain-core>=0.3,<1",
+    "langchain-core>=0.3,<2",
     "openai-agents>=0.1,<2",
     "claude-agent-sdk>=0.1,<2",
     "mcp>=1.0,<2",
@@ -138,11 +138,11 @@ test = [
     "anthropic>=0.20,<1",
     "cohere>=5.0,<7",
     "groq>=0.4,<2",
-    "mistralai>=0.2,<2",
+    "mistralai>=0.2,<3",
     "together>=1.0,<3",
     "google-genai>=0.1,<2",
     # Agent-framework integrations (smoke tests).
-    "langchain-core>=0.3,<1",
+    "langchain-core>=0.3,<2",
     "openai-agents>=0.1,<2",
     "claude-agent-sdk>=0.1,<2",
     "mcp>=1.0,<2",
