@@ -1,0 +1,79 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "checkrd-api"
+version = "0.1.1"
+description = "Generated REST client for the Checkrd control plane (`/v1/*`). Separate from the runtime SDK `checkrd` — this is the admin/programmability surface."
+readme = "README.md"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Checkrd", email = "support@checkrd.io" }]
+requires-python = ">=3.9"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
+]
+dependencies = [
+    # The generated client uses httpx for transport (sync + async)
+    # and attrs for model classes — both are openapi-python-client's
+    # standard runtime, kept minimal. No Pydantic dependency on
+    # consumers.
+    "httpx>=0.20.0,<1",
+    "attrs>=22.2.0",
+    "python-dateutil>=2.8.0",
+]
+
+[project.urls]
+Homepage = "https://checkrd.io"
+Documentation = "https://checkrd.io/docs/python"
+Source = "https://github.com/checkrd/checkrd/tree/main/wrappers/api-clients/python"
+
+[project.optional-dependencies]
+dev = [
+    # openapi-python-client materializes src/checkrd_api/ from
+    # ../../../schemas/api/openapi.json. Pinned to a recent stable.
+    "openapi-python-client>=0.21,<0.30",
+    "ruff>=0.4",
+    "mypy>=1.0",
+]
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["checkrd_api*"]
+
+[tool.setuptools.package-data]
+"checkrd_api" = ["py.typed"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+# The generated client is, well, generated — keep linting tight on
+# the package metadata files (pyproject, scripts) but tolerant on
+# the codegen output. Reformatting generated code defeats the point.
+extend-select = ["I"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/checkrd_api/**/*.py" = ["E", "F", "I", "W"]
+
+[tool.mypy]
+strict = true
+mypy_path = "src"
+explicit_package_bases = true
+namespace_packages = true
+# The generated package has its own typing hints; we don't tighten
+# beyond what openapi-python-client emits.
+exclude = ["build/"]

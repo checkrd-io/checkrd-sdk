@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "strict": true,
+    // Generator emits types under the looser baseline @hey-api/openapi-ts
+    // ships with — not the dashboard's exactOptionalPropertyTypes /
+    // noUncheckedIndexedAccess posture. We don't reformat generated
+    // output, so we match the generator's expected baseline here. The
+    // hand-written runtime SDK still uses the stricter settings.
+    "declaration": true,
+    "declarationMap": false,
+    "sourceMap": false,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": false,
+    "resolveJsonModule": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

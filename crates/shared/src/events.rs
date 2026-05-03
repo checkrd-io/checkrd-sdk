@@ -11,9 +11,9 @@
 //! # Phases
 //!
 //! - **Phase 1–2 (current):** Control signals from the control plane (kill
-//!   switch, policy sync). Currently delivered via the legacy `ControlSignal`
-//!   wire type. When the control plane migrates to `AgentEvent`, the SSE
-//!   layer will serialize the new envelope format.
+//!   switch, policy sync). Currently delivered via `ControlSignal` in
+//!   `crates/api`. When the API migrates to `AgentEvent`, the SSE layer will
+//!   serialize the new envelope format.
 //! - **Phase 3 (planned):** Bilateral interaction events between agents.
 //!   Delivery mechanism TBD (likely SQS-backed with at-least-once guarantees).
 //!   Dedup uses `AgentEvent::id`; request/response correlation uses
@@ -110,8 +110,8 @@ impl AgentEvent {
 /// Typed event payload, discriminated by the `"type"` tag.
 ///
 /// Control signal variants use the same field names as the existing
-/// `ControlSignal` wire type, so the control plane migration is a matter
-/// of wrapping each signal in an `AgentEvent` envelope.
+/// `ControlSignal` in `crates/api/src/services/pubsub.rs`, so the API
+/// migration is a matter of wrapping each signal in an `AgentEvent` envelope.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type")]
 pub enum AgentEventData {

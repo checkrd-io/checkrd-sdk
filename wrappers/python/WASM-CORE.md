@@ -318,23 +318,17 @@ surface.
 ## Build Provenance
 
 Each released `.wasm` binary is produced by a GitHub Actions workflow
-running from a tagged commit. The workflow, its inputs, and its
-outputs are published as a
-[SLSA provenance](https://slsa.dev/spec/v1.0/provenance) attestation
-via [Sigstore](https://sigstore.dev/) keyless signing. The signing
-identity is the workflow path:
+running from a tagged commit. Wheels are uploaded via
+[PyPI Trusted Publishing](https://docs.pypi.org/trusted-publishers/)
+(`pypa/gh-action-pypi-publish`), which signs each artifact with
+Sigstore using OIDC keyless signing. The provenance is logged in the
+public Sigstore Rekor transparency log and surfaced on the package's
+PyPI page under "Sigstore signatures".
 
-```
-https://github.com/checkrd-io/checkrd-sdk/.github/workflows/publish-python.yml@refs/tags/v<VERSION>
-```
-
-For the JavaScript SDK the identity is the same repository with
-`publish-javascript.yml`.
-
-Checkrd targets alignment with SLSA Build Level 3. The current
-attestation level is published in the
-[releases page](https://github.com/checkrd-io/checkrd-sdk/releases). A full
-compliance statement is not claimed.
+A SLSA-aligned `actions/attest-build-provenance` step (uploading
+attestations to GitHub directly, alongside the PyPI signature) is on
+the roadmap. It is currently disabled because GitHub gates the API
+on Enterprise plans for private orgs.
 
 The Rust source, `Cargo.lock`, and build configuration are committed
 to the repository; the WASM build is deterministic given a pinned
@@ -358,35 +352,30 @@ logged as a warning.
 
 ### Independent verification
 
-To verify the binary against the published Sigstore attestation
-without trusting the wheel's self-declared digest, use
-[`cosign`](https://docs.sigstore.dev/cosign/) against the release
-artifact:
+Verify the published wheel against its PyPI Sigstore signature
+without trusting the wheel's self-declared digest:
 
 ```bash
-# Extract the bundled WASM from the installed wheel
-python -c "from importlib.resources import files; \
-  import shutil; \
-  src = files('checkrd') / 'checkrd_core.wasm'; \
-  shutil.copy(src, 'checkrd_core.wasm')"
+# Install the verification helper
+pip install pypi-attestations
 
-# Fetch the attestation bundle for the installed version
+# Verify the signature on the wheel for the installed version. The
+# `pypi:` prefix tells pypi-attestations to fetch the wheel directly
+# from files.pythonhosted.org and pull the matching attestation
+# bundle from the integrity endpoint.
 VERSION=$(python -c "import checkrd; print(checkrd.__version__)")
-gh attestation download --repo checkrd/checkrd \
-  --digest "sha256:$(sha256sum checkrd_core.wasm | awk '{print $1}')"
+WHEEL_NAME=$(curl -sS "https://pypi.org/pypi/checkrd/${VERSION}/json" \
+  | jq -r '.urls[] | select(.packagetype=="bdist_wheel") | .filename' | head -1)
 
-# Verify
-cosign verify-blob-attestation \
-  --bundle "checkrd_core.wasm.sigstore.json" \
-  --new-bundle-format \
-  --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-  --certificate-identity-regexp="^https://github.com/checkrd-io/checkrd-sdk/.github/workflows/publish-python.yml" \
-  checkrd_core.wasm
+pypi-attestations verify pypi \
+  --repository https://github.com/checkrd-io/checkrd-sdk \
+  "pypi:${WHEEL_NAME}"
 ```
 
-Exit code `0` confirms the binary was signed by the named GitHub
-Actions workflow at the expected tag. Any other output indicates a
-tampered or unknown binary.
+Exit code `0` confirms the wheel was signed by the GitHub Actions
+workflow that published it; any other output indicates a tampered or
+unknown artifact. PyPI also surfaces the verified signature directly
+on each release's page under "Sigstore signatures".
 
 ### CycloneDX SBOM
 
