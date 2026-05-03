@@ -94,8 +94,8 @@ discover deprecations before they become removals.
 
 | Runtime | Status | Notes |
 |---|---|---|
-| Python 3.9 | Supported | EOL October 2025. We will drop support no earlier than the next major after Python 3.9 is EOL. |
-| Python 3.10 | Supported | EOL October 2026. |
+| Python 3.9 | Unsupported | Dropped in 0.3.0 (Python 3.9 reached EOL October 2025). `pyproject.toml` requires `>=3.10`. |
+| Python 3.10 | Supported | EOL October 2026. Floor; `pyproject.toml` `requires-python`. |
 | Python 3.11 | Supported | EOL October 2027. |
 | Python 3.12 | Supported | EOL October 2028. |
 | Python 3.13 | Supported | EOL October 2029. |

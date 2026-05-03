@@ -8,7 +8,7 @@ dynamic = ["version"]
 description = "Proxy layer for AI agent API calls. Policy enforcement, kill switch, and observability."
 readme = "README.md"
 license = "Apache-2.0"
-authors = [{ name = "Checkrd", email = "hello@checkrd.dev" }]
+authors = [{ name = "Checkrd", email = "hello@checkrd.io" }]
 requires-python = ">=3.10"
 keywords = ["ai", "agents", "proxy", "policy", "security", "observability"]
 classifiers = [
