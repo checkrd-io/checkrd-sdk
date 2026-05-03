@@ -7,6 +7,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.3.1 (2026-05-03)
+
+### Fixed
+
+- Documentation honesty pass:
+  - `WASM-CORE.md § Integrity Verification` recipe replaced — old
+    `gh attestation download` would 404 because GitHub-native build
+    provenance is gated behind Enterprise plans for private orgs.
+    New recipe uses the actually-shipped npm provenance:
+    `npm audit signatures` + raw bundle inspection via the npm
+    attestations endpoint.
+  - `SECURITY.md § Supply chain` corrected — we don't ship
+    Sigstore-signed attestations on each GitHub Release; we ship
+    npm provenance via the npm OIDC pipeline.
+  - `THREAT-MODEL.md` row 14 now points at the correct verification
+    recipe.
+  - `README.md` rate-limit example used `per: agent` (invalid scope
+    per `crates/core/src/policy.rs`); fixed to `per: global`. Valid
+    scopes are `endpoint`, `global`, `body_field`.
+- Package author email metadata: `hello@checkrd.dev` →
+  `support@checkrd.io` (matches the consolidated public-inbox scheme).
+
+No source-level SDK behaviour changes vs 0.3.0; this release ships
+only doc + metadata corrections.
+
 ## [Unreleased]
 
 ### Added
