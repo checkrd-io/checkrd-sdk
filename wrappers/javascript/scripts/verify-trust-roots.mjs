@@ -9,9 +9,10 @@
  * (one rotation reaches both), so the guard is symmetric: empty list
  * targeting ``api.checkrd.io`` is a hard block; any other state is OK.
  *
- * Wired into ``.github/workflows/publish-javascript.yml`` after
- * ``npm run attw`` and before the npm publish step. See
- * KEY-CUSTODY.md §6 for the operator runbook.
+ * Wired into ``publish-javascript.yml`` in the public
+ * ``checkrd-io/checkrd-sdk`` mirror (after ``npm run attw``,
+ * before the npm publish step). See KEY-CUSTODY.md §6 for the
+ * operator runbook.
  *
  * Usage:
  *
