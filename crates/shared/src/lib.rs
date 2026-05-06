@@ -1,5 +1,6 @@
 //! Shared types imported by WASM core and control-plane services.
 
+pub mod api_key_scope;
 pub mod billing;
 pub mod dsse;
 pub mod error;
@@ -11,6 +12,7 @@ pub mod policy_bundle;
 pub mod telemetry;
 pub mod url;
 
+pub use api_key_scope::{AccessLevel, ApiKeyScope, Resource};
 pub use billing::{PlanLimits, PlanTier};
 pub use dsse::{
     pae, DsseEnvelope, DsseSignature, POLICY_BUNDLE_PAYLOAD_TYPE, TELEMETRY_BATCH_PAYLOAD_TYPE,
