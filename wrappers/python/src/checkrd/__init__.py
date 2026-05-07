@@ -1216,7 +1216,19 @@ def _maybe_register_public_key(
         return
     try:
         public_key = identity.public_key
-    except Exception:
+    except Exception as exc:
+        # A silently-swallowed failure here means the agent's key never
+        # reaches the control plane and every signed telemetry batch
+        # comes back 401 signer-not-registered. Log it so regressions
+        # are visible — the SDK still proceeds (registration is
+        # best-effort), but the operator now has a breadcrumb.
+        logger.warning(
+            "checkrd: could not read identity.public_key for registration "
+            "(%s: %s); telemetry signature verification will fail until "
+            "the key is registered manually.",
+            type(exc).__name__,
+            exc,
+        )
         return
     if not public_key:
         return

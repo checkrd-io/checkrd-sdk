@@ -301,7 +301,12 @@ class LocalIdentity:
         This avoids the O_EXCL empty-file race (where losers read a
         zero-byte file before the winner finishes writing).
         """
-        if self._private_key is not None:
+        # Gate on _public_key: it survives bind_engine() zeroization, while
+        # _private_key gets cleared. Reading .public_key after wrap() is the
+        # path used by _maybe_register_public_key — gating on _private_key
+        # made it raise after zeroization, so registration silently bailed
+        # and the agent's key never reached the control plane.
+        if self._public_key is not None:
             return
 
         # If we got here without a key path, the instance was constructed via

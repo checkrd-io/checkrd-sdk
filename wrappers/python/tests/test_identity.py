@@ -405,6 +405,33 @@ class TestKeyZeroization:
         assert li.public_key == pub
         assert li.instance_id == pub[:8].hex()
 
+    def test_from_bytes_public_key_survives_bind_engine(self) -> None:
+        """from_bytes() identities must serve public_key after bind_engine().
+
+        Regression: _ensure_loaded() used to gate on `_private_key is not
+        None`, so once bind_engine() zeroized the private key it would fall
+        through to the `_key_path is None` branch and raise. That broke
+        _maybe_register_public_key — which reads .public_key after wrap()
+        runs — and the agent's key never reached the control plane, so
+        every signed telemetry batch came back 401 signer-not-registered.
+        """
+        from checkrd.engine import WasmEngine
+
+        li = LocalIdentity.from_bytes(bytes(32))
+        pub_before = li.public_key
+        engine = WasmEngine(
+            '{"agent":"test","default":"allow","rules":[]}',
+            "test-agent",
+            private_key_bytes=li.private_key_bytes or b"",
+        )
+        li.bind_engine(engine)
+
+        # Must not raise. _key_path is None on from_bytes() instances; the
+        # only thing keeping public_key reachable is _public_key still
+        # being populated post-zeroization.
+        assert li.public_key == pub_before
+        assert li.instance_id == pub_before[:8].hex()
+
     def test_internal_bytearray_is_zeroed(self, tmp_path: Path) -> None:
         """The actual bytearray object is filled with zeros before being dropped."""
         from checkrd.engine import WasmEngine
@@ -934,6 +961,10 @@ class TestLocalIdentityInvariants:
         # `python -O` would silently drop, leaking ``None``.
         identity._ensure_loaded()
         identity._public_key = None
+        # Stub _ensure_loaded so the property's defensive raise fires
+        # instead of the loader silently repopulating from disk. Pins the
+        # belt-and-suspenders check the audit added for ``python -O``.
+        identity._ensure_loaded = lambda: None  # type: ignore[method-assign]
         with pytest.raises(RuntimeError, match="_ensure_loaded"):
             _ = identity.public_key
 
@@ -943,5 +974,6 @@ class TestLocalIdentityInvariants:
         identity = LocalIdentity(key_path=tmp_path / "dev.key")
         identity._ensure_loaded()
         identity._instance_id = None
+        identity._ensure_loaded = lambda: None  # type: ignore[method-assign]
         with pytest.raises(RuntimeError, match="_ensure_loaded"):
             _ = identity.instance_id

@@ -5,6 +5,35 @@ All notable changes to the Checkrd Python SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.3.3 (2026-05-06)
+
+### Fixed
+
+- **Critical:** signed-telemetry batches were rejected as
+  `signer agent not registered or wrong org` when the SDK was
+  configured with `LocalIdentity.from_bytes(...)` (the
+  documented production pattern for deterministic agent
+  identities). Root cause: `LocalIdentity._ensure_loaded()`
+  gated its early-return on `_private_key is not None`, but
+  `bind_engine()` zeroizes that field once WASM has its own
+  copy. After zeroization, `identity.public_key` raised
+  `CheckrdInitError("LocalIdentity has no key and no key_path
+  to load from")`, and `_maybe_register_public_key` swallowed
+  the exception silently — so the agent's public key never
+  reached the control plane and every subsequent batch came
+  back 401.
+  Fix: gate `_ensure_loaded` on `_public_key` (which survives
+  zeroization by design) and surface read failures from
+  `_maybe_register_public_key` at WARNING level so future
+  regressions can't hide. Regression test:
+  `tests/test_identity.py::test_from_bytes_public_key_survives_bind_engine`.
+
+  Anyone using `LocalIdentity.from_bytes(...)` on 0.3.0–0.3.2
+  must upgrade for SDK-signed telemetry to actually flow. The
+  default-constructed `LocalIdentity()` (which loads from
+  `~/.checkrd/identity.key` via `_key_path`) was unaffected
+  because the disk-load branch repopulated the keys.
+
 ## 0.3.2 (2026-05-03)
 
 ### Changed
