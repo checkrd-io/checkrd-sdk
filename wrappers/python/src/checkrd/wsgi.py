@@ -88,7 +88,9 @@ class CheckrdWSGIMiddleware:
         self._dashboard_url = dashboard_url
 
     def __call__(
-        self, environ: WSGIEnviron, start_response: StartResponse,
+        self,
+        environ: WSGIEnviron,
+        start_response: StartResponse,
     ) -> Iterable[bytes]:
         # Track whether start_response has fired so we know whether
         # it's safe to override headers in the deny path.
@@ -96,8 +98,10 @@ class CheckrdWSGIMiddleware:
         original_start = start_response
 
         def tracking_start(
-            status: str, headers: list[tuple[str, str]],
-            *args: Any, **kwargs: Any,
+            status: str,
+            headers: list[tuple[str, str]],
+            *args: Any,
+            **kwargs: Any,
         ) -> Callable[[bytes], Any]:
             response_started[0] = True
             return original_start(status, headers, *args, **kwargs)
@@ -128,8 +132,7 @@ class CheckrdWSGIMiddleware:
                     "message": exc.reason,
                     "code": exc.code,
                     "request_id": exc.request_id,
-                    "dashboard_url": exc.dashboard_url
-                    or self._dashboard_url,
+                    "dashboard_url": exc.dashboard_url or self._dashboard_url,
                     "docs_url": exc.docs_url,
                 },
             },

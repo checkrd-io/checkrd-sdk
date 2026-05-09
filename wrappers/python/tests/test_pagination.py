@@ -53,15 +53,24 @@ def test_cursor_page_terminates_when_no_fetch_callback() -> None:
 def test_offset_page_walks_pages() -> None:
     pages = [
         OffsetPage(
-            [1, 2], page=1, per_page=2, has_more=True,
+            [1, 2],
+            page=1,
+            per_page=2,
+            has_more=True,
             fetch_next=lambda n: pages[n - 1],
         ),
         OffsetPage(
-            [3, 4], page=2, per_page=2, has_more=True,
+            [3, 4],
+            page=2,
+            per_page=2,
+            has_more=True,
             fetch_next=lambda n: pages[n - 1],
         ),
         OffsetPage(
-            [5], page=3, per_page=2, has_more=False,
+            [5],
+            page=3,
+            per_page=2,
+            has_more=False,
         ),
     ]
     assert list(pages[0]) == [1, 2, 3, 4, 5]
@@ -102,12 +111,19 @@ async def test_async_offset_page_walks() -> None:
 
     pages.append(
         AsyncOffsetPage(
-            [1, 2], page=1, per_page=2, has_more=True, fetch_next=_fetch,
+            [1, 2],
+            page=1,
+            per_page=2,
+            has_more=True,
+            fetch_next=_fetch,
         ),
     )
     pages.append(
         AsyncOffsetPage(
-            [3], page=2, per_page=2, has_more=False,
+            [3],
+            page=2,
+            per_page=2,
+            has_more=False,
         ),
     )
 

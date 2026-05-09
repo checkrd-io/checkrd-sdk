@@ -63,9 +63,7 @@ _PERMISSIVE_POLICY = {
 _TEST_MAX_AGE_SECS = 86_400  # 24 hours
 
 
-def _build_policy_bundle(
-    policy: dict, version: int = 1, signed_at: int | None = None
-) -> bytes:
+def _build_policy_bundle(policy: dict, version: int = 1, signed_at: int | None = None) -> bytes:
     """Wrap a policy in a versioned PolicyBundle and serialize to JSON bytes.
 
     Strong-from-the-ground-up: every signed payload is a versioned bundle,
@@ -198,9 +196,7 @@ def test_tampered_envelope_is_rejected() -> None:
     payload = _build_policy_bundle(_PERMISSIVE_POLICY)
     envelope = _build_dsse_envelope(sk_bytes, "test-cp", payload)
     # Tamper: replace the payload with a different policy AFTER signing.
-    tampered_payload = json.dumps(
-        {"agent": "evil", "default": "allow", "rules": []}
-    ).encode()
+    tampered_payload = json.dumps({"agent": "evil", "default": "allow", "rules": []}).encode()
     envelope["payload"] = base64.b64encode(tampered_payload).decode()
 
     engine = _make_engine()
@@ -402,7 +398,10 @@ def test_monotonic_rollback_is_rejected() -> None:
     v5_payload = _build_policy_bundle(_PERMISSIVE_POLICY, version=5)
     v5_envelope = _build_dsse_envelope(sk_bytes, "test-cp", v5_payload)
     engine.reload_policy_signed(
-        json.dumps(v5_envelope), json.dumps(trusted), int(time.time()), _TEST_MAX_AGE_SECS,
+        json.dumps(v5_envelope),
+        json.dumps(trusted),
+        int(time.time()),
+        _TEST_MAX_AGE_SECS,
     )
     assert engine.get_active_policy_version() == 5
 
@@ -411,7 +410,10 @@ def test_monotonic_rollback_is_rejected() -> None:
     v3_envelope = _build_dsse_envelope(sk_bytes, "test-cp", v3_payload)
     with pytest.raises(PolicySignatureError) as exc_info:
         engine.reload_policy_signed(
-            json.dumps(v3_envelope), json.dumps(trusted), int(time.time()), _TEST_MAX_AGE_SECS,
+            json.dumps(v3_envelope),
+            json.dumps(trusted),
+            int(time.time()),
+            _TEST_MAX_AGE_SECS,
         )
     assert exc_info.value.ffi_code == -11
     assert exc_info.value.reason == "bundle_version_not_monotonic"
@@ -421,7 +423,10 @@ def test_monotonic_rollback_is_rejected() -> None:
     # Same version twice is also rejected (strict `<=`).
     with pytest.raises(PolicySignatureError) as exc2:
         engine.reload_policy_signed(
-            json.dumps(v5_envelope), json.dumps(trusted), int(time.time()), _TEST_MAX_AGE_SECS,
+            json.dumps(v5_envelope),
+            json.dumps(trusted),
+            int(time.time()),
+            _TEST_MAX_AGE_SECS,
         )
     assert exc2.value.ffi_code == -11
 
@@ -513,9 +518,7 @@ def test_signed_policy_actually_replaces_old_policy() -> None:
     sk = Ed25519PrivateKey.generate()
     sk_bytes = sk.private_bytes_raw()
     pk_bytes = sk.public_key().public_bytes_raw()
-    envelope = _build_dsse_envelope(
-        sk_bytes, "test-cp", _build_policy_bundle(_PERMISSIVE_POLICY)
-    )
+    envelope = _build_dsse_envelope(sk_bytes, "test-cp", _build_policy_bundle(_PERMISSIVE_POLICY))
     engine.reload_policy_signed(
         json.dumps(envelope),
         json.dumps(_trust_list_for(pk_bytes, "test-cp")),

@@ -185,13 +185,13 @@ class ControlReceiver:
             logger.warning(
                 "checkrd: persisted policy bundle rejected on restore "
                 "(reason=%s, code=%s); will reinitialize from server",
-                exc.reason, exc.code,
+                exc.reason,
+                exc.code,
             )
             return
         self._last_installed_hash = bundle_hash
         logger.info(
-            "checkrd: restored persisted policy version=%d, hash=%s… "
-            "for agent %s",
+            "checkrd: restored persisted policy version=%d, hash=%s… for agent %s",
             version,
             bundle_hash[:16] if bundle_hash else "<none>",
             self._agent_id,

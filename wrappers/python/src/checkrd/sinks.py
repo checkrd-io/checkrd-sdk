@@ -149,8 +149,7 @@ class JsonFileSink:
             # a serialization bug must never propagate to the wrapped HTTP
             # call. Drop the event with a warning and move on.
             logger.warning(
-                "checkrd.sinks: failed to serialize event for JsonFileSink (%s); "
-                "dropping event",
+                "checkrd.sinks: failed to serialize event for JsonFileSink (%s); dropping event",
                 exc,
             )
             return
@@ -186,9 +185,7 @@ class JsonFileSink:
                             pass
                     self._file.close()
                 except OSError as exc:
-                    logger.debug(
-                        "checkrd.sinks: error closing %s (%s)", self._path, exc
-                    )
+                    logger.debug("checkrd.sinks: error closing %s (%s)", self._path, exc)
                 self._file = None
 
 
@@ -340,13 +337,17 @@ class OtlpSink:
         """Create and immediately end an OTel span from a Checkrd event."""
         from opentelemetry.trace import StatusCode, SpanKind
 
-        span_name = event.get("span_name", f"{event.get('method', '?')} {event.get('url_host', '?')}")
+        span_name = event.get(
+            "span_name", f"{event.get('method', '?')} {event.get('url_host', '?')}"
+        )
         kind = SpanKind.CLIENT  # Checkrd events represent outbound HTTP calls
 
         with self._tracer.start_as_current_span(span_name, kind=kind) as span:
             # HTTP attributes
             span.set_attribute("http.request.method", event.get("method", ""))
-            span.set_attribute("url.full", f"https://{event.get('url_host', '')}{event.get('url_path', '/')}")
+            span.set_attribute(
+                "url.full", f"https://{event.get('url_host', '')}{event.get('url_path', '/')}"
+            )
             if event.get("status_code") is not None:
                 span.set_attribute("http.response.status_code", event["status_code"])
             if event.get("latency_ms") is not None:
@@ -520,7 +521,8 @@ class OTelSpanSink:
         # Every Checkrd event is an outbound HTTP client call — fixed
         # SpanKind.CLIENT matches the OTel HTTP semconv choice.
         with self._tracer.start_as_current_span(
-            span_name, kind=SpanKind.CLIENT,
+            span_name,
+            kind=SpanKind.CLIENT,
         ) as span:
             _apply_semconv_attributes(span, event)
 

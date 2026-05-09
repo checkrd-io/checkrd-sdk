@@ -87,8 +87,13 @@ class TestMockEngineTrace:
             ],
         )
         engine.evaluate(
-            request_id="r1", method="DELETE", url="https://example.com",
-            headers=[], body=None, timestamp="", timestamp_ms=0,
+            request_id="r1",
+            method="DELETE",
+            url="https://example.com",
+            headers=[],
+            body=None,
+            timestamp="",
+            timestamp_ms=0,
         )
         trace = engine.last_trace
         assert any("block-deletes" in line for line in trace)
@@ -102,8 +107,13 @@ class TestMockEngineTrace:
             ],
         )
         engine.evaluate(
-            request_id="r1", method="GET", url="https://example.com",
-            headers=[], body=None, timestamp="", timestamp_ms=0,
+            request_id="r1",
+            method="GET",
+            url="https://example.com",
+            headers=[],
+            body=None,
+            timestamp="",
+            timestamp_ms=0,
         )
         trace = engine.last_trace
         assert any("skip" in line for line in trace)
@@ -115,8 +125,13 @@ class TestMockEngineTrace:
             rules=[{"name": "allow-post", "allow": {"method": ["POST"], "url": "*"}}],
         )
         engine.evaluate(
-            request_id="r1", method="GET", url="https://example.com",
-            headers=[], body=None, timestamp="", timestamp_ms=0,
+            request_id="r1",
+            method="GET",
+            url="https://example.com",
+            headers=[],
+            body=None,
+            timestamp="",
+            timestamp_ms=0,
         )
         trace = engine.last_trace
         assert any("default" in line.lower() for line in trace)

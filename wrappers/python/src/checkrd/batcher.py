@@ -94,6 +94,7 @@ def _generate_traceparent() -> str:
     parent_id = secrets.token_hex(8)  # 16 hex chars
     return f"00-{trace_id}-{parent_id}-01"
 
+
 def _approx_event_bytes(event: dict[str, Any]) -> int:
     """Cheap byte-cost estimate for queue accounting.
 
@@ -570,8 +571,7 @@ class TelemetryBatcher:
             dropped = len(events)
             self._events_dropped_send_error += dropped
             logger.debug(
-                "checkrd: telemetry send fast-failed (circuit open), "
-                "dropping %d events",
+                "checkrd: telemetry send fast-failed (circuit open), dropping %d events",
                 dropped,
             )
             self._notify_drop("send_error", dropped)
@@ -590,7 +590,10 @@ class TelemetryBatcher:
             if attempt > 0:
                 attempt_headers["X-Checkrd-Retry-Count"] = str(attempt)
             req = Request(
-                self._url, data=body, headers=attempt_headers, method="POST",
+                self._url,
+                data=body,
+                headers=attempt_headers,
+                method="POST",
             )
             try:
                 # `_verify` follows httpx's contract; map to urllib's
@@ -610,27 +613,28 @@ class TelemetryBatcher:
                         # echoes ``Checkrd-Request-Id``; we accept the
                         # conventional ``X-Request-Id`` form for
                         # cross-tooling reach.
-                        self._last_request_id = (
-                            resp.headers.get("Checkrd-Request-Id")
-                            or resp.headers.get("X-Request-Id")
-                        )
+                        self._last_request_id = resp.headers.get(
+                            "Checkrd-Request-Id"
+                        ) or resp.headers.get("X-Request-Id")
                         self._breaker.record_success()
                         return  # success
 
-                    response_headers = (
-                        dict(resp.headers) if hasattr(resp, "headers") else {}
-                    )
+                    response_headers = dict(resp.headers) if hasattr(resp, "headers") else {}
                     if (
                         should_retry_status(resp.status, response_headers)
                         and attempt < self._max_attempts - 1
                     ):
                         delay = next_backoff(
-                            attempt, response_headers,
+                            attempt,
+                            response_headers,
                             max_sleep_secs=DEFAULT_MAX_SLEEP_SECS,
                         )
                         logger.debug(
                             "checkrd: telemetry send HTTP %d, retry %d/%d in %.2fs",
-                            resp.status, attempt + 1, self._max_attempts, delay,
+                            resp.status,
+                            attempt + 1,
+                            self._max_attempts,
+                            delay,
                         )
                         time.sleep(delay)
                         continue
@@ -641,7 +645,8 @@ class TelemetryBatcher:
                     self._breaker.record_failure()
                     logger.warning(
                         "checkrd: telemetry send failed (HTTP %d), dropping %d events",
-                        resp.status, dropped,
+                        resp.status,
+                        dropped,
                     )
                     self._notify_drop("send_error", dropped)
                     return
@@ -650,12 +655,16 @@ class TelemetryBatcher:
                 # back to local exponential backoff.
                 if attempt < self._max_attempts - 1:
                     delay = next_backoff(
-                        attempt, {},
+                        attempt,
+                        {},
                         max_sleep_secs=DEFAULT_MAX_SLEEP_SECS,
                     )
                     logger.debug(
                         "checkrd: telemetry send failed (%s), retry %d/%d in %.2fs",
-                        e, attempt + 1, self._max_attempts, delay,
+                        e,
+                        attempt + 1,
+                        self._max_attempts,
+                        delay,
                     )
                     time.sleep(delay)
                     continue
@@ -664,7 +673,8 @@ class TelemetryBatcher:
                 self._breaker.record_failure()
                 logger.warning(
                     "checkrd: telemetry send failed (%s), dropping %d events",
-                    e, dropped,
+                    e,
+                    dropped,
                 )
                 self._notify_drop("send_error", dropped)
 

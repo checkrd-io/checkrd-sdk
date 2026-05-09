@@ -143,9 +143,7 @@ class TestJsonFileSink:
 
     @pytest.mark.slow
     @pytest.mark.xdist_group("serial")
-    def test_concurrent_enqueue_does_not_interleave_lines(
-        self, tmp_path: Path
-    ) -> None:
+    def test_concurrent_enqueue_does_not_interleave_lines(self, tmp_path: Path) -> None:
         # 10 threads × 50 events = 500 lines, every line must be a valid
         # complete JSON object (no torn writes).
         path = tmp_path / "concurrent.jsonl"
@@ -188,9 +186,7 @@ class TestJsonFileSink:
         assert len(lines) == 1
         assert json.loads(lines[0])["event_id"] == "before"
 
-    def test_coerces_non_json_native_values_via_default_str(
-        self, tmp_path: Path
-    ) -> None:
+    def test_coerces_non_json_native_values_via_default_str(self, tmp_path: Path) -> None:
         # JsonFileSink uses ``default=str`` so types that aren't JSON-native
         # (sets, datetimes, UUIDs, Path, etc.) get coerced to their str()
         # representation rather than dropped. This is the safety net that
@@ -306,15 +302,14 @@ class TestJsonFileSinkLargeEvents:
 
         def write_events(thread_id: int) -> None:
             for i in range(events_per_thread):
-                sink.enqueue({
-                    "event_id": f"t{thread_id}-{i}",
-                    "payload": f"{'A' * payload_size}",
-                })
+                sink.enqueue(
+                    {
+                        "event_id": f"t{thread_id}-{i}",
+                        "payload": f"{'A' * payload_size}",
+                    }
+                )
 
-        threads = [
-            threading.Thread(target=write_events, args=(tid,))
-            for tid in range(num_threads)
-        ]
+        threads = [threading.Thread(target=write_events, args=(tid,)) for tid in range(num_threads)]
         for t in threads:
             t.start()
         for t in threads:
@@ -342,9 +337,7 @@ class TestJsonFileSinkLargeEvents:
 
 
 class TestLoggingSink:
-    def test_routes_events_through_default_logger(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    def test_routes_events_through_default_logger(self, caplog: pytest.LogCaptureFixture) -> None:
         sink = LoggingSink()
         with caplog.at_level(logging.INFO, logger="checkrd.telemetry"):
             sink.enqueue(sample_event("log-1"))
@@ -373,9 +366,7 @@ class TestLoggingSink:
         assert len(records) == 1
         assert records[0].levelno == logging.WARNING
 
-    def test_attaches_event_as_extra(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    def test_attaches_event_as_extra(self, caplog: pytest.LogCaptureFixture) -> None:
         sink = LoggingSink()
         with caplog.at_level(logging.INFO, logger="checkrd.telemetry"):
             sink.enqueue(sample_event("attached"))
@@ -391,9 +382,7 @@ class TestLoggingSink:
         sink.stop()
         sink.stop()  # no-op, must not raise
 
-    def test_enqueue_after_stop_still_works(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    def test_enqueue_after_stop_still_works(self, caplog: pytest.LogCaptureFixture) -> None:
         # Logging has no buffer, so stop() doesn't actually disable enqueue.
         # This is intentional — it matches Python logging's behavior.
         sink = LoggingSink()

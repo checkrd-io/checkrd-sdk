@@ -53,7 +53,8 @@ class TestCheckrdConstructor:
             client.close()
 
     def test_reads_api_key_from_env(
-        self, monkeypatch: pytest.MonkeyPatch,
+        self,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         # Stripe/OpenAI/Anthropic convention: CHECKRD_API_KEY fallback.
         monkeypatch.setenv("CHECKRD_API_KEY", "ck_env_xyz")
@@ -142,7 +143,9 @@ class TestWithOptions:
 
     def test_omitted_kwargs_reuse_the_current_value(self) -> None:
         a = Checkrd(
-            api_key="ck1", agent_id="custom", base_url="https://api.example.com",
+            api_key="ck1",
+            agent_id="custom",
+            base_url="https://api.example.com",
             policy=ALLOW_ALL,
         )
         try:
@@ -195,7 +198,8 @@ class TestContextManager:
         client.close()  # must not raise
 
     def test_close_does_not_raise_on_failing_batcher(
-        self, monkeypatch: pytest.MonkeyPatch,
+        self,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """A buggy batcher stop() must never crash process shutdown.
 
@@ -209,8 +213,10 @@ class TestContextManager:
                 client.wrap(http)
                 batcher = getattr(http, "_checkrd_batcher", None)
                 if batcher is not None:
+
                     def boom() -> None:
                         raise RuntimeError("test: batcher stop failed")
+
                     monkeypatch.setattr(batcher, "stop", boom)
                 # Still must not raise.
                 client.close()
@@ -305,7 +311,8 @@ class TestReprSafety:
             client.close()
 
     def test_repr_shows_false_when_no_key_anywhere(
-        self, monkeypatch: pytest.MonkeyPatch,
+        self,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.delenv("CHECKRD_API_KEY", raising=False)
         client = Checkrd(agent_id="t")
@@ -361,6 +368,7 @@ class TestBackwardsCompatibility:
 
     def test_top_level_wrap_still_functions(self) -> None:
         from checkrd import wrap as top_level_wrap
+
         with httpx.Client() as http:
             try:
                 top_level_wrap(http, agent_id="t", policy=ALLOW_ALL)

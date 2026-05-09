@@ -113,11 +113,13 @@ class TestOtlpSink:
 
     def test_error_status_mapped(self):
         sink, exporter = make_test_sink()
-        sink.enqueue(sample_event(
-            span_status_code="ERROR",
-            span_status_message="upstream timeout",
-            status_code=504,
-        ))
+        sink.enqueue(
+            sample_event(
+                span_status_code="ERROR",
+                span_status_message="upstream timeout",
+                status_code=504,
+            )
+        )
 
         span = exporter.spans[0]
         assert span.status.status_code == StatusCode.ERROR
@@ -139,13 +141,15 @@ class TestOtlpSink:
     def test_gen_ai_fields_optional(self):
         """Events without GenAI fields don't set gen_ai.* attributes."""
         sink, exporter = make_test_sink()
-        sink.enqueue({
-            "method": "GET",
-            "url_host": "api.stripe.com",
-            "url_path": "/v1/charges",
-            "status_code": 200,
-            "span_status_code": "OK",
-        })
+        sink.enqueue(
+            {
+                "method": "GET",
+                "url_host": "api.stripe.com",
+                "url_path": "/v1/charges",
+                "status_code": 200,
+                "span_status_code": "OK",
+            }
+        )
 
         attrs = dict(exporter.spans[0].attributes)
         assert "gen_ai.system" not in attrs

@@ -49,7 +49,9 @@ class StubClient:
         self.list_tools_calls = 0
 
     async def call_tool(
-        self, name: str, arguments: Any = None,
+        self,
+        name: str,
+        arguments: Any = None,
     ) -> dict[str, Any]:
         self.call_tool_calls.append({"name": name, "arguments": arguments})
         return {"content": [{"type": "text", "text": "ok"}]}
@@ -59,7 +61,9 @@ class StubClient:
         return {"contents": [{"uri": uri, "text": "hi"}]}
 
     async def get_prompt(
-        self, name: str, arguments: Any = None,
+        self,
+        name: str,
+        arguments: Any = None,
     ) -> dict[str, Any]:
         self.get_prompt_calls.append({"name": name, "arguments": arguments})
         return {"messages": []}
@@ -74,7 +78,10 @@ class TestWrapMcpClientAllowPath:
         engine = WasmEngine(ALLOW_ALL, "test")
         raw = StubClient()
         client = wrap_mcp_client(
-            raw, engine=engine, enforce=True, agent_id="test",
+            raw,
+            engine=engine,
+            enforce=True,
+            agent_id="test",
         )
         result = asyncio.run(
             client.call_tool("search", arguments={"q": "x"}),
@@ -86,7 +93,10 @@ class TestWrapMcpClientAllowPath:
         engine = WasmEngine(ALLOW_ALL, "test")
         raw = StubClient()
         client = wrap_mcp_client(
-            raw, engine=engine, enforce=True, agent_id="test",
+            raw,
+            engine=engine,
+            enforce=True,
+            agent_id="test",
         )
         asyncio.run(client.read_resource(uri="file://x"))
         assert raw.read_resource_calls == [{"uri": "file://x"}]
@@ -95,7 +105,10 @@ class TestWrapMcpClientAllowPath:
         engine = WasmEngine(ALLOW_ALL, "test")
         raw = StubClient()
         client = wrap_mcp_client(
-            raw, engine=engine, enforce=True, agent_id="test",
+            raw,
+            engine=engine,
+            enforce=True,
+            agent_id="test",
         )
         asyncio.run(client.get_prompt(name="greet", arguments={"who": "world"}))
         assert raw.get_prompt_calls == [
@@ -106,7 +119,10 @@ class TestWrapMcpClientAllowPath:
         engine = WasmEngine(ALLOW_ALL, "test")
         raw = StubClient()
         client = wrap_mcp_client(
-            raw, engine=engine, enforce=True, agent_id="test",
+            raw,
+            engine=engine,
+            enforce=True,
+            agent_id="test",
         )
         asyncio.run(client.list_tools())
         assert raw.list_tools_calls == 1
@@ -117,7 +133,10 @@ class TestWrapMcpClientDenyPath:
         engine = WasmEngine(DENY_ALL, "test")
         raw = StubClient()
         client = wrap_mcp_client(
-            raw, engine=engine, enforce=True, agent_id="test",
+            raw,
+            engine=engine,
+            enforce=True,
+            agent_id="test",
         )
         with pytest.raises(CheckrdPolicyDenied):
             asyncio.run(client.call_tool("search"))
@@ -127,7 +146,10 @@ class TestWrapMcpClientDenyPath:
         engine = WasmEngine(DENY_SEARCH, "test")
         raw = StubClient()
         client = wrap_mcp_client(
-            raw, engine=engine, enforce=True, agent_id="test",
+            raw,
+            engine=engine,
+            enforce=True,
+            agent_id="test",
         )
         with pytest.raises(CheckrdPolicyDenied):
             asyncio.run(client.call_tool("search"))
@@ -140,7 +162,10 @@ class TestWrapMcpClientDenyPath:
         engine = WasmEngine(DENY_ALL, "test")
         raw = StubClient()
         client = wrap_mcp_client(
-            raw, engine=engine, enforce=False, agent_id="test",
+            raw,
+            engine=engine,
+            enforce=False,
+            agent_id="test",
         )
         result = asyncio.run(client.call_tool("search"))
         assert result == {"content": [{"type": "text", "text": "ok"}]}
@@ -159,7 +184,10 @@ class TestWrapMcpClientProxyTransparency:
 
         raw = WithExtras()
         client = wrap_mcp_client(
-            raw, engine=engine, enforce=True, agent_id="test",
+            raw,
+            engine=engine,
+            enforce=True,
+            agent_id="test",
         )
         assert client.custom_field == "preserved"
         assert asyncio.run(client.custom_method()) == "result"
@@ -176,10 +204,14 @@ class TestWrapMcpServerHandlerWrapping:
                 def decorator(fn: Any) -> Any:
                     registered.append(fn)
                     return fn
+
                 return decorator
 
         srv = wrap_mcp_server(
-            StubServer(), engine=engine, enforce=True, agent_id="test",
+            StubServer(),
+            engine=engine,
+            enforce=True,
+            agent_id="test",
         )
 
         async def my_tool(request: Any) -> dict[str, Any]:
@@ -223,10 +255,14 @@ class TestWrapMcpServerHandlerWrapping:
                 def decorator(fn: Any) -> Any:
                     registered.append(fn)
                     return fn
+
                 return decorator
 
         srv = wrap_mcp_server(
-            StubServer(), engine=engine, enforce=True, agent_id="test",
+            StubServer(),
+            engine=engine,
+            enforce=True,
+            agent_id="test",
         )
 
         async def blocked_tool(request: Any) -> dict[str, Any]:  # noqa: ARG001
@@ -255,7 +291,10 @@ class TestWrapMcpServerHandlerWrapping:
                 registered.append(handler)
 
         srv = wrap_mcp_server(
-            StubServer(), engine=engine, enforce=True, agent_id="test",
+            StubServer(),
+            engine=engine,
+            enforce=True,
+            agent_id="test",
         )
 
         async def my_handler(request: Any) -> dict[str, Any]:  # noqa: ARG001

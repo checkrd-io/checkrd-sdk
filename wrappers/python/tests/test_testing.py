@@ -103,7 +103,10 @@ class TestRuleBasedEvaluation:
                 client,
                 default="deny",
                 rules=[
-                    {"name": "allow-stripe", "allow": {"method": ["GET"], "url": "api.stripe.com/*"}},
+                    {
+                        "name": "allow-stripe",
+                        "allow": {"method": ["GET"], "url": "api.stripe.com/*"},
+                    },
                 ],
             )
             with pytest.raises(CheckrdPolicyDenied, match="default policy"):
@@ -170,6 +173,7 @@ class TestPolicyFnCallback:
         ) -> bool:
             captured.append((method, url))
             return True
+
         with httpx.Client(transport=httpx.MockTransport(_mock_handler)) as client:
             mock_wrap(client, policy_fn=_capture)
             client.get("https://api.example.com/resource")
@@ -335,8 +339,13 @@ class TestMockEngineDirectly:
     def test_allow_by_default(self) -> None:
         engine = MockEngine()
         result = engine.evaluate(
-            request_id="r1", method="GET", url="https://example.com",
-            headers=[], body=None, timestamp="", timestamp_ms=0,
+            request_id="r1",
+            method="GET",
+            url="https://example.com",
+            headers=[],
+            body=None,
+            timestamp="",
+            timestamp_ms=0,
         )
         assert result.allowed is True
         assert result.deny_reason is None
@@ -344,8 +353,13 @@ class TestMockEngineDirectly:
     def test_deny_by_default(self) -> None:
         engine = MockEngine(default="deny")
         result = engine.evaluate(
-            request_id="r1", method="GET", url="https://example.com",
-            headers=[], body=None, timestamp="", timestamp_ms=0,
+            request_id="r1",
+            method="GET",
+            url="https://example.com",
+            headers=[],
+            body=None,
+            timestamp="",
+            timestamp_ms=0,
         )
         assert result.allowed is False
         assert "default policy" in (result.deny_reason or "")
@@ -355,8 +369,13 @@ class TestMockEngineDirectly:
 
         engine = MockEngine()
         result = engine.evaluate(
-            request_id="r1", method="GET", url="https://example.com",
-            headers=[], body=None, timestamp="", timestamp_ms=0,
+            request_id="r1",
+            method="GET",
+            url="https://example.com",
+            headers=[],
+            body=None,
+            timestamp="",
+            timestamp_ms=0,
         )
         parsed = json.loads(result.telemetry_json)
         assert parsed["request_id"] == "r1"
@@ -368,15 +387,25 @@ class TestMockEngineDirectly:
             rules=[{"name": "my-rule", "deny": {"url": "*"}}],
         )
         result = engine.evaluate(
-            request_id="r1", method="GET", url="https://example.com",
-            headers=[], body=None, timestamp="", timestamp_ms=0,
+            request_id="r1",
+            method="GET",
+            url="https://example.com",
+            headers=[],
+            body=None,
+            timestamp="",
+            timestamp_ms=0,
         )
         assert result.deny_reason == "denied by rule 'my-rule'"
 
     def test_unnamed_rule_gets_default_name(self) -> None:
         engine = MockEngine(rules=[{"deny": {"url": "*"}}])
         result = engine.evaluate(
-            request_id="r1", method="GET", url="https://example.com",
-            headers=[], body=None, timestamp="", timestamp_ms=0,
+            request_id="r1",
+            method="GET",
+            url="https://example.com",
+            headers=[],
+            body=None,
+            timestamp="",
+            timestamp_ms=0,
         )
         assert "unnamed" in (result.deny_reason or "")

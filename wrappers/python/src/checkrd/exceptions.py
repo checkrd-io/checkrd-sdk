@@ -71,7 +71,11 @@ def _derive_init_code(message: str) -> str:
         return "wasm_not_found"
     if "failed to instantiate" in lower or "failed to load" in lower:
         return "wasm_load_failed"
-    if "invalid policy" in lower or "policy" in lower and ("invalid" in lower or "malformed" in lower):
+    if (
+        "invalid policy" in lower
+        or "policy" in lower
+        and ("invalid" in lower or "malformed" in lower)
+    ):
         return "invalid_policy"
     if "invalid key" in lower or "invalid utf-8" in lower:
         return "invalid_key"
@@ -357,10 +361,7 @@ class APIStatusError(APIError):
             self.headers = {str(k).lower(): str(v) for k, v in raw_headers.items()}
         except Exception:
             self.headers = {}
-        self.request_id = (
-            self.headers.get("checkrd-request-id")
-            or self.headers.get("x-request-id")
-        )
+        self.request_id = self.headers.get("checkrd-request-id") or self.headers.get("x-request-id")
         request = getattr(response, "request", None)
         super().__init__(message, request=request, body=body, code=code)
 
@@ -422,9 +423,7 @@ class APIResponseValidationError(APIError):
         request: Any = None,
         body: Any = None,
     ) -> None:
-        super().__init__(
-            message, request=request, body=body, code="response_validation_error"
-        )
+        super().__init__(message, request=request, body=body, code="response_validation_error")
 
 
 class APIUserAbortError(APIError):

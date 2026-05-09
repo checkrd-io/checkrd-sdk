@@ -459,12 +459,9 @@ class TestKeyZeroization:
 class TestPermissiveFileWarning:
     """Verify that loading an existing key file with too-open permissions logs a warning."""
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="Unix permission model not available")
     @pytest.mark.skipif(
-        sys.platform == "win32", reason="Unix permission model not available"
-    )
-    @pytest.mark.skipif(
-        hasattr(os, "getuid") and os.getuid() == 0,
-        reason="root bypasses permission checks"
+        hasattr(os, "getuid") and os.getuid() == 0, reason="root bypasses permission checks"
     )
     def test_warns_on_world_readable_key(
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture
@@ -482,9 +479,7 @@ class TestPermissiveFileWarning:
 
         assert any("permissions" in r.message and "0644" in r.message for r in caplog.records)
 
-    @pytest.mark.skipif(
-        sys.platform == "win32", reason="Unix permission model not available"
-    )
+    @pytest.mark.skipif(sys.platform == "win32", reason="Unix permission model not available")
     def test_no_warning_on_correct_permissions(
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture
     ) -> None:
@@ -664,9 +659,7 @@ class TestLocalIdentityFromEnv:
         assert identity.private_key_bytes == private
         assert identity.public_key == public
 
-    def test_uses_default_var_name_checkrd_agent_key(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_uses_default_var_name_checkrd_agent_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from checkrd.engine import WasmEngine
         import base64
 
@@ -687,9 +680,7 @@ class TestLocalIdentityFromEnv:
         identity = LocalIdentity.from_env("MY_CUSTOM_KEY")
         assert identity.private_key_bytes == private
 
-    def test_missing_var_raises_with_helpful_message(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_missing_var_raises_with_helpful_message(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("CHECKRD_AGENT_KEY", raising=False)
 
         with pytest.raises(CheckrdInitError) as exc_info:
@@ -733,17 +724,13 @@ class TestLocalIdentityFromEnv:
         identity = LocalIdentity.from_env()
         assert identity.private_key_bytes == private
 
-    def test_round_trip_with_keygen_format(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_round_trip_with_keygen_format(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # Simulates: export CHECKRD_AGENT_KEY=$(checkrd keygen --private-only)
         from checkrd.engine import WasmEngine
         import base64
 
         private, public = WasmEngine.generate_keypair()
-        monkeypatch.setenv(
-            "CHECKRD_AGENT_KEY", base64.b64encode(private).decode()
-        )
+        monkeypatch.setenv("CHECKRD_AGENT_KEY", base64.b64encode(private).decode())
         identity = LocalIdentity.from_env()
 
         assert identity.private_key_bytes == private
@@ -775,8 +762,9 @@ class TestLocalIdentityFromFile:
             LocalIdentity.from_file(missing)
 
         # Critical assertion: the file is NOT created.
-        assert not missing.exists(), \
+        assert not missing.exists(), (
             "from_file must not auto-create the file (unlike LocalIdentity())"
+        )
 
         # Error message should explain how to fix
         msg = str(exc_info.value)
@@ -952,9 +940,7 @@ class TestLocalIdentityInvariants:
     behavior: forcing the impossible state must raise a typed error.
     """
 
-    def test_public_key_raises_runtime_error_when_unloaded(
-        self, tmp_path: Path
-    ) -> None:
+    def test_public_key_raises_runtime_error_when_unloaded(self, tmp_path: Path) -> None:
         identity = LocalIdentity(key_path=tmp_path / "dev.key")
         # Force the impossible state: _ensure_loaded ran but _public_key
         # was somehow not set. Pre-fix this raised AssertionError that
@@ -968,9 +954,7 @@ class TestLocalIdentityInvariants:
         with pytest.raises(RuntimeError, match="_ensure_loaded"):
             _ = identity.public_key
 
-    def test_instance_id_raises_runtime_error_when_unloaded(
-        self, tmp_path: Path
-    ) -> None:
+    def test_instance_id_raises_runtime_error_when_unloaded(self, tmp_path: Path) -> None:
         identity = LocalIdentity(key_path=tmp_path / "dev.key")
         identity._ensure_loaded()
         identity._instance_id = None

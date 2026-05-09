@@ -39,15 +39,19 @@ def _sample_event() -> dict[str, Any]:
 
 def _accepting_transport() -> httpx.MockTransport:
     """Returns 200 for every request — happy path."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"accepted": True})
+
     return httpx.MockTransport(handler)
 
 
 def _rejecting_transport(status: int) -> httpx.MockTransport:
     """Returns the supplied status for every request."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(status, json={"error": {"message": "fail"}})
+
     return httpx.MockTransport(handler)
 
 

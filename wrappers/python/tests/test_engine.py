@@ -16,6 +16,7 @@ from tests.conftest import requires_wasm
 _TS = "2026-03-28T14:30:00Z"
 _TS_MS = 1774708200000
 
+
 def _eval(
     engine: WasmEngine, method: str = "GET", url: str = "https://api.stripe.com/v1/charges"
 ) -> object:
@@ -130,9 +131,7 @@ class TestWasmIntegrity:
                 _verify_wasm_integrity(wasm_path)
 
         assert any("SKIPPED" in r.message for r in caplog.records)
-        assert any(
-            "CHECKRD_SKIP_WASM_INTEGRITY" in r.message for r in caplog.records
-        )
+        assert any("CHECKRD_SKIP_WASM_INTEGRITY" in r.message for r in caplog.records)
 
     @pytest.mark.parametrize("truthy", ["true", "yes", "on", "1"])
     def test_skip_flag_truthy_variants(
@@ -190,6 +189,7 @@ class TestWasmIntegrity:
         CHECKRD_DEV shouldn't break on upgrade. 1.0 will remove it."""
         import importlib
         import checkrd._settings as settings_mod
+
         importlib.reload(settings_mod)  # reset one-shot warning guard
 
         wasm_path = tmp_path / "checkrd_core.wasm"
@@ -275,13 +275,13 @@ class TestWasmIntegrityProductionGuard:
         monkeypatch.setenv("CHECKRD_SKIP_WASM_INTEGRITY", "1")
         monkeypatch.setenv(prod_env_name, prod_value)
         with patch.dict("sys.modules", {"checkrd._wasm_integrity": None}):
-            with pytest.raises(
-                CheckrdInitError, match="production-looking environment"
-            ):
+            with pytest.raises(CheckrdInitError, match="production-looking environment"):
                 _verify_wasm_integrity(wasm_path)
 
     def test_error_message_names_the_offending_env_var(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         wasm_path = tmp_path / "checkrd_core.wasm"
         wasm_path.write_bytes(b"content")
@@ -326,12 +326,11 @@ class TestWasmIntegrityProductionGuard:
         monkeypatch.setenv("CHECKRD_SKIP_WASM_INTEGRITY", "1")
         monkeypatch.setenv("NODE_ENV", "production")
         monkeypatch.setenv(
-            "CHECKRD_I_UNDERSTAND_WASM_INTEGRITY_RISK", wrong_ack,
+            "CHECKRD_I_UNDERSTAND_WASM_INTEGRITY_RISK",
+            wrong_ack,
         )
         with patch.dict("sys.modules", {"checkrd._wasm_integrity": None}):
-            with pytest.raises(
-                CheckrdInitError, match="production-looking environment"
-            ):
+            with pytest.raises(CheckrdInitError, match="production-looking environment"):
                 _verify_wasm_integrity(wasm_path)
 
     def test_non_production_values_allow_bypass(
@@ -425,9 +424,7 @@ class TestKillSwitch:
 
 @requires_wasm
 class TestReloadPolicy:
-    def test_reload_changes_behavior(
-        self, policy_json: str, allow_all_policy_json: str
-    ) -> None:
+    def test_reload_changes_behavior(self, policy_json: str, allow_all_policy_json: str) -> None:
         engine = WasmEngine(policy_json, "test-agent")
         # Default-deny, unknown URL denied
         result = _eval(engine, "GET", "https://unknown.com/api")
@@ -456,22 +453,16 @@ class TestPolicyVersionFFI:
     WASM boundary.
     """
 
-    def test_get_returns_zero_on_fresh_engine(
-        self, policy_json: str
-    ) -> None:
+    def test_get_returns_zero_on_fresh_engine(self, policy_json: str) -> None:
         engine = WasmEngine(policy_json, "test-agent")
         assert engine.get_active_policy_version() == 0
 
-    def test_set_initial_then_get_returns_value(
-        self, policy_json: str
-    ) -> None:
+    def test_set_initial_then_get_returns_value(self, policy_json: str) -> None:
         engine = WasmEngine(policy_json, "test-agent")
         engine.set_initial_policy_version(123)
         assert engine.get_active_policy_version() == 123
 
-    def test_set_initial_twice_raises(
-        self, policy_json: str
-    ) -> None:
+    def test_set_initial_twice_raises(self, policy_json: str) -> None:
         engine = WasmEngine(policy_json, "test-agent")
         engine.set_initial_policy_version(10)
         # Second call must fail — the in-memory counter is the source of
@@ -481,9 +472,7 @@ class TestPolicyVersionFFI:
         # The original value must be preserved.
         assert engine.get_active_policy_version() == 10
 
-    def test_set_initial_with_large_value(
-        self, policy_json: str
-    ) -> None:
+    def test_set_initial_with_large_value(self, policy_json: str) -> None:
         # u64 round-trip across the WASM boundary.
         engine = WasmEngine(policy_json, "test-agent")
         engine.set_initial_policy_version(2**40)

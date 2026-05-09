@@ -122,7 +122,8 @@ class AsyncControlReceiver:
         self._stop_event.clear()
         loop = asyncio.get_event_loop()
         self._task = loop.create_task(
-            self._run_loop(), name=f"checkrd-async-control-{self._agent_id}",
+            self._run_loop(),
+            name=f"checkrd-async-control-{self._agent_id}",
         )
         logger.info(
             "checkrd: async control receiver started for agent %s",
@@ -150,13 +151,13 @@ class AsyncControlReceiver:
             logger.warning(
                 "checkrd: persisted policy bundle rejected on restore "
                 "(reason=%s, code=%s); will reinitialize from server",
-                exc.reason, exc.code,
+                exc.reason,
+                exc.code,
             )
             return
         self._last_installed_hash = bundle_hash
         logger.info(
-            "checkrd: restored persisted policy version=%d, hash=%s… "
-            "for agent %s",
+            "checkrd: restored persisted policy version=%d, hash=%s… for agent %s",
             version,
             bundle_hash[:16] if bundle_hash else "<none>",
             self._agent_id,
@@ -224,7 +225,8 @@ class AsyncControlReceiver:
             if self._breaker is not None and not self._breaker.allow():
                 try:
                     await asyncio.wait_for(
-                        self._stop_event.wait(), timeout=backoff,
+                        self._stop_event.wait(),
+                        timeout=backoff,
                     )
                     return
                 except asyncio.TimeoutError:
@@ -248,7 +250,8 @@ class AsyncControlReceiver:
                     self._breaker.record_failure()
                 logger.warning(
                     "checkrd: SSE connection failed: %s, retrying in %.0fs",
-                    exc, backoff,
+                    exc,
+                    backoff,
                 )
                 # Polling fallback while waiting — same as sync receiver.
                 try:
@@ -263,7 +266,8 @@ class AsyncControlReceiver:
                 # Sleep with stop-event interrupt.
                 try:
                     await asyncio.wait_for(
-                        self._stop_event.wait(), timeout=backoff,
+                        self._stop_event.wait(),
+                        timeout=backoff,
                     )
                     return  # stop event was set
                 except asyncio.TimeoutError:
@@ -276,7 +280,10 @@ class AsyncControlReceiver:
         headers = self._control_headers()
 
         async with httpx_sse.aconnect_sse(
-            self._client, "GET", url, headers=headers,
+            self._client,
+            "GET",
+            url,
+            headers=headers,
         ) as source:
             resp = source.response
             if resp.status_code in (401, 403):
@@ -296,7 +303,8 @@ class AsyncControlReceiver:
         if len(sse.data) > _MAX_SSE_EVENT_BYTES:
             logger.warning(
                 "checkrd: SSE event too large (%d bytes, limit %d); dropping",
-                len(sse.data), _MAX_SSE_EVENT_BYTES,
+                len(sse.data),
+                _MAX_SSE_EVENT_BYTES,
             )
             return
         try:
@@ -346,7 +354,9 @@ class AsyncControlReceiver:
         # Per-call timeout so a hung poll doesn't extend the outer
         # backoff window beyond what the SSE reconnect promises.
         resp = await self._client.get(
-            url, headers=headers, timeout=10.0,
+            url,
+            headers=headers,
+            timeout=10.0,
         )
         resp.raise_for_status()
         state = resp.json()
@@ -415,13 +425,16 @@ class AsyncControlReceiver:
             )
             logger.info(
                 "checkrd: signed policy installed via %s (version=%s)",
-                source, data.get("version"),
+                source,
+                data.get("version"),
             )
         except PolicySignatureError as exc:
             logger.warning(
                 "checkrd: signed policy update rejected via %s "
                 "(reason=%s, code=%s); keeping previous policy",
-                source, exc.reason, exc.code,
+                source,
+                exc.reason,
+                exc.code,
             )
             return
 

@@ -122,11 +122,10 @@ def test_should_retry_is_case_insensitive() -> None:
 def test_compute_backoff_grows_exponentially() -> None:
     """Each retry roughly doubles the base sleep, modulo jitter."""
     samples = [
-        compute_backoff_secs(attempt, initial_delay=0.5, max_sleep_secs=8.0)
-        for attempt in range(4)
+        compute_backoff_secs(attempt, initial_delay=0.5, max_sleep_secs=8.0) for attempt in range(4)
     ]
     # Lower bounds are 0.75 * (initial_delay * 2**attempt).
-    expected_lower = [0.5 * (2 ** a) * 0.75 for a in range(4)]
+    expected_lower = [0.5 * (2**a) * 0.75 for a in range(4)]
     for got, lo in zip(samples, expected_lower):
         assert got >= lo - 1e-6, f"{got} below floor {lo}"
 

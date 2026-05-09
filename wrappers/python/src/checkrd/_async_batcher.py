@@ -134,9 +134,7 @@ class AsyncTelemetryBatcher:
         self._request_timeout_secs = request_timeout_secs
         self._connect_timeout_secs = connect_timeout_secs
         self._before_send = before_send
-        self._breaker = (
-            circuit_breaker if circuit_breaker is not None else CircuitBreaker()
-        )
+        self._breaker = circuit_breaker if circuit_breaker is not None else CircuitBreaker()
 
         self._buffer: list[dict[str, Any]] = []
         # asyncio.Lock not strictly required (single event loop) but
@@ -179,7 +177,8 @@ class AsyncTelemetryBatcher:
             return
         loop = asyncio.get_event_loop()
         self._task = loop.create_task(
-            self._run(), name="checkrd-telemetry-batcher",
+            self._run(),
+            name="checkrd-telemetry-batcher",
         )
 
     def enqueue(self, event: dict[str, Any]) -> None:
@@ -243,7 +242,8 @@ class AsyncTelemetryBatcher:
         except Exception:
             logger.exception(
                 "checkrd: on_drop callback raised (reason=%s, count=%d)",
-                reason, count,
+                reason,
+                count,
             )
 
     async def flush(self) -> None:
@@ -315,7 +315,8 @@ class AsyncTelemetryBatcher:
         while not self._stopped:
             try:
                 await asyncio.wait_for(
-                    self._flush_event.wait(), timeout=self._flush_interval,
+                    self._flush_event.wait(),
+                    timeout=self._flush_interval,
                 )
             except asyncio.TimeoutError:
                 pass
@@ -351,7 +352,8 @@ class AsyncTelemetryBatcher:
             self._events_dropped_signing_error += dropped
             logger.error(
                 "checkrd: telemetry signing unavailable (%s); dropping %d events",
-                exc, dropped,
+                exc,
+                dropped,
             )
             self._notify_drop("signing_error", dropped)
             return
@@ -371,8 +373,7 @@ class AsyncTelemetryBatcher:
             dropped = len(events)
             self._events_dropped_send_error += dropped
             logger.debug(
-                "checkrd: async telemetry send fast-failed (circuit open), "
-                "dropping %d events",
+                "checkrd: async telemetry send fast-failed (circuit open), dropping %d events",
                 dropped,
             )
             self._notify_drop("send_error", dropped)
@@ -387,7 +388,9 @@ class AsyncTelemetryBatcher:
                 attempt_headers["X-Checkrd-Retry-Count"] = str(attempt)
             try:
                 response = await self._client.post(
-                    self._url, content=body, headers=attempt_headers,
+                    self._url,
+                    content=body,
+                    headers=attempt_headers,
                 )
                 if response.status_code < 400:
                     self._events_sent += len(events)
@@ -400,14 +403,16 @@ class AsyncTelemetryBatcher:
                     and attempt < self._max_attempts - 1
                 ):
                     delay = next_backoff(
-                        attempt, response_headers,
+                        attempt,
+                        response_headers,
                         max_sleep_secs=DEFAULT_MAX_SLEEP_SECS,
                     )
                     logger.debug(
-                        "checkrd: async telemetry send HTTP %d, retry "
-                        "%d/%d in %.2fs",
-                        response.status_code, attempt + 1,
-                        self._max_attempts, delay,
+                        "checkrd: async telemetry send HTTP %d, retry %d/%d in %.2fs",
+                        response.status_code,
+                        attempt + 1,
+                        self._max_attempts,
+                        delay,
                     )
                     await asyncio.sleep(delay)
                     continue
@@ -416,22 +421,25 @@ class AsyncTelemetryBatcher:
                 self._events_dropped_send_error += dropped
                 self._breaker.record_failure()
                 logger.warning(
-                    "checkrd: async telemetry send failed (HTTP %d), dropping "
-                    "%d events",
-                    response.status_code, dropped,
+                    "checkrd: async telemetry send failed (HTTP %d), dropping %d events",
+                    response.status_code,
+                    dropped,
                 )
                 self._notify_drop("send_error", dropped)
                 return
             except Exception as exc:
                 if attempt < self._max_attempts - 1:
                     delay = next_backoff(
-                        attempt, {},
+                        attempt,
+                        {},
                         max_sleep_secs=DEFAULT_MAX_SLEEP_SECS,
                     )
                     logger.debug(
-                        "checkrd: async telemetry send failed (%s), retry "
-                        "%d/%d in %.2fs",
-                        exc, attempt + 1, self._max_attempts, delay,
+                        "checkrd: async telemetry send failed (%s), retry %d/%d in %.2fs",
+                        exc,
+                        attempt + 1,
+                        self._max_attempts,
+                        delay,
                     )
                     await asyncio.sleep(delay)
                     continue
@@ -439,9 +447,9 @@ class AsyncTelemetryBatcher:
                 self._events_dropped_send_error += dropped
                 self._breaker.record_failure()
                 logger.warning(
-                    "checkrd: async telemetry send failed (%s), dropping "
-                    "%d events",
-                    exc, dropped,
+                    "checkrd: async telemetry send failed (%s), dropping %d events",
+                    exc,
+                    dropped,
                 )
                 self._notify_drop("send_error", dropped)
 

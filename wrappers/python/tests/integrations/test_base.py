@@ -131,9 +131,9 @@ class TestMissingTarget:
         inst = _MissingTargetInstrumentor()
         with caplog.at_level(logging.DEBUG, logger="checkrd"):
             inst.instrument(context=fake_context)
-        assert any(
-            "not installed" in r.message for r in caplog.records
-        ), "expected debug log about missing target"
+        assert any("not installed" in r.message for r in caplog.records), (
+            "expected debug log about missing target"
+        )
 
     def test_missing_target_uninstrument_is_safe(self) -> None:
         inst = _MissingTargetInstrumentor()
@@ -232,9 +232,7 @@ class TestThreadSafety:
         assert inst.setup_calls == 1
         assert inst.instrumented is True
 
-    def test_concurrent_instrument_and_uninstrument(
-        self, fake_context
-    ) -> None:
+    def test_concurrent_instrument_and_uninstrument(self, fake_context) -> None:
         """Interleaved instrument/uninstrument calls must not deadlock
         and must leave the instrumentor in a consistent terminal state.
         We don't care whether the final state is instrumented or not —

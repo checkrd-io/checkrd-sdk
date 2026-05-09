@@ -541,6 +541,7 @@ class TestWrapIntegration:
     ) -> None:
         mock_create.return_value = make_mock_engine()
         from checkrd import wrap
+
         with httpx.Client() as client:
             try:
                 wrap(
@@ -560,9 +561,14 @@ class TestWrapIntegration:
     def test_wrap_without_control_params_no_receiver(self, mock_create: Mock) -> None:
         mock_create.return_value = make_mock_engine()
         from checkrd import wrap
+
         with httpx.Client() as client:
             try:
-                wrap(client, agent_id="test", policy={"agent": "test", "default": "allow", "rules": []})
+                wrap(
+                    client,
+                    agent_id="test",
+                    policy={"agent": "test", "default": "allow", "rules": []},
+                )
                 assert not hasattr(client, "_checkrd_control")
             finally:
                 client.close()
@@ -726,9 +732,7 @@ class TestSSEEventSizeLimit:
         receiver._handle_event(sse)
         engine.set_kill_switch.assert_called_once_with(True)
 
-    def test_event_over_limit_is_dropped(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    def test_event_over_limit_is_dropped(self, caplog: pytest.LogCaptureFixture) -> None:
         engine = make_mock_engine()
         receiver = make_receiver(engine)
 
@@ -1137,11 +1141,13 @@ class TestPolicyVersionPersistence:
             envelope = _build_dsse_envelope_for_test(_PERMISSIVE_POLICY)
             sse = FakeSSE(
                 event="policy_updated",
-                data=json.dumps({
-                    "version": 17,
-                    "hash": valid_hash,
-                    "policy_envelope": envelope,
-                }),
+                data=json.dumps(
+                    {
+                        "version": 17,
+                        "hash": valid_hash,
+                        "policy_envelope": envelope,
+                    }
+                ),
             )
             receiver._handle_event(sse)
 
@@ -1174,11 +1180,13 @@ class TestPolicyVersionPersistence:
             envelope = _build_dsse_envelope_for_test(_PERMISSIVE_POLICY)
             sse = FakeSSE(
                 event="policy_updated",
-                data=json.dumps({
-                    "version": 999,  # would-be rollback
-                    "hash": "e" * 64,
-                    "policy_envelope": envelope,
-                }),
+                data=json.dumps(
+                    {
+                        "version": 999,  # would-be rollback
+                        "hash": "e" * 64,
+                        "policy_envelope": envelope,
+                    }
+                ),
             )
             receiver._handle_event(sse)
 
@@ -1202,11 +1210,13 @@ class TestPolicyVersionPersistence:
             envelope = _build_dsse_envelope_for_test(_PERMISSIVE_POLICY)
             sse = FakeSSE(
                 event="policy_updated",
-                data=json.dumps({
-                    "version": 5,
-                    "hash": "f" * 64,
-                    "policy_envelope": envelope,
-                }),
+                data=json.dumps(
+                    {
+                        "version": 5,
+                        "hash": "f" * 64,
+                        "policy_envelope": envelope,
+                    }
+                ),
             )
             receiver._handle_event(sse)  # must not raise
 

@@ -135,9 +135,7 @@ class TestTrustOverrideDoubleGate:
         assert result == _PRODUCTION_TRUSTED_KEYS
         assert any("not valid JSON" in r.message for r in caplog.records)
 
-    def test_non_list_json_falls_back_to_production(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_non_list_json_falls_back_to_production(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """A JSON object (not array) is rejected — override must be a list."""
         monkeypatch.setenv(
             "CHECKRD_POLICY_TRUST_OVERRIDE_JSON",
@@ -147,17 +145,13 @@ class TestTrustOverrideDoubleGate:
         result = trusted_policy_keys()
         assert result == _PRODUCTION_TRUSTED_KEYS
 
-    def test_json_string_falls_back_to_production(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_json_string_falls_back_to_production(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("CHECKRD_POLICY_TRUST_OVERRIDE_JSON", '"just-a-string"')
         monkeypatch.setenv("CHECKRD_ALLOW_TRUST_OVERRIDE", "1")
         result = trusted_policy_keys()
         assert result == _PRODUCTION_TRUSTED_KEYS
 
-    def test_json_number_falls_back_to_production(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_json_number_falls_back_to_production(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("CHECKRD_POLICY_TRUST_OVERRIDE_JSON", "42")
         monkeypatch.setenv("CHECKRD_ALLOW_TRUST_OVERRIDE", "1")
         result = trusted_policy_keys()
@@ -195,9 +189,7 @@ class TestKeyRotationScenarios:
             "valid_from": 1750000000,
             "valid_until": 1900000000,
         }
-        monkeypatch.setenv(
-            "CHECKRD_POLICY_TRUST_OVERRIDE_JSON", json.dumps([old_key, new_key])
-        )
+        monkeypatch.setenv("CHECKRD_POLICY_TRUST_OVERRIDE_JSON", json.dumps([old_key, new_key]))
         monkeypatch.setenv("CHECKRD_ALLOW_TRUST_OVERRIDE", "1")
         result = trusted_policy_keys()
         assert len(result) == 2
@@ -225,9 +217,7 @@ class TestKeyRotationScenarios:
         result = trusted_policy_keys()
         assert len(result) == 2
 
-    def test_override_preserves_field_structure(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_override_preserves_field_structure(self, monkeypatch: pytest.MonkeyPatch) -> None:
         key = {
             "keyid": "test-roundtrip",
             "public_key_hex": "ef" * 32,
@@ -258,20 +248,25 @@ class TestKeyRotationScenarios:
 class TestProductionTrustStatus:
     """The pure diagnostic — every level + boundary covered."""
 
-    def test_returns_ok_when_production_keys_present(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_returns_ok_when_production_keys_present(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from checkrd._trust import production_trust_status
 
         # Inject a non-empty production list via the same module-level
         # patch the bootstrap script will perform when run.
         monkeypatch.setattr(
             "checkrd._trust._PRODUCTION_TRUSTED_KEYS",
-            [{"keyid": "x", "public_key_hex": "a" * 64,
-              "valid_from": 0, "valid_until": 9999999999}],
+            [
+                {
+                    "keyid": "x",
+                    "public_key_hex": "a" * 64,
+                    "valid_from": 0,
+                    "valid_until": 9999999999,
+                }
+            ],
         )
         level, message = production_trust_status(
-            base_url="https://api.checkrd.io", env={},
+            base_url="https://api.checkrd.io",
+            env={},
         )
         assert level == "ok"
         assert "1 key" in message
@@ -314,20 +309,17 @@ class TestProductionTrustStatus:
         level, _ = production_trust_status(base_url=None, env=env)
         assert level != "override"
 
-    def test_returns_empty_dev_for_localhost(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_returns_empty_dev_for_localhost(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from checkrd._trust import production_trust_status
 
         monkeypatch.setattr("checkrd._trust._PRODUCTION_TRUSTED_KEYS", [])
         level, _ = production_trust_status(
-            base_url="http://localhost:8080", env={},
+            base_url="http://localhost:8080",
+            env={},
         )
         assert level == "empty_dev"
 
-    def test_returns_empty_dev_when_base_url_is_none(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_returns_empty_dev_when_base_url_is_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from checkrd._trust import production_trust_status
 
         monkeypatch.setattr("checkrd._trust._PRODUCTION_TRUSTED_KEYS", [])
@@ -341,7 +333,8 @@ class TestProductionTrustStatus:
 
         monkeypatch.setattr("checkrd._trust._PRODUCTION_TRUSTED_KEYS", [])
         level, message = production_trust_status(
-            base_url="https://api.checkrd.io", env={},
+            base_url="https://api.checkrd.io",
+            env={},
         )
         assert level == "empty_production"
         assert "scripts/generate-policy-signing-key.py" in message
@@ -417,8 +410,14 @@ class TestWarnIfMisconfigured:
 
         monkeypatch.setattr(
             "checkrd._trust._PRODUCTION_TRUSTED_KEYS",
-            [{"keyid": "x", "public_key_hex": "a" * 64,
-              "valid_from": 0, "valid_until": 9999999999}],
+            [
+                {
+                    "keyid": "x",
+                    "public_key_hex": "a" * 64,
+                    "valid_from": 0,
+                    "valid_until": 9999999999,
+                }
+            ],
         )
         _reset_warning_state_for_tests()
         with caplog.at_level("CRITICAL", logger="checkrd"):
@@ -427,9 +426,7 @@ class TestWarnIfMisconfigured:
         critical = [r for r in caplog.records if r.levelname == "CRITICAL"]
         assert critical == []
 
-    def test_reset_re_arms_the_warning(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_reset_re_arms_the_warning(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # Use an explicit mock logger so the test isn't entangled with
         # caplog state — reset → call → reset → call should produce two
         # `critical` invocations.

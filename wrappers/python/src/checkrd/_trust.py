@@ -84,7 +84,7 @@ _PRODUCTION_TRUSTED_KEYS: list[dict[str, Any]] = [
     {
         "keyid": "checkrd-control-plane",
         "public_key_hex": "5b6bd586744b59f28b2ff02aac7817447175610deb973db253030e8abee5ae01",
-        "valid_from": 1777329219,   # 2026-04-27T22:33:39Z
+        "valid_from": 1777329219,  # 2026-04-27T22:33:39Z
         "valid_until": 2092689219,  # 2036-04-24T22:33:39Z (10 years)
     },
 ]

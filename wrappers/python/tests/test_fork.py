@@ -52,10 +52,14 @@ class TestRegisterForkHandler:
         with patch.object(os, "register_at_fork", create=False) as _:
             # Remove the attribute via getattr fallback path.
             with patch.object(
-                _fork, "os", MagicMock(spec=["getpid"]),  # has getpid, not register_at_fork
+                _fork,
+                "os",
+                MagicMock(spec=["getpid"]),  # has getpid, not register_at_fork
             ):
                 ok = _fork.register_fork_handler(
-                    registry, "_reinit_after_fork", "test",
+                    registry,
+                    "_reinit_after_fork",
+                    "test",
                 )
         assert ok is False
 
@@ -75,9 +79,7 @@ class TestRegisterForkHandler:
 
         captured_handler = []
         with patch("os.register_at_fork") as mock_reg:
-            mock_reg.side_effect = lambda after_in_child: captured_handler.append(
-                after_in_child
-            )
+            mock_reg.side_effect = lambda after_in_child: captured_handler.append(after_in_child)
             register_fork_handler(registry, "_reinit_after_fork", "test")
 
         assert len(captured_handler) == 1
@@ -108,9 +110,7 @@ class TestRegisterForkHandler:
 
         captured = []
         with patch("os.register_at_fork") as mock_reg:
-            mock_reg.side_effect = lambda after_in_child: captured.append(
-                after_in_child
-            )
+            mock_reg.side_effect = lambda after_in_child: captured.append(after_in_child)
             register_fork_handler(registry, "_reinit_after_fork", "test")
 
         captured[0]()
@@ -139,9 +139,7 @@ class TestRegisterForkHandler:
 
         captured = []
         with patch("os.register_at_fork") as mock_reg:
-            mock_reg.side_effect = lambda after_in_child: captured.append(
-                after_in_child
-            )
+            mock_reg.side_effect = lambda after_in_child: captured.append(after_in_child)
             register_fork_handler(registry, "missing_method", "test")
 
         with caplog.at_level(logging.ERROR, logger="checkrd"):
@@ -150,9 +148,7 @@ class TestRegisterForkHandler:
         # ``.message``) — the latter is only populated after the record
         # is formatted, which doesn't happen for caplog-attached records
         # under the parallel xdist workers.
-        assert any(
-            "missing_method" in r.getMessage() for r in caplog.records
-        )
+        assert any("missing_method" in r.getMessage() for r in caplog.records)
 
     def test_weakset_does_not_keep_instances_alive(self) -> None:
         """The registry holds instances weakly so a closed batcher
@@ -168,5 +164,6 @@ class TestRegisterForkHandler:
         # GC may need to run explicitly under PyPy / older CPython; the
         # CPython default refcount behavior reaps immediately.
         import gc
+
         gc.collect()
         assert len(registry) == 0

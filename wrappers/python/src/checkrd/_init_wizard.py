@@ -328,6 +328,7 @@ def write_env_file(
     # used for identity key files in identity.py.
     try:
         import os
+
         os.chmod(str(path), 0o600)
     except OSError:
         pass  # Windows or read-only filesystem; write succeeded, chmod optional
@@ -357,11 +358,7 @@ def print_code_snippet(
         print(f'  checkrd.init(agent_id="{agent_id}")')
         print("  checkrd.instrument()")
         print()
-        print(
-            _dim(
-                "  # Set CHECKRD_API_KEY to connect to the control plane"
-            )
-        )
+        print(_dim("  # Set CHECKRD_API_KEY to connect to the control plane"))
     print()
 
 

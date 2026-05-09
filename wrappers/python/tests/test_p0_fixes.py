@@ -56,19 +56,23 @@ _TS_MS = 1776297600000
 
 _ALLOW_ALL = json.dumps({"agent": "test", "default": "allow", "rules": []})
 
-_DENY_UNKNOWN = json.dumps({
-    "agent": "test",
-    "default": "deny",
-    "rules": [
-        {
-            "name": "allow-stripe",
-            "allow": {"method": ["GET"], "url": "api.stripe.com/v1/charges"},
-        },
-    ],
-})
+_DENY_UNKNOWN = json.dumps(
+    {
+        "agent": "test",
+        "default": "deny",
+        "rules": [
+            {
+                "name": "allow-stripe",
+                "allow": {"method": ["GET"], "url": "api.stripe.com/v1/charges"},
+            },
+        ],
+    }
+)
 
 
-def _eval(engine: WasmEngine, method: str = "GET", url: str = "https://api.stripe.com/v1/charges") -> object:
+def _eval(
+    engine: WasmEngine, method: str = "GET", url: str = "https://api.stripe.com/v1/charges"
+) -> object:
     return engine.evaluate(
         request_id=unique_id(),
         method=method,
@@ -124,10 +128,7 @@ class TestEngineThreadSafety:
             except Exception as e:
                 errors.append(e)
 
-        threads = [
-            threading.Thread(target=worker, args=(i % 2 == 0,))
-            for i in range(8)
-        ]
+        threads = [threading.Thread(target=worker, args=(i % 2 == 0,)) for i in range(8)]
         for t in threads:
             t.start()
         for t in threads:
@@ -160,10 +161,9 @@ class TestEngineThreadSafety:
             except Exception as e:
                 errors.append(e)
 
-        threads = (
-            [threading.Thread(target=eval_allowed) for _ in range(4)]
-            + [threading.Thread(target=eval_denied) for _ in range(4)]
-        )
+        threads = [threading.Thread(target=eval_allowed) for _ in range(4)] + [
+            threading.Thread(target=eval_denied) for _ in range(4)
+        ]
         for t in threads:
             t.start()
         for t in threads:
@@ -199,10 +199,9 @@ class TestEngineThreadSafety:
             except Exception as e:
                 errors.append(e)
 
-        threads = (
-            [threading.Thread(target=evaluator) for _ in range(4)]
-            + [threading.Thread(target=toggler)]
-        )
+        threads = [threading.Thread(target=evaluator) for _ in range(4)] + [
+            threading.Thread(target=toggler)
+        ]
         for t in threads:
             t.start()
         for t in threads:
@@ -240,10 +239,9 @@ class TestEngineThreadSafety:
             except Exception as e:
                 errors.append(e)
 
-        threads = (
-            [threading.Thread(target=evaluator) for _ in range(4)]
-            + [threading.Thread(target=signer) for _ in range(2)]
-        )
+        threads = [threading.Thread(target=evaluator) for _ in range(4)] + [
+            threading.Thread(target=signer) for _ in range(2)
+        ]
         for t in threads:
             t.start()
         for t in threads:
@@ -275,10 +273,9 @@ class TestEngineThreadSafety:
             except Exception as e:
                 errors.append(e)
 
-        threads = (
-            [threading.Thread(target=evaluator) for _ in range(4)]
-            + [threading.Thread(target=reloader)]
-        )
+        threads = [threading.Thread(target=evaluator) for _ in range(4)] + [
+            threading.Thread(target=reloader)
+        ]
         for t in threads:
             t.start()
         for t in threads:
@@ -315,10 +312,7 @@ class TestEngineThreadSafety:
             except Exception as e:
                 errors.append(e)
 
-        threads = [
-            threading.Thread(target=signer, args=(i,))
-            for i in range(4)
-        ]
+        threads = [threading.Thread(target=signer, args=(i,)) for i in range(4)]
         for t in threads:
             t.start()
         for t in threads:
@@ -559,7 +553,9 @@ class TestPrivateKeyCopyElimination:
         assert ref is not None
 
         engine = WasmEngine(
-            _ALLOW_ALL, "test-agent", private_key_bytes=ref,
+            _ALLOW_ALL,
+            "test-agent",
+            private_key_bytes=ref,
         )
         li.bind_engine(engine)
 
@@ -620,14 +616,17 @@ class TestPrivateKeyCopyElimination:
         private, _ = WasmEngine.generate_keypair()
         key_ba = bytearray(private)
         engine = WasmEngine(
-            _ALLOW_ALL, "test-agent", private_key_bytes=key_ba,
+            _ALLOW_ALL,
+            "test-agent",
+            private_key_bytes=key_ba,
         )
         # Signing must work with a bytearray-initialized engine.
         sig = engine.sign(b"test payload")
         assert len(sig) == 64
 
     def test_from_bytes_identity_zeroized_through_full_path(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         """End-to-end: from_bytes -> _create_engine_from_json -> key zeroed."""
         from checkrd import _create_engine_from_json
@@ -652,7 +651,8 @@ class TestPrivateKeyCopyElimination:
 
         private, _ = WasmEngine.generate_keypair()
         monkeypatch.setenv(
-            "CHECKRD_AGENT_KEY", base64.b64encode(private).decode(),
+            "CHECKRD_AGENT_KEY",
+            base64.b64encode(private).decode(),
         )
         li = LocalIdentity.from_env()
         internal_ref = li._private_key

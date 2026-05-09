@@ -191,12 +191,8 @@ class TestPublicReExport:
     def test_each_name_is_importable_from_root(self, name: str) -> None:
         import checkrd
 
-        assert hasattr(checkrd, name), (
-            f"{name} should be re-exported from checkrd.__init__"
-        )
-        assert name in checkrd.__all__, (
-            f"{name} should be in checkrd.__all__"
-        )
+        assert hasattr(checkrd, name), f"{name} should be re-exported from checkrd.__init__"
+        assert name in checkrd.__all__, f"{name} should be in checkrd.__all__"
 
     def test_healthy_return_type_is_healthcheck(self) -> None:
         """The `healthy()` function's annotation must be the public

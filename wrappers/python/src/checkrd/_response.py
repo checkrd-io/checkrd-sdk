@@ -82,10 +82,7 @@ class APIResponse(Generic[T]):
             self.headers = {str(k).lower(): str(v) for k, v in raw_headers.items()}
         except Exception:
             self.headers = {}
-        self.request_id = (
-            self.headers.get("checkrd-request-id")
-            or self.headers.get("x-request-id")
-        )
+        self.request_id = self.headers.get("checkrd-request-id") or self.headers.get("x-request-id")
         try:
             self.content = http_response.read()
         except Exception:
@@ -140,10 +137,7 @@ class StreamingAPIResponse(Generic[T]):
             self.headers = {str(k).lower(): str(v) for k, v in raw_headers.items()}
         except Exception:
             self.headers = {}
-        self.request_id = (
-            self.headers.get("checkrd-request-id")
-            or self.headers.get("x-request-id")
-        )
+        self.request_id = self.headers.get("checkrd-request-id") or self.headers.get("x-request-id")
         self._consumed = False
 
     @property

@@ -108,7 +108,10 @@ class CheckrdASGIMiddleware:
         self._dashboard_url = dashboard_url
 
     async def __call__(
-        self, scope: ASGIScope, receive: ASGIReceive, send: ASGISend,
+        self,
+        scope: ASGIScope,
+        receive: ASGIReceive,
+        send: ASGISend,
     ) -> None:
         if scope.get("type") != "http":
             # Lifespan, websocket, and any future ASGI scope types pass
@@ -123,7 +126,9 @@ class CheckrdASGIMiddleware:
             await self._send_deny_response(send, exc)
 
     async def _send_deny_response(
-        self, send: ASGISend, exc: CheckrdPolicyDenied,
+        self,
+        send: ASGISend,
+        exc: CheckrdPolicyDenied,
     ) -> None:
         """Stripe-shaped 403 envelope when policy denies a downstream call.
 
@@ -137,8 +142,7 @@ class CheckrdASGIMiddleware:
                     "message": exc.reason,
                     "code": exc.code,
                     "request_id": exc.request_id,
-                    "dashboard_url": exc.dashboard_url
-                    or self._dashboard_url,
+                    "dashboard_url": exc.dashboard_url or self._dashboard_url,
                     "docs_url": exc.docs_url,
                 },
             },

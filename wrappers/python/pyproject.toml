@@ -278,6 +278,14 @@ exclude = [
 pythonVersion = "3.10"
 typeCheckingMode = "standard"
 
+# Pyright requires the [test] extra installed so every optional
+# integration dep (claude-agent-sdk, mcp, openai-agents, watchdog,
+# opentelemetry-*) resolves. Without it, every import not in the
+# minimal install raises reportMissingImports plus a cascade of
+# downstream errors as types from those imports degrade to Module.
+# CI runs `pip install -e ".[test]"` before pyright; locally do the
+# same when running this gate.
+
 [tool.mypy]
 # Matches ``requires-python`` exactly. SDK supports Python 3.10+ only;
 # 3.9 reached EOL October 2025 and the agent-framework adapters need
@@ -289,8 +297,8 @@ strict = true
 # runtime. Mypy still type-checks the import lines statically, which fails
 # when the extras aren't installed. Suppress import-not-found for these files.
 [[tool.mypy.overrides]]
-module = ["checkrd.sinks"]
-disable_error_code = ["import-not-found"]
+module = ["checkrd.sinks", "checkrd.watchers"]
+disable_error_code = ["import-not-found", "misc"]
 
 [tool.interrogate]
 # Docstring coverage gate. The public SDK surface needs docstrings so

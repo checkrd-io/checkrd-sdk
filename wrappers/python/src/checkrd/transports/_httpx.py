@@ -49,15 +49,17 @@ _OVERSIZE_BODY_DENY_REASON = "body exceeds 1MB inspection limit"
 # never see. A carelessly-written hook that logs the event would leak every customer's
 # API keys. The WASM engine still receives all headers (sandboxed, no I/O) for policy
 # matching — only hooks are sanitized.
-_SENSITIVE_HEADER_NAMES = frozenset({
-    "authorization",
-    "x-api-key",
-    "api-key",
-    "cookie",
-    "set-cookie",
-    "proxy-authorization",
-    "x-checkrd-api-key",
-})
+_SENSITIVE_HEADER_NAMES = frozenset(
+    {
+        "authorization",
+        "x-api-key",
+        "api-key",
+        "cookie",
+        "set-cookie",
+        "proxy-authorization",
+        "x-checkrd-api-key",
+    }
+)
 
 
 def _sanitize_headers_for_hooks(
@@ -122,12 +124,16 @@ def _check_oversized_body(
             "(security_mode='strict'). Request denied to prevent body-matcher "
             "bypass. Lower the payload size or set security_mode='permissive' "
             "to pass through unchecked during rollout.",
-            request_id, size_kb,
+            request_id,
+            size_kb,
         )
         # Emit a synthetic telemetry event so the block is observable in
         # the dashboard just like a policy-rule deny.
         _emit_oversize_telemetry(
-            request, request_id, batcher, size_kb,
+            request,
+            request_id,
+            batcher,
+            size_kb,
         )
         if on_deny is not None:
             try:
@@ -189,12 +195,15 @@ def _emit_oversize_telemetry(
         batcher.enqueue(event)
     except Exception:
         logger.debug(
-            "checkrd: oversize telemetry emit failed", exc_info=True,
+            "checkrd: oversize telemetry emit failed",
+            exc_info=True,
         )
 
 
 def _make_oversize_deny_event(
-    request: httpx.Request, request_id: str, size_kb: int,
+    request: httpx.Request,
+    request_id: str,
+    size_kb: int,
 ) -> dict[str, Any]:
     """Construct the hook event for an oversize-body block."""
     headers = [(k, v) for k, v in request.headers.items()]
@@ -339,9 +348,9 @@ def _log_telemetry(
 def _parse_rule_name(deny_reason: str) -> Optional[str]:
     """Extract the rule name from a WASM deny reason string."""
     if deny_reason.startswith("denied by rule '") and deny_reason.endswith("'"):
-        return deny_reason[len("denied by rule '"):-1]
+        return deny_reason[len("denied by rule '") : -1]
     if deny_reason.startswith("rate limit '") and "' exceeded" in deny_reason:
-        return deny_reason[len("rate limit '"):deny_reason.index("' exceeded")]
+        return deny_reason[len("rate limit '") : deny_reason.index("' exceeded")]
     return None
 
 
@@ -400,7 +409,11 @@ def _log_eval_debug(method: str, url: str, result: Any, eval_us: float) -> None:
     reason = f"\n  reason: {result.deny_reason}" if result.deny_reason else ""
     logger.debug(
         "checkrd: eval %s %s\n  verdict: %s in %.0fus%s",
-        method, url, verdict, eval_us, reason,
+        method,
+        url,
+        verdict,
+        eval_us,
+        reason,
     )
 
 
@@ -408,9 +421,7 @@ def _record_last_eval() -> None:
     """Record the timestamp of the last evaluation for health checks."""
     from checkrd._state import set_last_eval_at
 
-    set_last_eval_at(
-        datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    )
+    set_last_eval_at(datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
 
 
 def _make_pre_event(request: httpx.Request, request_id: str) -> Any:
@@ -426,9 +437,7 @@ def _make_pre_event(request: httpx.Request, request_id: str) -> Any:
     return CheckrdEvent(
         method=request.method,
         url=str(request.url),
-        headers=_sanitize_headers_for_hooks(
-            [(k, v) for k, v in request.headers.items()]
-        ),
+        headers=_sanitize_headers_for_hooks([(k, v) for k, v in request.headers.items()]),
         body=body_str,
         request_id=request_id,
         trace_id=_extract_trace_id(request.headers),
@@ -481,9 +490,7 @@ def _make_post_event(
     return CheckrdEvent(
         method=request.method,
         url=str(request.url),
-        headers=_sanitize_headers_for_hooks(
-            [(k, v) for k, v in request.headers.items()]
-        ),
+        headers=_sanitize_headers_for_hooks([(k, v) for k, v in request.headers.items()]),
         request_id=result.request_id,
         allowed=result.allowed,
         rule_name=rule_name,
@@ -529,8 +536,12 @@ class CheckrdTransport(httpx.BaseTransport):
         # skip body-matcher rules. See _OVERSIZE_BODY_DENY_REASON + the
         # MAX_BODY_SIZE comment at the top of this file.
         oversized = _check_oversized_body(
-            request, self._security_mode, self._enforce,
-            self._agent_id, self._dashboard_url, self._batcher,
+            request,
+            self._security_mode,
+            self._enforce,
+            self._agent_id,
+            self._dashboard_url,
+            self._batcher,
             self._on_deny,
         )
         if oversized is not None:
@@ -560,14 +571,20 @@ class CheckrdTransport(httpx.BaseTransport):
             deny_reason = result.deny_reason or "denied by policy"
             rule_name = _parse_rule_name(deny_reason)
             dash_url = _build_dashboard_url(
-                self._dashboard_url, self._agent_id, result.request_id,
+                self._dashboard_url,
+                self._agent_id,
+                result.request_id,
             )
             suggestion = _build_suggestion(deny_reason, rule_name)
 
             # --- on_deny hook (fires for both enforce and dry-run) ---
             if self._on_deny is not None:
                 deny_event = _make_post_event(
-                    request, result, rule_name, dash_url, suggestion,
+                    request,
+                    result,
+                    rule_name,
+                    dash_url,
+                    suggestion,
                 )
                 try:
                     self._on_deny(deny_event)
@@ -686,8 +703,12 @@ class CheckrdAsyncTransport(httpx.AsyncBaseTransport):
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         oversized = _check_oversized_body(
-            request, self._security_mode, self._enforce,
-            self._agent_id, self._dashboard_url, self._batcher,
+            request,
+            self._security_mode,
+            self._enforce,
+            self._agent_id,
+            self._dashboard_url,
+            self._batcher,
             self._on_deny,
         )
         if oversized is not None:
@@ -716,13 +737,19 @@ class CheckrdAsyncTransport(httpx.AsyncBaseTransport):
             deny_reason = result.deny_reason or "denied by policy"
             rule_name = _parse_rule_name(deny_reason)
             dash_url = _build_dashboard_url(
-                self._dashboard_url, self._agent_id, result.request_id,
+                self._dashboard_url,
+                self._agent_id,
+                result.request_id,
             )
             suggestion = _build_suggestion(deny_reason, rule_name)
 
             if self._on_deny is not None:
                 deny_event = _make_post_event(
-                    request, result, rule_name, dash_url, suggestion,
+                    request,
+                    result,
+                    rule_name,
+                    dash_url,
+                    suggestion,
                 )
                 try:
                     self._on_deny(deny_event)

@@ -97,9 +97,9 @@ _PROVIDER_SUBSTRING_SUFFIX: Tuple[Tuple[str, str, str], ...] = (
 _OPERATION_PATTERNS: Tuple[Tuple[str, str], ...] = (
     # OpenAI / Anthropic / Cohere / etc.
     ("/chat/completions", "chat"),
-    ("/messages", "chat"),                # Anthropic
-    ("/converse", "chat"),                # AWS Bedrock Converse API
-    ("/responses", "chat"),               # OpenAI Responses API (2025+)
+    ("/messages", "chat"),  # Anthropic
+    ("/converse", "chat"),  # AWS Bedrock Converse API
+    ("/responses", "chat"),  # OpenAI Responses API (2025+)
     # Embeddings
     ("/embeddings", "embeddings"),
     ("/embed", "embeddings"),

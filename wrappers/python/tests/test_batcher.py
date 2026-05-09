@@ -38,9 +38,7 @@ def sample_event(request_id: str = "req-001") -> dict[str, Any]:
     }
 
 
-def _mock_urlopen(
-    *, request_id: Optional[str] = None, status: int = 200
-) -> MagicMock:
+def _mock_urlopen(*, request_id: Optional[str] = None, status: int = 200) -> MagicMock:
     """Create a mock urlopen that returns the given status + headers.
 
     ``request_id`` populates ``Checkrd-Request-Id`` in the response
@@ -411,9 +409,7 @@ class TestTelemetryLossTracking:
         assert diag["pending"] == 0
 
     @patch("checkrd.batcher.urlopen")
-    def test_last_request_id_captured_from_response_headers(
-        self, mock_urlopen: MagicMock
-    ) -> None:
+    def test_last_request_id_captured_from_response_headers(self, mock_urlopen: MagicMock) -> None:
         """The control plane stamps a ``Checkrd-Request-Id`` on every
         accepted batch; the batcher captures the most recent value so
         operators can paste it into a support ticket. Stripe/OpenAI
@@ -429,9 +425,7 @@ class TestTelemetryLossTracking:
             batcher.stop()
 
     @patch("checkrd.batcher.urlopen")
-    def test_last_request_id_is_none_before_first_send(
-        self, mock_urlopen: MagicMock
-    ) -> None:
+    def test_last_request_id_is_none_before_first_send(self, mock_urlopen: MagicMock) -> None:
         """Documenting the initial state — operators reading
         diagnostics before any traffic must see ``None``, not stale
         data from a previous batcher instance in the same process."""
@@ -565,9 +559,7 @@ class TestRetryWithJitter:
 
     @patch("checkrd.batcher.time.sleep")
     @patch("checkrd.batcher.urlopen")
-    def test_502_503_504_retried(
-        self, mock_urlopen: MagicMock, mock_sleep: MagicMock
-    ) -> None:
+    def test_502_503_504_retried(self, mock_urlopen: MagicMock, mock_sleep: MagicMock) -> None:
         """502, 503, 504 are all retryable server errors."""
         for status in (502, 503, 504):
             mock_urlopen.reset_mock()
@@ -948,7 +940,8 @@ class TestOnDropCallback:
 
     @patch("checkrd.batcher.urlopen")
     def test_backpressure_fires_callback(
-        self, mock_urlopen: MagicMock,
+        self,
+        mock_urlopen: MagicMock,
     ) -> None:
         mock_urlopen.return_value = _mock_urlopen()
         drops: list[tuple[str, int]] = []
@@ -968,14 +961,17 @@ class TestOnDropCallback:
 
     def test_signing_error_fires_callback_with_count(self) -> None:
         from checkrd.exceptions import CheckrdInitError
+
         drops: list[tuple[str, int]] = []
         batcher = _make_batcher(
             batch_size=10,
             on_drop=lambda reason, count: drops.append((reason, count)),
         )
         try:
+
             def poison(*a: Any, **kw: Any) -> None:
                 raise CheckrdInitError("test: no signing key")
+
             with patch.object(batcher._engine, "sign_telemetry_batch", poison):
                 batcher._send([sample_event(f"req-{i}") for i in range(7)])
         finally:
@@ -984,14 +980,17 @@ class TestOnDropCallback:
 
     def test_send_error_fires_callback_with_count(self) -> None:
         import urllib.error
+
         drops: list[tuple[str, int]] = []
         batcher = _make_batcher(
             batch_size=10,
             on_drop=lambda reason, count: drops.append((reason, count)),
         )
         try:
+
             def always_fail(*a: Any, **kw: Any) -> None:
                 raise urllib.error.URLError("connection refused")
+
             with patch("checkrd.batcher.urlopen", always_fail):
                 batcher._send([sample_event(f"req-{i}") for i in range(4)])
         finally:
@@ -1000,13 +999,16 @@ class TestOnDropCallback:
 
     @patch("checkrd.batcher.urlopen")
     def test_callback_exceptions_are_swallowed(
-        self, mock_urlopen: MagicMock,
+        self,
+        mock_urlopen: MagicMock,
     ) -> None:
         mock_urlopen.return_value = _mock_urlopen()
         calls: list[int] = []
+
         def buggy(reason: str, count: int) -> None:
             calls.append(count)
             raise RuntimeError("intentional test failure")
+
         batcher = _make_batcher(
             max_queue_size=1,
             batch_size=1000,
@@ -1042,10 +1044,13 @@ class TestSigningErrorCounter:
 
     def test_signing_error_increments_own_counter(self) -> None:
         from checkrd.exceptions import CheckrdInitError
+
         batcher = _make_batcher()
         try:
+
             def poison(*a: Any, **kw: Any) -> None:
                 raise CheckrdInitError("test")
+
             with patch.object(batcher._engine, "sign_telemetry_batch", poison):
                 batcher._send([sample_event("req-1"), sample_event("req-2")])
             diag = batcher.diagnostics()
@@ -1056,9 +1061,11 @@ class TestSigningErrorCounter:
 
     @patch("checkrd.batcher.urlopen")
     def test_events_dropped_property_sums_all_three(
-        self, mock_urlopen: MagicMock,
+        self,
+        mock_urlopen: MagicMock,
     ) -> None:
         from checkrd.exceptions import CheckrdInitError
+
         mock_urlopen.return_value = _mock_urlopen()
         batcher = _make_batcher(
             max_queue_size=1,
@@ -1068,8 +1075,10 @@ class TestSigningErrorCounter:
         try:
             batcher.enqueue(sample_event("req-1"))
             batcher.enqueue(sample_event("req-2"))  # 1 backpressure drop
+
             def poison(*a: Any, **kw: Any) -> None:
                 raise CheckrdInitError("test")
+
             with patch.object(batcher._engine, "sign_telemetry_batch", poison):
                 batcher._send([sample_event(f"req-{i}") for i in range(3)])
         finally:

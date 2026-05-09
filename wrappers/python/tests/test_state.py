@@ -70,25 +70,30 @@ class TestGlobalStateSemantics:
         """The global context must be a plain module-level variable."""
         import contextvars
         from checkrd import _state
+
         assert not isinstance(_state._GLOBAL_CONTEXT, contextvars.ContextVar)
 
     def test_degraded_flag_is_not_contextvar(self) -> None:
         import contextvars
         from checkrd import _state
+
         assert not isinstance(_state._DEGRADED, contextvars.ContextVar)
 
     def test_last_eval_at_is_not_contextvar(self) -> None:
         import contextvars
         from checkrd import _state
+
         assert not isinstance(_state._LAST_EVAL_AT, contextvars.ContextVar)
 
     def test_set_and_get_round_trip(self) -> None:
         from checkrd._state import set_last_eval_at, get_last_eval_at
+
         set_last_eval_at("2026-04-13T00:00:00Z")
         assert get_last_eval_at() == "2026-04-13T00:00:00Z"
 
     def test_degraded_set_and_get(self) -> None:
         from checkrd._state import set_degraded, is_degraded
+
         set_degraded(True)
         assert is_degraded() is True
         set_degraded(False)
@@ -100,6 +105,7 @@ class TestPyTypedMarker:
 
     def test_py_typed_exists(self) -> None:
         from pathlib import Path
+
         marker = Path(__file__).parent.parent / "src" / "checkrd" / "py.typed"
         assert marker.exists(), f"py.typed marker not found at {marker}"
 
@@ -224,7 +230,8 @@ class TestNoThrowDecorator:
         @checkrd._no_throw()
         def raise_denied() -> None:
             raise CheckrdPolicyDenied(
-                reason="test", request_id="req-1",
+                reason="test",
+                request_id="req-1",
             )
 
         with pytest.raises(CheckrdPolicyDenied):
@@ -232,6 +239,7 @@ class TestNoThrowDecorator:
 
     def test_init_error_not_swallowed(self) -> None:
         """CheckrdInitError is a deliberate user-facing signal — it must propagate."""
+
         @checkrd._no_throw()
         def raise_init_error() -> None:
             raise CheckrdInitError("test init error")
@@ -241,6 +249,7 @@ class TestNoThrowDecorator:
 
     def test_runtime_error_is_swallowed(self) -> None:
         """Unexpected RuntimeError should be caught and return default."""
+
         @checkrd._no_throw(default="safe")
         def raise_runtime() -> str:
             raise RuntimeError("unexpected boom")
@@ -349,9 +358,7 @@ class TestGlobalContextShutdown:
         bad_receiver = MagicMock()
         bad_receiver.stop.side_effect = RuntimeError("boom")
         good_watcher = MagicMock()
-        ctx = self._make_context(
-            receiver=bad_receiver, watchers=[good_watcher]
-        )
+        ctx = self._make_context(receiver=bad_receiver, watchers=[good_watcher])
         ctx.shutdown()
         good_watcher.stop.assert_called_once()
 
@@ -359,9 +366,7 @@ class TestGlobalContextShutdown:
         bad_watcher = MagicMock()
         bad_watcher.stop.side_effect = RuntimeError("boom")
         good_sink = MagicMock()
-        ctx = self._make_context(
-            watchers=[bad_watcher], sink=good_sink
-        )
+        ctx = self._make_context(watchers=[bad_watcher], sink=good_sink)
         ctx.shutdown()
         good_sink.stop.assert_called_once()
 

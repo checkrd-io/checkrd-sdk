@@ -77,8 +77,14 @@ class TestPolicyTrustStatus:
     ) -> None:
         monkeypatch.setattr(
             "checkrd._trust._PRODUCTION_TRUSTED_KEYS",
-            [{"keyid": "x", "public_key_hex": "a" * 64,
-              "valid_from": 0, "valid_until": 9999999999}],
+            [
+                {
+                    "keyid": "x",
+                    "public_key_hex": "a" * 64,
+                    "valid_from": 0,
+                    "valid_until": 9999999999,
+                }
+            ],
         )
         rc, out, _ = _run(
             ["policy", "trust-status", "--base-url", "https://api.checkrd.io"],
@@ -92,8 +98,7 @@ class TestPolicyTrustStatus:
     ) -> None:
         monkeypatch.setattr("checkrd._trust._PRODUCTION_TRUSTED_KEYS", [])
         rc, out, _ = _run(
-            ["policy", "trust-status", "--base-url", "https://api.checkrd.io",
-             "--json"],
+            ["policy", "trust-status", "--base-url", "https://api.checkrd.io", "--json"],
             capsys,
         )
         assert rc == 1
@@ -122,7 +127,8 @@ class TestPolicyVerifyKey:
     """
 
     def test_empty_trust_list_exits_one(
-        self, capsys: pytest.CaptureFixture[str],
+        self,
+        capsys: pytest.CaptureFixture[str],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.setattr("checkrd._trust._PRODUCTION_TRUSTED_KEYS", [])
@@ -132,21 +138,24 @@ class TestPolicyVerifyKey:
         assert "KEY-CUSTODY.md" in err
 
     def test_populated_trust_list_inspection_exits_zero(
-        self, capsys: pytest.CaptureFixture[str],
+        self,
+        capsys: pytest.CaptureFixture[str],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         # Use the override mechanism so the test doesn't have to
         # mutate the module-level production list.
         monkeypatch.setenv(
             "CHECKRD_POLICY_TRUST_OVERRIDE_JSON",
-            json.dumps([
-                {
-                    "keyid": "test-key",
-                    "public_key_hex": "ab" * 32,
-                    "valid_from": 1700000000,
-                    "valid_until": 1900000000,
-                },
-            ]),
+            json.dumps(
+                [
+                    {
+                        "keyid": "test-key",
+                        "public_key_hex": "ab" * 32,
+                        "valid_from": 1700000000,
+                        "valid_until": 1900000000,
+                    },
+                ]
+            ),
         )
         monkeypatch.setenv("CHECKRD_ALLOW_TRUST_OVERRIDE", "1")
         rc, out, _ = _run(["policy", "verify-key"], capsys)
@@ -160,7 +169,8 @@ class TestPolicyVerifyKey:
         assert "1900000000" in out
 
     def test_multiple_keys_all_listed(
-        self, capsys: pytest.CaptureFixture[str],
+        self,
+        capsys: pytest.CaptureFixture[str],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         # Operator running the rotation procedure (KEY-CUSTODY.md §3)
@@ -168,12 +178,22 @@ class TestPolicyVerifyKey:
         # overlap window. Inspection should show both.
         monkeypatch.setenv(
             "CHECKRD_POLICY_TRUST_OVERRIDE_JSON",
-            json.dumps([
-                {"keyid": "prod-2026", "public_key_hex": "aa" * 32,
-                 "valid_from": 1700000000, "valid_until": 1800000000},
-                {"keyid": "prod-2027", "public_key_hex": "bb" * 32,
-                 "valid_from": 1750000000, "valid_until": 1900000000},
-            ]),
+            json.dumps(
+                [
+                    {
+                        "keyid": "prod-2026",
+                        "public_key_hex": "aa" * 32,
+                        "valid_from": 1700000000,
+                        "valid_until": 1800000000,
+                    },
+                    {
+                        "keyid": "prod-2027",
+                        "public_key_hex": "bb" * 32,
+                        "valid_from": 1750000000,
+                        "valid_until": 1900000000,
+                    },
+                ]
+            ),
         )
         monkeypatch.setenv("CHECKRD_ALLOW_TRUST_OVERRIDE", "1")
         rc, out, _ = _run(["policy", "verify-key"], capsys)
@@ -183,13 +203,22 @@ class TestPolicyVerifyKey:
         assert "prod-2027" in out
 
     def test_base_url_without_agent_id_errors(
-        self, capsys: pytest.CaptureFixture[str],
+        self,
+        capsys: pytest.CaptureFixture[str],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.setenv(
             "CHECKRD_POLICY_TRUST_OVERRIDE_JSON",
-            json.dumps([{"keyid": "k", "public_key_hex": "aa" * 32,
-                         "valid_from": 0, "valid_until": 9999999999}]),
+            json.dumps(
+                [
+                    {
+                        "keyid": "k",
+                        "public_key_hex": "aa" * 32,
+                        "valid_from": 0,
+                        "valid_until": 9999999999,
+                    }
+                ]
+            ),
         )
         monkeypatch.setenv("CHECKRD_ALLOW_TRUST_OVERRIDE", "1")
         rc, _, err = _run(
@@ -200,19 +229,34 @@ class TestPolicyVerifyKey:
         assert "--agent-id is required" in err
 
     def test_base_url_without_api_key_errors(
-        self, capsys: pytest.CaptureFixture[str],
+        self,
+        capsys: pytest.CaptureFixture[str],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.setenv(
             "CHECKRD_POLICY_TRUST_OVERRIDE_JSON",
-            json.dumps([{"keyid": "k", "public_key_hex": "aa" * 32,
-                         "valid_from": 0, "valid_until": 9999999999}]),
+            json.dumps(
+                [
+                    {
+                        "keyid": "k",
+                        "public_key_hex": "aa" * 32,
+                        "valid_from": 0,
+                        "valid_until": 9999999999,
+                    }
+                ]
+            ),
         )
         monkeypatch.setenv("CHECKRD_ALLOW_TRUST_OVERRIDE", "1")
         monkeypatch.delenv("CHECKRD_API_KEY", raising=False)
         rc, _, err = _run(
-            ["policy", "verify-key", "--base-url", "https://api.example.com",
-             "--agent-id", "test-agent"],
+            [
+                "policy",
+                "verify-key",
+                "--base-url",
+                "https://api.example.com",
+                "--agent-id",
+                "test-agent",
+            ],
             capsys,
         )
         assert rc == 2
@@ -232,9 +276,7 @@ class TestArgParser:
         assert "checkrd" in out
         assert "keygen" in out
 
-    def test_unknown_subcommand_errors(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_unknown_subcommand_errors(self, capsys: pytest.CaptureFixture[str]) -> None:
         with pytest.raises(SystemExit) as exc_info:
             cli_main(["nonexistent"])
         # argparse exits with code 2 on parser errors
@@ -248,9 +290,7 @@ class TestArgParser:
         captured = capsys.readouterr()
         assert "checkrd" in captured.out
 
-    def test_keygen_help_does_not_crash(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_keygen_help_does_not_crash(self, capsys: pytest.CaptureFixture[str]) -> None:
         with pytest.raises(SystemExit) as exc_info:
             cli_main(["keygen", "--help"])
         assert exc_info.value.code == 0
@@ -265,9 +305,7 @@ class TestArgParser:
 
 @requires_wasm
 class TestKeygenDefaultEnvFormat:
-    def test_default_format_is_env_export(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_default_format_is_env_export(self, capsys: pytest.CaptureFixture[str]) -> None:
         rc, out, _ = _run(["keygen"], capsys)
         assert rc == 0
         # The env format includes a comment header and an export line.
@@ -277,22 +315,16 @@ class TestKeygenDefaultEnvFormat:
         assert "Public key" in out
         assert "Fingerprint:" in out
 
-    def test_export_line_contains_valid_base64(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_export_line_contains_valid_base64(self, capsys: pytest.CaptureFixture[str]) -> None:
         rc, out, _ = _run(["keygen"], capsys)
         assert rc == 0
-        export_line = next(
-            line for line in out.splitlines() if line.startswith("export ")
-        )
+        export_line = next(line for line in out.splitlines() if line.startswith("export "))
         # Strip "export CHECKRD_AGENT_KEY=" prefix
         b64 = export_line.split("=", 1)[1]
         decoded = base64.b64decode(b64, validate=True)
         assert len(decoded) == 32
 
-    def test_public_key_comment_is_64_hex_chars(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_public_key_comment_is_64_hex_chars(self, capsys: pytest.CaptureFixture[str]) -> None:
         rc, out, _ = _run(["keygen"], capsys)
         assert rc == 0
         # Find the public key line (the indented hex)
@@ -318,9 +350,7 @@ class TestKeygenJsonFormat:
         parsed = json.loads(out)
         assert isinstance(parsed, dict)
 
-    def test_json_has_required_fields(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_json_has_required_fields(self, capsys: pytest.CaptureFixture[str]) -> None:
         rc, out, _ = _run(["keygen", "--format", "json"], capsys)
         assert rc == 0
         parsed = json.loads(out)
@@ -328,18 +358,14 @@ class TestKeygenJsonFormat:
         assert "public_key" in parsed
         assert "fingerprint" in parsed
 
-    def test_json_private_key_decodes_to_32_bytes(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_json_private_key_decodes_to_32_bytes(self, capsys: pytest.CaptureFixture[str]) -> None:
         rc, out, _ = _run(["keygen", "--format", "json"], capsys)
         assert rc == 0
         parsed = json.loads(out)
         private = base64.b64decode(parsed["private_key"], validate=True)
         assert len(private) == 32
 
-    def test_json_public_key_is_64_hex_chars(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_json_public_key_is_64_hex_chars(self, capsys: pytest.CaptureFixture[str]) -> None:
         rc, out, _ = _run(["keygen", "--format", "json"], capsys)
         assert rc == 0
         parsed = json.loads(out)
@@ -359,9 +385,7 @@ class TestKeygenJsonFormat:
 
 @requires_wasm
 class TestKeygenSingleValueOutput:
-    def test_private_only_outputs_just_base64(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_private_only_outputs_just_base64(self, capsys: pytest.CaptureFixture[str]) -> None:
         rc, out, _ = _run(["keygen", "--private-only"], capsys)
         assert rc == 0
         # Output is exactly: <base64>\n (one line, no comments)
@@ -370,9 +394,7 @@ class TestKeygenSingleValueOutput:
         decoded = base64.b64decode(lines[0], validate=True)
         assert len(decoded) == 32
 
-    def test_public_only_outputs_just_hex(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_public_only_outputs_just_hex(self, capsys: pytest.CaptureFixture[str]) -> None:
         rc, out, _ = _run(["keygen", "--public-only"], capsys)
         assert rc == 0
         lines = out.strip().splitlines()
@@ -384,9 +406,7 @@ class TestKeygenSingleValueOutput:
     def test_private_and_public_only_are_mutually_exclusive(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        rc, _, err = _run(
-            ["keygen", "--private-only", "--public-only"], capsys
-        )
+        rc, _, err = _run(["keygen", "--private-only", "--public-only"], capsys)
         assert rc == 2
         assert "mutually exclusive" in err.lower()
 
@@ -579,7 +599,8 @@ class TestPolicyValidate:
         assert rc == 1
 
     def test_policy_bare_command_shows_help(
-        self, capsys: pytest.CaptureFixture[str],
+        self,
+        capsys: pytest.CaptureFixture[str],
     ) -> None:
         rc = cli_main(["policy"])
         assert rc == 2

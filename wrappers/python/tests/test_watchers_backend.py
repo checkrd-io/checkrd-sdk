@@ -65,7 +65,8 @@ class TestBackendIntegration:
     works correctly across the Observer-handler boundary."""
 
     def test_policy_watcher_with_watchdog_reloads_on_real_change(
-        self, tmp_path: object,
+        self,
+        tmp_path: object,
     ) -> None:
         import time
         from pathlib import Path
@@ -80,7 +81,10 @@ class TestBackendIntegration:
 
         engine = MagicMock()
         watcher = PolicyFileWatcher(
-            engine, policy, interval_secs=60, backend="watchdog",
+            engine,
+            policy,
+            interval_secs=60,
+            backend="watchdog",
         )
         try:
             watcher.start()
@@ -97,7 +101,8 @@ class TestBackendIntegration:
             watcher.stop()
 
     def test_killswitch_watcher_with_watchdog_toggles_on_real_change(
-        self, tmp_path: object,
+        self,
+        tmp_path: object,
     ) -> None:
         import time
         from pathlib import Path
@@ -111,7 +116,10 @@ class TestBackendIntegration:
 
         engine = MagicMock()
         watcher = KillSwitchFileWatcher(
-            engine, sentinel, interval_secs=60, backend="watchdog",
+            engine,
+            sentinel,
+            interval_secs=60,
+            backend="watchdog",
         )
         try:
             watcher.start()
@@ -120,8 +128,10 @@ class TestBackendIntegration:
             # set_kill_switch(True).
             sentinel.touch()
             wait_for(
-                lambda: engine.set_kill_switch.called
-                and engine.set_kill_switch.call_args_list[-1][0][0] is True,
+                lambda: (
+                    engine.set_kill_switch.called
+                    and engine.set_kill_switch.call_args_list[-1][0][0] is True
+                ),
                 timeout=3.0,
                 poll=0.02,
             )
@@ -153,7 +163,10 @@ class TestBackendIntegration:
 
         engine = MagicMock()
         watcher = watchers_mod.PolicyFileWatcher(
-            engine, policy, interval_secs=0.05, backend="watchdog",
+            engine,
+            policy,
+            interval_secs=0.05,
+            backend="watchdog",
         )
         try:
             watcher.start()

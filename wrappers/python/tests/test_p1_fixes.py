@@ -47,8 +47,11 @@ class TestBatcherForkSafety:
 
         engine = MagicMock()
         engine.sign_telemetry_batch.return_value = {
-            "content_digest": "d", "signature_input": "si",
-            "signature": "s", "instance_id": "iid", "expires": 0,
+            "content_digest": "d",
+            "signature_input": "si",
+            "signature": "s",
+            "instance_id": "iid",
+            "expires": 0,
         }
         batcher = TelemetryBatcher(
             base_url="http://localhost:8080",
@@ -70,8 +73,11 @@ class TestBatcherForkSafety:
 
         engine = MagicMock()
         engine.sign_telemetry_batch.return_value = {
-            "content_digest": "d", "signature_input": "si",
-            "signature": "s", "instance_id": "iid", "expires": 0,
+            "content_digest": "d",
+            "signature_input": "si",
+            "signature": "s",
+            "instance_id": "iid",
+            "expires": 0,
         }
         batcher = TelemetryBatcher(
             base_url="http://localhost:8080",
@@ -105,8 +111,11 @@ class TestBatcherForkSafety:
 
         engine = MagicMock()
         engine.sign_telemetry_batch.return_value = {
-            "content_digest": "d", "signature_input": "si",
-            "signature": "s", "instance_id": "iid", "expires": 0,
+            "content_digest": "d",
+            "signature_input": "si",
+            "signature": "s",
+            "instance_id": "iid",
+            "expires": 0,
         }
         batcher = TelemetryBatcher(
             base_url="http://localhost:8080",
@@ -131,8 +140,11 @@ class TestBatcherForkSafety:
 
         engine = MagicMock()
         engine.sign_telemetry_batch.return_value = {
-            "content_digest": "d", "signature_input": "si",
-            "signature": "s", "instance_id": "iid", "expires": 0,
+            "content_digest": "d",
+            "signature_input": "si",
+            "signature": "s",
+            "instance_id": "iid",
+            "expires": 0,
         }
         batcher = TelemetryBatcher(
             base_url="http://localhost:8080",
@@ -151,6 +163,7 @@ class TestControlReceiverForkSafety:
 
     def test_control_stores_pid(self) -> None:
         from checkrd.control import ControlReceiver
+
         receiver = ControlReceiver(
             base_url="http://localhost:8080",
             agent_id="test-agent",
@@ -161,6 +174,7 @@ class TestControlReceiverForkSafety:
 
     def test_control_detects_simulated_fork(self) -> None:
         from checkrd.control import ControlReceiver
+
         receiver = ControlReceiver(
             base_url="http://localhost:8080",
             agent_id="test-agent",
@@ -180,6 +194,7 @@ class TestControlReceiverForkSafety:
     def test_live_receivers_registry_tracks_construction(self) -> None:
         """New receivers self-register so the fork handler can find them."""
         from checkrd.control import _LIVE_RECEIVERS, ControlReceiver
+
         receiver = ControlReceiver(
             base_url="http://localhost:8080",
             agent_id="test-agent",
@@ -194,6 +209,7 @@ class TestPolicyFileWatcherForkSafety:
 
     def test_watcher_stores_pid(self, tmp_path: Path) -> None:
         from checkrd.watchers import PolicyFileWatcher
+
         policy = tmp_path / "p.yaml"
         policy.write_text("agent: a\ndefault: allow\nrules: []\n")
         watcher = PolicyFileWatcher(MagicMock(), policy, interval_secs=60)
@@ -201,6 +217,7 @@ class TestPolicyFileWatcherForkSafety:
 
     def test_watcher_detects_simulated_fork(self, tmp_path: Path) -> None:
         from checkrd.watchers import PolicyFileWatcher
+
         policy = tmp_path / "p.yaml"
         policy.write_text("agent: a\ndefault: allow\nrules: []\n")
         watcher = PolicyFileWatcher(MagicMock(), policy, interval_secs=60)
@@ -216,6 +233,7 @@ class TestPolicyFileWatcherForkSafety:
 
     def test_live_watchers_registry_tracks_construction(self, tmp_path: Path) -> None:
         from checkrd.watchers import _LIVE_POLICY_WATCHERS, PolicyFileWatcher
+
         policy = tmp_path / "p.yaml"
         policy.write_text("agent: a\ndefault: allow\nrules: []\n")
         watcher = PolicyFileWatcher(MagicMock(), policy, interval_secs=60)
@@ -227,11 +245,13 @@ class TestKillSwitchWatcherForkSafety:
 
     def test_watcher_stores_pid(self, tmp_path: Path) -> None:
         from checkrd.watchers import KillSwitchFileWatcher
+
         watcher = KillSwitchFileWatcher(MagicMock(), tmp_path / "ks", interval_secs=60)
         assert watcher._pid == os.getpid()
 
     def test_watcher_detects_simulated_fork(self, tmp_path: Path) -> None:
         from checkrd.watchers import KillSwitchFileWatcher
+
         watcher = KillSwitchFileWatcher(MagicMock(), tmp_path / "ks", interval_secs=60)
 
         watcher._pid = -1
@@ -245,6 +265,7 @@ class TestKillSwitchWatcherForkSafety:
 
     def test_live_watchers_registry_tracks_construction(self, tmp_path: Path) -> None:
         from checkrd.watchers import _LIVE_KILLSWITCH_WATCHERS, KillSwitchFileWatcher
+
         watcher = KillSwitchFileWatcher(MagicMock(), tmp_path / "ks", interval_secs=60)
         assert watcher in _LIVE_KILLSWITCH_WATCHERS
 
@@ -272,9 +293,7 @@ def _child_inspect_batcher_state(result_file: str) -> None:
         "child_pid": os.getpid(),
         "live_count": len(batchers),
         "first_pid": batchers[0]._pid if batchers else None,
-        "first_thread_alive": (
-            batchers[0]._thread.is_alive() if batchers else None
-        ),
+        "first_thread_alive": (batchers[0]._thread.is_alive() if batchers else None),
     }
     Path(result_file).write_text(_json.dumps(info))
 
@@ -284,9 +303,7 @@ class TestRealForkIntegration:
     """End-to-end: actually fork() and verify the at-fork handler
     reset the batcher in the child process."""
 
-    def test_batcher_pid_and_thread_reset_in_real_fork(
-        self, tmp_path: Path
-    ) -> None:
+    def test_batcher_pid_and_thread_reset_in_real_fork(self, tmp_path: Path) -> None:
         """Spawn a child via ``multiprocessing.get_context('fork')``,
         let the at-fork handler fire in the child, and assert the
         batcher's ``_pid`` matches the child's PID and the thread is
@@ -299,8 +316,11 @@ class TestRealForkIntegration:
 
         engine = MagicMock()
         engine.sign_telemetry_batch.return_value = {
-            "content_digest": "d", "signature_input": "si",
-            "signature": "s", "instance_id": "iid", "expires": 0,
+            "content_digest": "d",
+            "signature_input": "si",
+            "signature": "s",
+            "instance_id": "iid",
+            "expires": 0,
         }
         batcher = TelemetryBatcher(
             base_url="http://localhost:8080",
@@ -312,9 +332,7 @@ class TestRealForkIntegration:
         try:
             result = tmp_path / "fork_result.json"
             ctx = mp.get_context("fork")
-            proc = ctx.Process(
-                target=_child_inspect_batcher_state, args=(str(result),)
-            )
+            proc = ctx.Process(target=_child_inspect_batcher_state, args=(str(result),))
             proc.start()
             proc.join(timeout=10)
             assert proc.exitcode == 0, "child process did not exit cleanly"
@@ -345,7 +363,13 @@ class TestSensitiveHeadersFilter:
         """Run a log message through the filter and return the result."""
         f = SensitiveHeadersFilter()
         record = logging.LogRecord(
-            "test", logging.DEBUG, "test.py", 1, msg, args, None,
+            "test",
+            logging.DEBUG,
+            "test.py",
+            1,
+            msg,
+            args,
+            None,
         )
         f.filter(record)
         # Format the final message the way a handler would.
@@ -398,8 +422,13 @@ class TestSensitiveHeadersFilter:
         """Log message args (%-formatting) must also be redacted."""
         f = SensitiveHeadersFilter()
         record = logging.LogRecord(
-            "test", logging.DEBUG, "test.py", 1,
-            "sending request with %s", ("Authorization: Bearer sk-key",), None,
+            "test",
+            logging.DEBUG,
+            "test.py",
+            1,
+            "sending request with %s",
+            ("Authorization: Bearer sk-key",),
+            None,
         )
         f.filter(record)
         formatted = record.msg % record.args
@@ -440,7 +469,13 @@ class TestSensitiveHeadersFilter:
         """Filter must not crash on non-string log messages."""
         f = SensitiveHeadersFilter()
         record = logging.LogRecord(
-            "test", logging.DEBUG, "test.py", 1, 42, (), None,  # type: ignore[arg-type]
+            "test",
+            logging.DEBUG,
+            "test.py",
+            1,
+            42,
+            (),
+            None,  # type: ignore[arg-type]
         )
         assert f.filter(record) is True  # always allows through
 
@@ -539,10 +574,16 @@ class TestEnvFilePermissions:
 
         env_path = tmp_path / ".env"
         write_env_file(
-            api_key="ck_first", agent_id="a1", agent_key_b64="k1==", path=env_path,
+            api_key="ck_first",
+            agent_id="a1",
+            agent_key_b64="k1==",
+            path=env_path,
         )
         write_env_file(
-            api_key="ck_second", agent_id="a2", agent_key_b64="k2==", path=env_path,
+            api_key="ck_second",
+            agent_id="a2",
+            agent_key_b64="k2==",
+            path=env_path,
         )
 
         mode = env_path.stat().st_mode & 0o777

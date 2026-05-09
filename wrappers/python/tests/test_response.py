@@ -17,7 +17,9 @@ from checkrd._response import APIResponse, StreamingAPIResponse
 
 
 def _make_response(
-    *, status: int = 200, headers: dict[str, str] | None = None,
+    *,
+    status: int = 200,
+    headers: dict[str, str] | None = None,
     body: bytes = b'{"ok": true}',
 ) -> Mock:
     """Build a duck-typed httpx.Response stub."""

@@ -147,10 +147,7 @@ class CircuitBreaker:
         """
         with self._lock:
             self._consecutive_failures += 1
-            if (
-                self._state == "half_open"
-                or self._consecutive_failures >= self._failure_threshold
-            ):
+            if self._state == "half_open" or self._consecutive_failures >= self._failure_threshold:
                 self._state = "open"
                 self._opened_at = self._now()
 

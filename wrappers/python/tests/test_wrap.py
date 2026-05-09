@@ -120,9 +120,7 @@ class TestWrapWithProductionIdentity:
     """Verify wrap() accepts the production LocalIdentity constructors and
     that telemetry is signed with the explicitly-provided key."""
 
-    def test_wrap_with_env_identity(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_wrap_with_env_identity(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import base64
 
         from checkrd import LocalIdentity
@@ -202,8 +200,7 @@ class TestWrapWithProductionIdentity:
             )
 
             # The dev key file must NOT have been auto-created
-            assert not default_key.exists(), \
-            "explicit identity must not trigger auto-generation"
+            assert not default_key.exists(), "explicit identity must not trigger auto-generation"
 
 
 # ============================================================
@@ -240,9 +237,7 @@ class TestWrapWithCustomSink:
                 event = json.loads(line)
                 assert event.get("policy_result") == "allowed"
 
-    def test_wrap_with_logging_sink(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    def test_wrap_with_logging_sink(self, caplog: pytest.LogCaptureFixture) -> None:
         import logging
 
         from checkrd.sinks import LoggingSink
@@ -262,9 +257,7 @@ class TestWrapWithCustomSink:
             records = [r for r in caplog.records if r.name == "checkrd.telemetry"]
             assert len(records) >= 1
 
-    def test_explicit_sink_overrides_control_plane_batcher(
-        self, tmp_path
-    ) -> None:
+    def test_explicit_sink_overrides_control_plane_batcher(self, tmp_path) -> None:
         # When both control plane creds AND an explicit sink are provided,
         # the explicit sink wins (it's the customer's documented override).
         import json

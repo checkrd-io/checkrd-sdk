@@ -97,7 +97,8 @@ class TestBeforeSendHook:
             b.stop()
 
     def test_raising_drops_event_and_logs(
-        self, caplog: pytest.LogCaptureFixture,
+        self,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
         def buggy(_e: dict[str, Any], _h: dict[str, object]) -> dict[str, Any]:
             raise RuntimeError("hook crashed")
@@ -107,9 +108,7 @@ class TestBeforeSendHook:
             with caplog.at_level(logging.ERROR, logger="checkrd"):
                 b.enqueue({"event_type": "test"})
             assert b.pending_count == 0
-            assert any(
-                "before_send hook raised" in r.getMessage() for r in caplog.records
-            )
+            assert any("before_send hook raised" in r.getMessage() for r in caplog.records)
         finally:
             b.stop()
 
@@ -144,7 +143,8 @@ class TestBeforeSendHook:
 
     @patch("checkrd.batcher.urlopen")
     def test_drop_via_hook_does_not_show_in_send_counters(
-        self, mock_urlopen: MagicMock,
+        self,
+        mock_urlopen: MagicMock,
     ) -> None:
         # Sentry semantic: operator drops are not failures. Confirm
         # they don't pollute the dashboard counters that page on-call.

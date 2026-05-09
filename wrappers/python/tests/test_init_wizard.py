@@ -427,11 +427,15 @@ class TestRunWizard:
         for k in ("CHECKRD_API_KEY", "CHECKRD_AGENT_ID"):
             monkeypatch.delenv(k, raising=False)
 
-        rc = main([
-            "init",
-            "--non-interactive",
-            "--agent-id", "cli-agent",
-            "--env-file", str(tmp_path / ".env"),
-        ])
+        rc = main(
+            [
+                "init",
+                "--non-interactive",
+                "--agent-id",
+                "cli-agent",
+                "--env-file",
+                str(tmp_path / ".env"),
+            ]
+        )
         assert rc == 0
         assert (tmp_path / ".env").exists()

@@ -258,9 +258,7 @@ class LocalIdentity:
         from checkrd.engine import WasmEngine
 
         if not isinstance(private_key, (bytes, bytearray)):
-            raise CheckrdInitError(
-                f"private_key must be bytes, got {type(private_key).__name__}"
-            )
+            raise CheckrdInitError(f"private_key must be bytes, got {type(private_key).__name__}")
         if len(private_key) != _KEY_LEN:
             raise CheckrdInitError(
                 f"Private key must be {_KEY_LEN} bytes, got {len(private_key)}. "
@@ -271,9 +269,7 @@ class LocalIdentity:
         try:
             public_key = WasmEngine.derive_public_key(bytes(private_key))
         except Exception as exc:  # noqa: BLE001 - WASM may raise various errors
-            raise CheckrdInitError(
-                f"Failed to derive public key from private key: {exc}"
-            ) from exc
+            raise CheckrdInitError(f"Failed to derive public key from private key: {exc}") from exc
 
         instance = cls.__new__(cls)
         instance._key_path = None
@@ -359,8 +355,7 @@ class LocalIdentity:
             # Initialization completed without populating key material —
             # impossible if the read/generate branches above succeeded.
             raise CheckrdInitError(
-                "Internal: identity initialization finished without "
-                "populating key material"
+                "Internal: identity initialization finished without populating key material"
             )
         self._instance_id = self._public_key[:8].hex()
 
@@ -387,7 +382,9 @@ class LocalIdentity:
                 logger.warning(
                     "checkrd: identity key at %s has permissions %04o "
                     "(should be 0600). Run: chmod 600 %s",
-                    self._key_path, mode, self._key_path,
+                    self._key_path,
+                    mode,
+                    self._key_path,
                 )
         except OSError:
             pass  # stat failed — we'll catch the real error on read below
@@ -439,9 +436,7 @@ class LocalIdentity:
         """The 32-byte Ed25519 public key."""
         self._ensure_loaded()
         if self._public_key is None:
-            raise RuntimeError(
-                "internal: _ensure_loaded() returned without setting public_key"
-            )
+            raise RuntimeError("internal: _ensure_loaded() returned without setting public_key")
         return self._public_key
 
     @property
@@ -449,9 +444,7 @@ class LocalIdentity:
         """16-char hex fingerprint of the public key."""
         self._ensure_loaded()
         if self._instance_id is None:
-            raise RuntimeError(
-                "internal: _ensure_loaded() returned without setting instance_id"
-            )
+            raise RuntimeError("internal: _ensure_loaded() returned without setting instance_id")
         return self._instance_id
 
     def bind_engine(self, engine: WasmEngine) -> None:

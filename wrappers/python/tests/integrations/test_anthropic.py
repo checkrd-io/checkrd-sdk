@@ -45,9 +45,7 @@ class TestAnthropicInstrumentation:
         inst.instrument()
 
         client = fake_anthropic_module.AsyncAnthropic(api_key="sk-ant-test")
-        assert isinstance(
-            client._client._transport, CheckrdAsyncTransport
-        )
+        assert isinstance(client._client._transport, CheckrdAsyncTransport)
 
     def test_user_http_client_preserved(
         self,
@@ -59,9 +57,7 @@ class TestAnthropicInstrumentation:
 
         user_transport = httpx.MockTransport(lambda req: httpx.Response(200))
         with httpx.Client(transport=user_transport) as user_client:
-            client = fake_anthropic_module.Anthropic(
-                api_key="sk-ant-test", http_client=user_client
-            )
+            client = fake_anthropic_module.Anthropic(api_key="sk-ant-test", http_client=user_client)
 
             wrapper = client._client._transport
             assert isinstance(wrapper, CheckrdTransport)
