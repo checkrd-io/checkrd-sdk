@@ -44,8 +44,10 @@ def _drive(app: Any) -> tuple[str, list[tuple[str, str]], bytes]:
     captured_headers: list[list[tuple[str, str]]] = []
 
     def start_response(
-        status: str, headers: list[tuple[str, str]],
-        *args: Any, **kwargs: Any,
+        status: str,
+        headers: list[tuple[str, str]],
+        *args: Any,
+        **kwargs: Any,
     ) -> Any:
         captured_status.append(status)
         captured_headers.append(headers)
@@ -82,7 +84,8 @@ class TestCheckrdWSGIMiddleware:
         def app(environ: dict[str, Any], start_response: Any) -> Iterable[bytes]:
             start_response("200 OK", [("Content-Type", "text/plain")])
             raise CheckrdPolicyDenied(
-                reason="late deny", request_id="r",
+                reason="late deny",
+                request_id="r",
             )
 
         wrapped = CheckrdWSGIMiddleware(app)
@@ -106,7 +109,8 @@ class TestWrapWsgi:
         assert payload["error"]["dashboard_url"] == "https://dash/e/xyz"
 
         def deny_no_dashboard(
-            environ: dict[str, Any], start_response: Any,
+            environ: dict[str, Any],
+            start_response: Any,
         ) -> Iterable[bytes]:  # noqa: ARG001
             raise CheckrdPolicyDenied(reason="b", request_id="r")
 

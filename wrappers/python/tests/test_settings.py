@@ -191,37 +191,46 @@ class TestResolveDisabled:
 
 class TestSettingsDataclass:
     def test_has_control_plane_requires_both(self) -> None:
-        assert Settings(
-            agent_id="a",
-            api_key="k",
-            control_plane_url="https://x",
-            enforce_override=None,
-            disabled=False,
-            dashboard_url=None,
-            debug=False,
-        ).has_control_plane is True
+        assert (
+            Settings(
+                agent_id="a",
+                api_key="k",
+                control_plane_url="https://x",
+                enforce_override=None,
+                disabled=False,
+                dashboard_url=None,
+                debug=False,
+            ).has_control_plane
+            is True
+        )
 
     def test_has_control_plane_missing_key(self) -> None:
-        assert Settings(
-            agent_id="a",
-            api_key=None,
-            control_plane_url="https://x",
-            enforce_override=None,
-            disabled=False,
-            dashboard_url=None,
-            debug=False,
-        ).has_control_plane is False
+        assert (
+            Settings(
+                agent_id="a",
+                api_key=None,
+                control_plane_url="https://x",
+                enforce_override=None,
+                disabled=False,
+                dashboard_url=None,
+                debug=False,
+            ).has_control_plane
+            is False
+        )
 
     def test_has_control_plane_missing_url(self) -> None:
-        assert Settings(
-            agent_id="a",
-            api_key="k",
-            control_plane_url=None,
-            enforce_override=None,
-            disabled=False,
-            dashboard_url=None,
-            debug=False,
-        ).has_control_plane is False
+        assert (
+            Settings(
+                agent_id="a",
+                api_key="k",
+                control_plane_url=None,
+                enforce_override=None,
+                disabled=False,
+                dashboard_url=None,
+                debug=False,
+            ).has_control_plane
+            is False
+        )
 
     def test_frozen(self) -> None:
         # Settings is immutable so downstream code can safely share it.
@@ -386,20 +395,23 @@ class TestValidateUrl:
     def test_http_rejected_with_flag_false(self) -> None:
         with pytest.raises(ValueError, match="must use HTTPS"):
             _validate_url(
-                "http://api.checkrd.io", "control_plane_url",
+                "http://api.checkrd.io",
+                "control_plane_url",
                 {"CHECKRD_ALLOW_INSECURE_HTTP": "0"},
             )
 
     def test_http_allowed_with_new_flag(self) -> None:
         _validate_url(
-            "http://localhost:8080", "control_plane_url",
+            "http://localhost:8080",
+            "control_plane_url",
             {"CHECKRD_ALLOW_INSECURE_HTTP": "1"},
         )
 
     @pytest.mark.parametrize("truthy", ["true", "yes", "on", "1"])
     def test_http_allowed_with_truthy_flag_values(self, truthy: str) -> None:
         _validate_url(
-            "http://localhost:8080", "control_plane_url",
+            "http://localhost:8080",
+            "control_plane_url",
             {"CHECKRD_ALLOW_INSECURE_HTTP": truthy},
         )
 
@@ -415,12 +427,11 @@ class TestValidateUrl:
         """
         import importlib
         import checkrd._settings as settings_mod
+
         importlib.reload(settings_mod)  # reset one-shot warning guard
 
         with pytest.warns(DeprecationWarning, match="CHECKRD_DEV"):
-            settings_mod._validate_url(
-                "http://localhost:8080", "control_plane_url", {ENV_DEV: "1"}
-            )
+            settings_mod._validate_url("http://localhost:8080", "control_plane_url", {ENV_DEV: "1"})
 
     def test_http_localhost_rejected_without_flag(self) -> None:
         """Even localhost requires HTTPS without an explicit opt-in."""
@@ -447,21 +458,18 @@ class TestValidateUrl:
         with pytest.raises(ValueError, match="CHECKRD_ALLOW_INSECURE_HTTP"):
             _validate_url("http://localhost", "control_plane_url", {})
 
-    def test_http_allowed_logs_warning(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    def test_http_allowed_logs_warning(self, caplog: pytest.LogCaptureFixture) -> None:
         """Enabling HTTP should leave a loud breadcrumb in the logs."""
         import logging
 
         with caplog.at_level(logging.WARNING, logger="checkrd"):
             _validate_url(
-                "http://localhost:8080", "control_plane_url",
+                "http://localhost:8080",
+                "control_plane_url",
                 {"CHECKRD_ALLOW_INSECURE_HTTP": "1"},
             )
         assert any("non-HTTPS" in r.message for r in caplog.records)
-        assert any(
-            "CHECKRD_ALLOW_INSECURE_HTTP" in r.message for r in caplog.records
-        )
+        assert any("CHECKRD_ALLOW_INSECURE_HTTP" in r.message for r in caplog.records)
 
 
 class TestResolveUrlValidation:
@@ -511,27 +519,21 @@ class TestResolveDefaultEnv:
     Monkeypatched env isolates these tests so they don't leak state.
     """
 
-    def test_reads_os_environ_for_api_key(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_reads_os_environ_for_api_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv(ENV_API_KEY, "ck_live_from_os_environ")
         monkeypatch.delenv(ENV_BASE_URL, raising=False)
         monkeypatch.delenv(ENV_AGENT_ID, raising=False)
         settings = resolve()
         assert settings.api_key == "ck_live_from_os_environ"
 
-    def test_reads_os_environ_for_base_url(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_reads_os_environ_for_base_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(ENV_API_KEY, raising=False)
         monkeypatch.setenv(ENV_BASE_URL, "https://from-env.example")
         monkeypatch.delenv(ENV_AGENT_ID, raising=False)
         settings = resolve()
         assert settings.control_plane_url == "https://from-env.example"
 
-    def test_reads_os_environ_for_agent_id(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_reads_os_environ_for_agent_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(ENV_API_KEY, raising=False)
         monkeypatch.delenv(ENV_BASE_URL, raising=False)
         monkeypatch.setenv(ENV_AGENT_ID, "env_agent")

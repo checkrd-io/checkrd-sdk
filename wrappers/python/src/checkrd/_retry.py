@@ -176,7 +176,7 @@ def compute_backoff_secs(
     # ``int ** int`` form returns ``Any`` per typeshed because negative
     # exponents change the result type, which would propagate Any
     # through the product and trip strict mypy.
-    sleep = min(initial_delay * (2.0 ** attempt), max_sleep_secs)
+    sleep = min(initial_delay * (2.0**attempt), max_sleep_secs)
     # Generate jitter in [0.75, 1.0) using cryptographic randomness.
     # secrets.randbelow(1_000_000) / 1_000_000 → uniform [0, 1).
     jitter = 1.0 - (secrets.randbelow(250_000) / 1_000_000.0)

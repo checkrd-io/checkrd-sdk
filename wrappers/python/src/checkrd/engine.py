@@ -180,9 +180,7 @@ class WasmEngine:
         self._sign_telemetry_batch_fn: Any = exports["sign_telemetry_batch"]
         self._derive_public_key_fn: Any = exports["derive_public_key"]
 
-        rc = self._call_init(
-            policy_json, agent_id, bytes(private_key_bytes), instance_id
-        )
+        rc = self._call_init(policy_json, agent_id, bytes(private_key_bytes), instance_id)
         if rc != 0:
             codes = {-1: "invalid policy JSON", -2: "invalid UTF-8", -3: "invalid key length"}
             raise CheckrdInitError(f"WASM init() failed: {codes.get(rc, f'error code {rc}')}")
@@ -441,8 +439,7 @@ class WasmEngine:
         if rc != 0:
             reason = _FFI_ERROR_REASONS.get(rc, f"unknown_{rc}")
             raise CheckrdInitError(
-                f"set_initial_policy_version({version}) failed: "
-                f"{reason} (code={rc})"
+                f"set_initial_policy_version({version}) failed: {reason} (code={rc})"
             )
 
     # --- WASM memory helpers ---

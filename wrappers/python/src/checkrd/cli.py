@@ -88,8 +88,7 @@ def build_parser() -> argparse.ArgumentParser:
     keygen.add_argument(
         "--public-only",
         action="store_true",
-        help="Print only the hex-encoded public key. Useful for "
-        "registration scripts.",
+        help="Print only the hex-encoded public key. Useful for registration scripts.",
     )
     keygen.set_defaults(func=cmd_keygen)
 
@@ -112,10 +111,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Control plane base URL (default: https://api.checkrd.io).",
     )
     init_cmd.add_argument(
-        "--env-file", default=".env", help="Path to write the .env file (default: .env).",
+        "--env-file",
+        default=".env",
+        help="Path to write the .env file (default: .env).",
     )
     init_cmd.add_argument(
-        "--non-interactive", action="store_true", help="Skip all prompts.",
+        "--non-interactive",
+        action="store_true",
+        help="Skip all prompts.",
     )
     init_cmd.set_defaults(func=cmd_init)
 
@@ -134,7 +137,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     validate_cmd.add_argument("file", help="Path to the policy YAML or JSON file.")
     validate_cmd.add_argument(
-        "--json", action="store_true", dest="output_json",
+        "--json",
+        action="store_true",
+        dest="output_json",
         help="Output the parsed policy as pretty-printed JSON.",
     )
     validate_cmd.set_defaults(func=cmd_policy_validate)
@@ -216,8 +221,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--api-key",
         default=None,
         help=(
-            "Control-plane API key. Falls back to ``CHECKRD_API_KEY``. "
-            "Required with --base-url."
+            "Control-plane API key. Falls back to ``CHECKRD_API_KEY``. Required with --base-url."
         ),
     )
     verify_key_cmd.set_defaults(func=cmd_policy_verify_key)
@@ -429,18 +433,17 @@ def cmd_policy_verify_key(args: argparse.Namespace) -> int:
     api_key = args.api_key or _os.environ.get("CHECKRD_API_KEY")
     if not api_key:
         print(
-            "error: --api-key is required when --base-url is provided "
-            "(or set CHECKRD_API_KEY).",
+            "error: --api-key is required when --base-url is provided (or set CHECKRD_API_KEY).",
             file=sys.stderr,
         )
         return 2
 
-    url = (
-        f"{args.base_url.rstrip('/')}/v1/agents/{args.agent_id}/control/state"
-    )
+    url = f"{args.base_url.rstrip('/')}/v1/agents/{args.agent_id}/control/state"
     try:
         resp = _httpx.get(
-            url, headers={"X-API-Key": api_key}, timeout=10.0,
+            url,
+            headers={"X-API-Key": api_key},
+            timeout=10.0,
         )
         resp.raise_for_status()
     except _httpx.HTTPStatusError as exc:

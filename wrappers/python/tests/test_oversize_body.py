@@ -38,19 +38,35 @@ def _build_request(size_bytes: int) -> httpx.Request:
 
 def test_small_body_passes_through():
     request = _build_request(1024)  # 1 KB
-    assert _check_oversized_body(
-        request, "strict", enforce=True,
-        agent_id="a", dashboard_url="", batcher=None, on_deny=None,
-    ) is None
+    assert (
+        _check_oversized_body(
+            request,
+            "strict",
+            enforce=True,
+            agent_id="a",
+            dashboard_url="",
+            batcher=None,
+            on_deny=None,
+        )
+        is None
+    )
 
 
 def test_exactly_max_body_size_passes_through():
     """Boundary: <= MAX_BODY_SIZE is inspected, > is rejected."""
     request = _build_request(MAX_BODY_SIZE)
-    assert _check_oversized_body(
-        request, "strict", enforce=True,
-        agent_id="a", dashboard_url="", batcher=None, on_deny=None,
-    ) is None
+    assert (
+        _check_oversized_body(
+            request,
+            "strict",
+            enforce=True,
+            agent_id="a",
+            dashboard_url="",
+            batcher=None,
+            on_deny=None,
+        )
+        is None
+    )
 
 
 def test_oversize_body_strict_returns_deny():
@@ -61,8 +77,13 @@ def test_oversize_body_strict_returns_deny():
     purpose. Fail-closed is the only acceptable default here."""
     request = _build_request(MAX_BODY_SIZE + 1)
     result = _check_oversized_body(
-        request, "strict", enforce=True,
-        agent_id="a", dashboard_url="", batcher=None, on_deny=None,
+        request,
+        "strict",
+        enforce=True,
+        agent_id="a",
+        dashboard_url="",
+        batcher=None,
+        on_deny=None,
     )
     assert isinstance(result, CheckrdPolicyDenied)
     assert result.reason == _OVERSIZE_BODY_DENY_REASON
@@ -76,8 +97,13 @@ def test_oversize_body_permissive_passes_through_with_warning(caplog):
     request = _build_request(MAX_BODY_SIZE + 1)
     with caplog.at_level(logging.WARNING, logger="checkrd"):
         result = _check_oversized_body(
-            request, "permissive", enforce=True,
-            agent_id="a", dashboard_url="", batcher=None, on_deny=None,
+            request,
+            "permissive",
+            enforce=True,
+            agent_id="a",
+            dashboard_url="",
+            batcher=None,
+            on_deny=None,
         )
     assert result is None
     assert any("will NOT be applied" in r.message for r in caplog.records)
@@ -89,8 +115,13 @@ def test_oversize_body_strict_but_not_enforcing_passes_through():
     semantic of enforce=False."""
     request = _build_request(MAX_BODY_SIZE + 1)
     result = _check_oversized_body(
-        request, "strict", enforce=False,
-        agent_id="a", dashboard_url="", batcher=None, on_deny=None,
+        request,
+        "strict",
+        enforce=False,
+        agent_id="a",
+        dashboard_url="",
+        batcher=None,
+        on_deny=None,
     )
     assert result is None
 
@@ -106,8 +137,13 @@ def test_oversize_telemetry_emitted_on_strict_deny():
 
     request = _build_request(MAX_BODY_SIZE + 512)
     result = _check_oversized_body(
-        request, "strict", enforce=True,
-        agent_id="a", dashboard_url="", batcher=FakeBatcher(), on_deny=None,
+        request,
+        "strict",
+        enforce=True,
+        agent_id="a",
+        dashboard_url="",
+        batcher=FakeBatcher(),
+        on_deny=None,
     )
     assert result is not None
     assert len(events) == 1
@@ -121,8 +157,12 @@ def test_oversize_on_deny_hook_invoked():
     calls: list[dict] = []
     request = _build_request(MAX_BODY_SIZE + 1)
     _check_oversized_body(
-        request, "strict", enforce=True,
-        agent_id="a", dashboard_url="", batcher=None,
+        request,
+        "strict",
+        enforce=True,
+        agent_id="a",
+        dashboard_url="",
+        batcher=None,
         on_deny=lambda ev: calls.append(ev),
     )
     assert len(calls) == 1
@@ -134,14 +174,19 @@ def test_oversize_on_deny_hook_invoked():
 
 def test_oversize_hook_exception_does_not_break_deny(caplog):
     """If the user hook raises, we still return the deny. No silent pass."""
+
     def broken_hook(_ev):
         raise RuntimeError("hook bug")
 
     request = _build_request(MAX_BODY_SIZE + 1)
     with caplog.at_level(logging.WARNING, logger="checkrd"):
         result = _check_oversized_body(
-            request, "strict", enforce=True,
-            agent_id="a", dashboard_url="", batcher=None,
+            request,
+            "strict",
+            enforce=True,
+            agent_id="a",
+            dashboard_url="",
+            batcher=None,
             on_deny=broken_hook,
         )
     assert isinstance(result, CheckrdPolicyDenied)

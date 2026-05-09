@@ -117,7 +117,9 @@ class TestCheckrdTransport:
         Strict mode (the default) denies outright — see
         tests/test_oversize_body.py for that contract."""
         checkrd = CheckrdTransport(
-            mock_transport, mock_engine_allowed, security_mode="permissive",
+            mock_transport,
+            mock_engine_allowed,
+            security_mode="permissive",
         )
 
         large_body = b"x" * (1_048_576 + 1)  # 1 byte over limit
@@ -441,9 +443,7 @@ class TestHttpMethods:
         assert call_kwargs["method"] == method
 
     @pytest.mark.parametrize("method", ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"])
-    def test_denied_request_raises_all_methods(
-        self, mock_transport: Mock, method: str
-    ) -> None:
+    def test_denied_request_raises_all_methods(self, mock_transport: Mock, method: str) -> None:
         engine = _mock_engine(allowed=False, deny_reason="blocked by policy")
         checkrd = CheckrdTransport(mock_transport, engine)
 
@@ -492,9 +492,7 @@ class TestBodyHandling:
         call_kwargs = mock_engine_allowed.evaluate.call_args.kwargs
         assert call_kwargs["body"] == "name=test&value=123"
 
-    def test_empty_body_is_none(
-        self, mock_engine_allowed: Mock, mock_transport: Mock
-    ) -> None:
+    def test_empty_body_is_none(self, mock_engine_allowed: Mock, mock_transport: Mock) -> None:
         """GET with no body should pass body=None (not empty string)."""
         checkrd = CheckrdTransport(mock_transport, mock_engine_allowed)
         request = httpx.Request("GET", "https://example.com/api")
@@ -523,7 +521,9 @@ class TestBodyHandling:
         Strict mode (the default) DENIES oversize bodies — see
         tests/test_oversize_body.py for the strict contract."""
         checkrd = CheckrdTransport(
-            mock_transport, mock_engine_allowed, security_mode="permissive",
+            mock_transport,
+            mock_engine_allowed,
+            security_mode="permissive",
         )
         body = b"x" * (1_048_576 + 1)
         request = httpx.Request("POST", "https://example.com/api", content=body)
@@ -549,9 +549,7 @@ class TestBodyHandling:
         """UTF-8 multibyte characters (emoji, CJK) should round-trip correctly."""
         checkrd = CheckrdTransport(mock_transport, mock_engine_allowed)
         body_str = '{"name": "テスト", "emoji": "🚀"}'
-        request = httpx.Request(
-            "POST", "https://example.com/api", content=body_str.encode("utf-8")
-        )
+        request = httpx.Request("POST", "https://example.com/api", content=body_str.encode("utf-8"))
         checkrd.handle_request(request)
 
         call_kwargs = mock_engine_allowed.evaluate.call_args.kwargs
@@ -576,7 +574,8 @@ class TestBodyHandling:
         """Async permissive mode mirrors sync — over-limit body → None.
         Strict mode denies (covered in tests/test_oversize_body.py)."""
         checkrd = CheckrdAsyncTransport(
-            mock_async_transport, mock_engine_allowed,
+            mock_async_transport,
+            mock_engine_allowed,
             security_mode="permissive",
         )
         body = b"y" * (1_048_576 + 1)
@@ -602,9 +601,7 @@ class TestBuildEvalKwargsBodyExtraction:
     """Unit tests for _build_eval_kwargs body extraction logic."""
 
     def test_post_with_json(self) -> None:
-        request = httpx.Request(
-            "POST", "https://example.com/api", content=b'{"a": 1}'
-        )
+        request = httpx.Request("POST", "https://example.com/api", content=b'{"a": 1}')
         kwargs = _build_eval_kwargs(request)
         assert kwargs["body"] == '{"a": 1}'
         assert kwargs["method"] == "POST"
@@ -620,38 +617,28 @@ class TestBuildEvalKwargsBodyExtraction:
         assert kwargs["body"] is None
 
     def test_put_with_body(self) -> None:
-        request = httpx.Request(
-            "PUT", "https://example.com/api/123", content=b'{"updated": true}'
-        )
+        request = httpx.Request("PUT", "https://example.com/api/123", content=b'{"updated": true}')
         kwargs = _build_eval_kwargs(request)
         assert kwargs["body"] == '{"updated": true}'
 
     def test_patch_with_body(self) -> None:
-        request = httpx.Request(
-            "PATCH", "https://example.com/api/123", content=b'{"field": "new"}'
-        )
+        request = httpx.Request("PATCH", "https://example.com/api/123", content=b'{"field": "new"}')
         kwargs = _build_eval_kwargs(request)
         assert kwargs["body"] == '{"field": "new"}'
 
     def test_body_exactly_at_limit(self) -> None:
-        request = httpx.Request(
-            "POST", "https://example.com/api", content=b"z" * 1_048_576
-        )
+        request = httpx.Request("POST", "https://example.com/api", content=b"z" * 1_048_576)
         kwargs = _build_eval_kwargs(request)
         assert kwargs["body"] is not None
         assert len(kwargs["body"]) == 1_048_576
 
     def test_body_one_over_limit(self) -> None:
-        request = httpx.Request(
-            "POST", "https://example.com/api", content=b"z" * 1_048_577
-        )
+        request = httpx.Request("POST", "https://example.com/api", content=b"z" * 1_048_577)
         kwargs = _build_eval_kwargs(request)
         assert kwargs["body"] is None
 
     def test_binary_body_returns_empty_string(self) -> None:
-        request = httpx.Request(
-            "POST", "https://example.com/api", content=bytes(range(128, 256))
-        )
+        request = httpx.Request("POST", "https://example.com/api", content=bytes(range(128, 256)))
         kwargs = _build_eval_kwargs(request)
         assert kwargs["body"] == ""
 
@@ -796,9 +783,7 @@ class TestHeaderSanitization:
         assert "authorization" not in hook_header_keys
         assert "content-type" in hook_header_keys
 
-    def test_on_deny_hook_receives_sanitized_headers(
-        self, mock_transport: Mock
-    ) -> None:
+    def test_on_deny_hook_receives_sanitized_headers(self, mock_transport: Mock) -> None:
         """on_deny hook also gets sanitized headers."""
         received_headers: list[list[tuple[str, str]]] = []
 

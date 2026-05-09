@@ -74,6 +74,7 @@ def test_checkrd_dev_alias_emits_deprecation_warning():
     # Reset the once-per-process guard by reloading the module.
     import importlib
     import checkrd._settings as settings_mod
+
     importlib.reload(settings_mod)
 
     with pytest.warns(DeprecationWarning, match="CHECKRD_DEV is deprecated"):
@@ -81,12 +82,11 @@ def test_checkrd_dev_alias_emits_deprecation_warning():
 
     # New flags emit nothing.
     import warnings
+
     with warnings.catch_warnings():
         warnings.simplefilter("error", DeprecationWarning)
         assert settings_mod._http_allowed({"CHECKRD_ALLOW_INSECURE_HTTP": "1"}) is True
-        assert settings_mod._wasm_integrity_skipped(
-            {"CHECKRD_SKIP_WASM_INTEGRITY": "1"}
-        ) is True
+        assert settings_mod._wasm_integrity_skipped({"CHECKRD_SKIP_WASM_INTEGRITY": "1"}) is True
 
 
 def test_new_http_flag_does_not_skip_wasm_integrity():
@@ -147,6 +147,7 @@ def test_permissive_mode_degrades_on_engine_failure(monkeypatch, caplog):
     monkeypatch.setattr("checkrd._create_engine_from_json", boom)
 
     import logging
+
     with caplog.at_level(logging.WARNING, logger="checkrd"):
         runtime = _build_runtime(
             agent_id="test",
@@ -161,10 +162,7 @@ def test_permissive_mode_degrades_on_engine_failure(monkeypatch, caplog):
 
     assert runtime is None
     assert is_degraded()
-    assert any(
-        "security_mode='permissive'" in r.message
-        for r in caplog.records
-    )
+    assert any("security_mode='permissive'" in r.message for r in caplog.records)
     set_degraded(False)
 
 
@@ -191,5 +189,6 @@ def test_env_var_default_is_strict_via_wrap(monkeypatch):
     monkeypatch.setattr("checkrd._create_engine_from_json", boom)
 
     import httpx
+
     with httpx.Client() as client, pytest.raises(CheckrdInitError):
         checkrd.wrap(client, api_key="test")

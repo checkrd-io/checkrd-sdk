@@ -55,9 +55,7 @@ class TestTogetherInstrumentation:
 
         user_transport = httpx.MockTransport(lambda req: httpx.Response(200))
         with httpx.Client(transport=user_transport) as user_client:
-            client = fake_together_module.Together(
-                api_key="tog-test", http_client=user_client
-            )
+            client = fake_together_module.Together(api_key="tog-test", http_client=user_client)
 
             wrapper = client._client._transport
             assert isinstance(wrapper, CheckrdTransport)

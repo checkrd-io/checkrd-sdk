@@ -179,9 +179,7 @@ class Instrumentor:
         surfaces as a loud failure at test time, not a silent no-op in
         production.
         """
-        raise NotImplementedError(
-            f"{type(self).__name__} must override _setup()"
-        )
+        raise NotImplementedError(f"{type(self).__name__} must override _setup()")
 
     def _teardown(self) -> None:
         """Revert the patching applied in :meth:`_setup`.
@@ -189,9 +187,7 @@ class Instrumentor:
         Subclasses MUST override this method. Called with the instance
         lock held.
         """
-        raise NotImplementedError(
-            f"{type(self).__name__} must override _teardown()"
-        )
+        raise NotImplementedError(f"{type(self).__name__} must override _teardown()")
 
 
 class HttpxClientInstrumentor(Instrumentor):
@@ -260,9 +256,7 @@ class HttpxClientInstrumentor(Instrumentor):
 
             original_init = target_cls.__init__
             self._originals[class_name] = original_init
-            target_cls.__init__ = self._make_patched_init(
-                original_init, context
-            )
+            target_cls.__init__ = self._make_patched_init(original_init, context)
 
     def _teardown(self) -> None:
         module = importlib.import_module(self._target_module_name)

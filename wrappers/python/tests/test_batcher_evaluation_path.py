@@ -1,4 +1,5 @@
 """B1: batcher must not drop matched_rule, matched_rule_kind, mode, evaluation_path."""
+
 from checkrd.batcher import TelemetryBatcher
 
 

@@ -126,7 +126,10 @@ class TestSuccessfulRegistration:
         agent_id = unique_id()
 
         _maybe_register_public_key(
-            "https://api.checkrd.io", "ck_test_key", agent_id, identity,
+            "https://api.checkrd.io",
+            "ck_test_key",
+            agent_id,
+            identity,
         )
         # Registration runs in a background thread — wait for it.
         wait_for(lambda: mock_urlopen.call_count >= 1)
@@ -143,7 +146,10 @@ class TestSuccessfulRegistration:
     def test_sends_api_key_header(self, mock_urlopen: MagicMock) -> None:
         mock_urlopen.return_value = _mock_urlopen_ok()
         _maybe_register_public_key(
-            "https://api.checkrd.io", "ck_test_mykey", unique_id(), _make_identity(),
+            "https://api.checkrd.io",
+            "ck_test_mykey",
+            unique_id(),
+            _make_identity(),
         )
         wait_for(lambda: mock_urlopen.call_count >= 1)
         req = mock_urlopen.call_args[0][0]
@@ -171,7 +177,10 @@ class TestSkippedRegistration:
     @patch("checkrd.urlopen")
     def test_empty_public_key(self, mock_urlopen: MagicMock) -> None:
         _maybe_register_public_key(
-            "https://api.checkrd.io", "key", "agent", _make_identity(public_key=b""),
+            "https://api.checkrd.io",
+            "key",
+            "agent",
+            _make_identity(public_key=b""),
         )
         assert mock_urlopen.call_count == 0
 
@@ -179,9 +188,14 @@ class TestSkippedRegistration:
     def test_identity_public_key_raises(self, mock_urlopen: MagicMock) -> None:
         """If identity.public_key raises, registration is silently skipped."""
         identity = Mock(spec=IdentityProvider)
-        type(identity).public_key = property(lambda self: (_ for _ in ()).throw(RuntimeError("no key")))  # type: ignore[assignment]
+        type(identity).public_key = property(
+            lambda self: (_ for _ in ()).throw(RuntimeError("no key"))
+        )  # type: ignore[assignment]
         _maybe_register_public_key(
-            "https://api.checkrd.io", "key", "agent", identity,
+            "https://api.checkrd.io",
+            "key",
+            "agent",
+            identity,
         )
         assert mock_urlopen.call_count == 0
 
@@ -202,7 +216,10 @@ class TestRetryOnTransientErrors:
             _mock_urlopen_ok(),
         ]
         _maybe_register_public_key(
-            "https://api.checkrd.io", "key", unique_id(), _make_identity(),
+            "https://api.checkrd.io",
+            "key",
+            unique_id(),
+            _make_identity(),
         )
         wait_for(lambda: mock_urlopen.call_count >= 2, timeout=15)
         assert mock_urlopen.call_count == 2
@@ -214,7 +231,10 @@ class TestRetryOnTransientErrors:
             _mock_urlopen_ok(),
         ]
         _maybe_register_public_key(
-            "https://api.checkrd.io", "key", unique_id(), _make_identity(),
+            "https://api.checkrd.io",
+            "key",
+            unique_id(),
+            _make_identity(),
         )
         wait_for(lambda: mock_urlopen.call_count >= 2, timeout=15)
         assert mock_urlopen.call_count == 2
@@ -227,7 +247,10 @@ class TestRetryOnTransientErrors:
             _mock_urlopen_ok(),
         ]
         _maybe_register_public_key(
-            "https://api.checkrd.io", "key", unique_id(), _make_identity(),
+            "https://api.checkrd.io",
+            "key",
+            unique_id(),
+            _make_identity(),
         )
         wait_for(lambda: mock_urlopen.call_count >= 2, timeout=15)
         assert mock_urlopen.call_count == 2
@@ -240,7 +263,10 @@ class TestRetryOnTransientErrors:
             _mock_urlopen_ok(),
         ]
         _maybe_register_public_key(
-            "https://api.checkrd.io", "key", unique_id(), _make_identity(),
+            "https://api.checkrd.io",
+            "key",
+            unique_id(),
+            _make_identity(),
         )
         wait_for(lambda: mock_urlopen.call_count >= 2, timeout=15)
         assert mock_urlopen.call_count == 2
@@ -253,7 +279,10 @@ class TestRetryOnTransientErrors:
             _mock_urlopen_ok(),
         ]
         _maybe_register_public_key(
-            "https://api.checkrd.io", "key", unique_id(), _make_identity(),
+            "https://api.checkrd.io",
+            "key",
+            unique_id(),
+            _make_identity(),
         )
         wait_for(lambda: mock_urlopen.call_count >= 2, timeout=15)
         assert mock_urlopen.call_count == 2
@@ -263,7 +292,10 @@ class TestRetryOnTransientErrors:
         """All retries fail = exactly MAX_RETRIES attempts."""
         mock_urlopen.side_effect = URLError("always fail")
         _maybe_register_public_key(
-            "https://api.checkrd.io", "key", unique_id(), _make_identity(),
+            "https://api.checkrd.io",
+            "key",
+            unique_id(),
+            _make_identity(),
         )
         wait_for(
             lambda: mock_urlopen.call_count >= _PK_REGISTER_MAX_RETRIES,
@@ -284,10 +316,14 @@ class TestPermanentErrors:
     def test_401_stops_immediately(self, mock_urlopen: MagicMock) -> None:
         mock_urlopen.side_effect = _mock_http_error(401)
         _maybe_register_public_key(
-            "https://api.checkrd.io", "bad_key", unique_id(), _make_identity(),
+            "https://api.checkrd.io",
+            "bad_key",
+            unique_id(),
+            _make_identity(),
         )
         wait_for(lambda: mock_urlopen.call_count >= 1, timeout=10)
         import time
+
         time.sleep(0.2)
         assert mock_urlopen.call_count == 1
 
@@ -295,10 +331,14 @@ class TestPermanentErrors:
     def test_403_stops_immediately(self, mock_urlopen: MagicMock) -> None:
         mock_urlopen.side_effect = _mock_http_error(403)
         _maybe_register_public_key(
-            "https://api.checkrd.io", "key", unique_id(), _make_identity(),
+            "https://api.checkrd.io",
+            "key",
+            unique_id(),
+            _make_identity(),
         )
         wait_for(lambda: mock_urlopen.call_count >= 1, timeout=10)
         import time
+
         time.sleep(0.2)
         assert mock_urlopen.call_count == 1
 
@@ -307,10 +347,14 @@ class TestPermanentErrors:
         """409 = key already registered with different value. No retry."""
         mock_urlopen.side_effect = _mock_http_error(409)
         _maybe_register_public_key(
-            "https://api.checkrd.io", "key", unique_id(), _make_identity(),
+            "https://api.checkrd.io",
+            "key",
+            unique_id(),
+            _make_identity(),
         )
         wait_for(lambda: mock_urlopen.call_count >= 1, timeout=10)
         import time
+
         time.sleep(0.2)
         assert mock_urlopen.call_count == 1
 
@@ -344,21 +388,24 @@ class TestLogOutput:
 
         with caplog.at_level(logging.DEBUG, logger="checkrd"):
             _maybe_register_public_key(
-                "https://api.checkrd.io", "key", agent_id, _make_identity(),
+                "https://api.checkrd.io",
+                "key",
+                agent_id,
+                _make_identity(),
             )
             # Wait for all retries to complete AND the final log to be written.
             # The background thread sleeps between retries (backoff), so give
             # generous time.
             wait_for(
                 lambda: any(
-                    "failed after" in r.message and agent_id in r.message
-                    for r in caplog.records
+                    "failed after" in r.message and agent_id in r.message for r in caplog.records
                 ),
                 timeout=30,
             )
 
         warnings = [
-            r for r in caplog.records
+            r
+            for r in caplog.records
             if r.levelno >= logging.WARNING and "failed after" in r.message
         ]
         assert len(warnings) >= 1
@@ -377,7 +424,10 @@ class TestLogOutput:
 
         with caplog.at_level(logging.WARNING, logger="checkrd"):
             _maybe_register_public_key(
-                "https://api.checkrd.io", "key", agent_id, _make_identity(),
+                "https://api.checkrd.io",
+                "key",
+                agent_id,
+                _make_identity(),
             )
             wait_for(
                 lambda: any("differs" in r.message for r in caplog.records),
@@ -398,7 +448,10 @@ class TestLogOutput:
 
         with caplog.at_level(logging.WARNING, logger="checkrd"):
             _maybe_register_public_key(
-                "https://api.checkrd.io", "bad_key", unique_id(), _make_identity(),
+                "https://api.checkrd.io",
+                "bad_key",
+                unique_id(),
+                _make_identity(),
             )
             wait_for(
                 lambda: any("check your API key" in r.message for r in caplog.records),
@@ -419,7 +472,10 @@ class TestLogOutput:
 
         with caplog.at_level(logging.DEBUG, logger="checkrd"):
             _maybe_register_public_key(
-                "https://api.checkrd.io", "key", unique_id(), _make_identity(),
+                "https://api.checkrd.io",
+                "key",
+                unique_id(),
+                _make_identity(),
             )
             wait_for(lambda: mock_urlopen.call_count >= 1)
             # Give thread time to log.
@@ -446,7 +502,10 @@ class TestThreadBehavior:
         mock_urlopen.return_value = _mock_urlopen_ok()
 
         _maybe_register_public_key(
-            "https://api.checkrd.io", "key", unique_id(), _make_identity(),
+            "https://api.checkrd.io",
+            "key",
+            unique_id(),
+            _make_identity(),
         )
 
         # The thread should complete.

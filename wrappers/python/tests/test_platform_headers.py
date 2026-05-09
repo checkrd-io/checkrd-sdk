@@ -100,10 +100,7 @@ class TestDefaultControlHeaders:
         assert default_control_headers("ck_live_abc")["X-API-Key"] == "ck_live_abc"
 
     def test_user_agent_matches_python_sdk(self) -> None:
-        assert (
-            default_control_headers("k")["User-Agent"]
-            == f"checkrd-python/{__version__}"
-        )
+        assert default_control_headers("k")["User-Agent"] == f"checkrd-python/{__version__}"
 
     def test_omits_checkrd_version_by_default(self) -> None:
         assert "Checkrd-Version" not in default_control_headers("k")

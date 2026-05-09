@@ -38,11 +38,13 @@ from checkrd._policy_state import (
 # call. The value must be a syntactically-valid JSON object — the loader
 # parses it to fail fast on garbled data — but the wrapper never asks
 # the WASM core to verify it during these tests.
-_FAKE_ENVELOPE = json.dumps({
-    "payloadType": "application/vnd.checkrd.policy-bundle+yaml",
-    "payload": "ZHVtbXk=",
-    "signatures": [{"keyid": "test", "sig": "AA"}],
-})
+_FAKE_ENVELOPE = json.dumps(
+    {
+        "payloadType": "application/vnd.checkrd.policy-bundle+yaml",
+        "payload": "ZHVtbXk=",
+        "signatures": [{"keyid": "test", "sig": "AA"}],
+    }
+)
 _FAKE_HASH = "a" * 64
 
 
@@ -109,13 +111,15 @@ def test_load_returns_empty_for_unknown_schema(tmp_path: Path) -> None:
     at the schema this SDK understands."""
     state = tmp_path / "policy_state.json"
     state.write_text(
-        json.dumps({
-            "schema_version": 999,
-            "last_policy_version": 50,
-            "last_policy_hash": _FAKE_HASH,
-            "bundle_envelope_json": _FAKE_ENVELOPE,
-            "updated_at": 0,
-        })
+        json.dumps(
+            {
+                "schema_version": 999,
+                "last_policy_version": 50,
+                "last_policy_hash": _FAKE_HASH,
+                "bundle_envelope_json": _FAKE_ENVELOPE,
+                "updated_at": 0,
+            }
+        )
     )
     assert load_persisted_state(state) == (0, None, None)
 
@@ -126,12 +130,14 @@ def test_load_returns_empty_for_missing_envelope(tmp_path: Path) -> None:
     empty. Treat as missing."""
     state = tmp_path / "policy_state.json"
     state.write_text(
-        json.dumps({
-            "schema_version": POLICY_STATE_SCHEMA_VERSION,
-            "last_policy_version": 50,
-            "last_policy_hash": _FAKE_HASH,
-            "updated_at": 0,
-        })
+        json.dumps(
+            {
+                "schema_version": POLICY_STATE_SCHEMA_VERSION,
+                "last_policy_version": 50,
+                "last_policy_hash": _FAKE_HASH,
+                "updated_at": 0,
+            }
+        )
     )
     assert load_persisted_state(state) == (0, None, None)
 
@@ -139,12 +145,14 @@ def test_load_returns_empty_for_missing_envelope(tmp_path: Path) -> None:
 def test_load_returns_empty_for_missing_hash(tmp_path: Path) -> None:
     state = tmp_path / "policy_state.json"
     state.write_text(
-        json.dumps({
-            "schema_version": POLICY_STATE_SCHEMA_VERSION,
-            "last_policy_version": 50,
-            "bundle_envelope_json": _FAKE_ENVELOPE,
-            "updated_at": 0,
-        })
+        json.dumps(
+            {
+                "schema_version": POLICY_STATE_SCHEMA_VERSION,
+                "last_policy_version": 50,
+                "bundle_envelope_json": _FAKE_ENVELOPE,
+                "updated_at": 0,
+            }
+        )
     )
     assert load_persisted_state(state) == (0, None, None)
 
@@ -154,13 +162,15 @@ def test_load_returns_empty_for_invalid_hash_format(tmp_path: Path) -> None:
     else (uppercase, wrong length, non-hex) is treated as corruption."""
     state = tmp_path / "policy_state.json"
     state.write_text(
-        json.dumps({
-            "schema_version": POLICY_STATE_SCHEMA_VERSION,
-            "last_policy_version": 50,
-            "last_policy_hash": "NOT-A-HEX-DIGEST",
-            "bundle_envelope_json": _FAKE_ENVELOPE,
-            "updated_at": 0,
-        })
+        json.dumps(
+            {
+                "schema_version": POLICY_STATE_SCHEMA_VERSION,
+                "last_policy_version": 50,
+                "last_policy_hash": "NOT-A-HEX-DIGEST",
+                "bundle_envelope_json": _FAKE_ENVELOPE,
+                "updated_at": 0,
+            }
+        )
     )
     assert load_persisted_state(state) == (0, None, None)
 
@@ -168,13 +178,15 @@ def test_load_returns_empty_for_invalid_hash_format(tmp_path: Path) -> None:
 def test_load_returns_empty_for_envelope_not_string(tmp_path: Path) -> None:
     state = tmp_path / "policy_state.json"
     state.write_text(
-        json.dumps({
-            "schema_version": POLICY_STATE_SCHEMA_VERSION,
-            "last_policy_version": 50,
-            "last_policy_hash": _FAKE_HASH,
-            "bundle_envelope_json": {"not": "a string"},  # wrong type
-            "updated_at": 0,
-        })
+        json.dumps(
+            {
+                "schema_version": POLICY_STATE_SCHEMA_VERSION,
+                "last_policy_version": 50,
+                "last_policy_hash": _FAKE_HASH,
+                "bundle_envelope_json": {"not": "a string"},  # wrong type
+                "updated_at": 0,
+            }
+        )
     )
     assert load_persisted_state(state) == (0, None, None)
 
@@ -182,13 +194,15 @@ def test_load_returns_empty_for_envelope_not_string(tmp_path: Path) -> None:
 def test_load_returns_empty_for_envelope_not_json(tmp_path: Path) -> None:
     state = tmp_path / "policy_state.json"
     state.write_text(
-        json.dumps({
-            "schema_version": POLICY_STATE_SCHEMA_VERSION,
-            "last_policy_version": 50,
-            "last_policy_hash": _FAKE_HASH,
-            "bundle_envelope_json": "this is not JSON",
-            "updated_at": 0,
-        })
+        json.dumps(
+            {
+                "schema_version": POLICY_STATE_SCHEMA_VERSION,
+                "last_policy_version": 50,
+                "last_policy_hash": _FAKE_HASH,
+                "bundle_envelope_json": "this is not JSON",
+                "updated_at": 0,
+            }
+        )
     )
     assert load_persisted_state(state) == (0, None, None)
 
@@ -196,13 +210,15 @@ def test_load_returns_empty_for_envelope_not_json(tmp_path: Path) -> None:
 def test_load_returns_empty_for_negative_version(tmp_path: Path) -> None:
     state = tmp_path / "policy_state.json"
     state.write_text(
-        json.dumps({
-            "schema_version": POLICY_STATE_SCHEMA_VERSION,
-            "last_policy_version": -1,
-            "last_policy_hash": _FAKE_HASH,
-            "bundle_envelope_json": _FAKE_ENVELOPE,
-            "updated_at": 0,
-        })
+        json.dumps(
+            {
+                "schema_version": POLICY_STATE_SCHEMA_VERSION,
+                "last_policy_version": -1,
+                "last_policy_hash": _FAKE_HASH,
+                "bundle_envelope_json": _FAKE_ENVELOPE,
+                "updated_at": 0,
+            }
+        )
     )
     assert load_persisted_state(state) == (0, None, None)
 
@@ -210,13 +226,15 @@ def test_load_returns_empty_for_negative_version(tmp_path: Path) -> None:
 def test_load_returns_empty_for_non_int_version(tmp_path: Path) -> None:
     state = tmp_path / "policy_state.json"
     state.write_text(
-        json.dumps({
-            "schema_version": POLICY_STATE_SCHEMA_VERSION,
-            "last_policy_version": "not-an-int",
-            "last_policy_hash": _FAKE_HASH,
-            "bundle_envelope_json": _FAKE_ENVELOPE,
-            "updated_at": 0,
-        })
+        json.dumps(
+            {
+                "schema_version": POLICY_STATE_SCHEMA_VERSION,
+                "last_policy_version": "not-an-int",
+                "last_policy_hash": _FAKE_HASH,
+                "bundle_envelope_json": _FAKE_ENVELOPE,
+                "updated_at": 0,
+            }
+        )
     )
     assert load_persisted_state(state) == (0, None, None)
 
@@ -227,13 +245,15 @@ def test_load_returns_empty_for_bool_version(tmp_path: Path) -> None:
     install a "version 1" floor."""
     state = tmp_path / "policy_state.json"
     state.write_text(
-        json.dumps({
-            "schema_version": POLICY_STATE_SCHEMA_VERSION,
-            "last_policy_version": True,
-            "last_policy_hash": _FAKE_HASH,
-            "bundle_envelope_json": _FAKE_ENVELOPE,
-            "updated_at": 0,
-        })
+        json.dumps(
+            {
+                "schema_version": POLICY_STATE_SCHEMA_VERSION,
+                "last_policy_version": True,
+                "last_policy_hash": _FAKE_HASH,
+                "bundle_envelope_json": _FAKE_ENVELOPE,
+                "updated_at": 0,
+            }
+        )
     )
     assert load_persisted_state(state) == (0, None, None)
 
@@ -241,13 +261,15 @@ def test_load_returns_empty_for_bool_version(tmp_path: Path) -> None:
 def test_load_returns_empty_for_u64_overflow(tmp_path: Path) -> None:
     state = tmp_path / "policy_state.json"
     state.write_text(
-        json.dumps({
-            "schema_version": POLICY_STATE_SCHEMA_VERSION,
-            "last_policy_version": 2**64,  # one past u64 max
-            "last_policy_hash": _FAKE_HASH,
-            "bundle_envelope_json": _FAKE_ENVELOPE,
-            "updated_at": 0,
-        })
+        json.dumps(
+            {
+                "schema_version": POLICY_STATE_SCHEMA_VERSION,
+                "last_policy_version": 2**64,  # one past u64 max
+                "last_policy_hash": _FAKE_HASH,
+                "bundle_envelope_json": _FAKE_ENVELOPE,
+                "updated_at": 0,
+            }
+        )
     )
     assert load_persisted_state(state) == (0, None, None)
 
@@ -256,13 +278,15 @@ def test_load_accepts_u64_max(tmp_path: Path) -> None:
     """The largest valid u64 value must round-trip exactly."""
     state = tmp_path / "policy_state.json"
     state.write_text(
-        json.dumps({
-            "schema_version": POLICY_STATE_SCHEMA_VERSION,
-            "last_policy_version": 2**64 - 1,
-            "last_policy_hash": _FAKE_HASH,
-            "bundle_envelope_json": _FAKE_ENVELOPE,
-            "updated_at": 0,
-        })
+        json.dumps(
+            {
+                "schema_version": POLICY_STATE_SCHEMA_VERSION,
+                "last_policy_version": 2**64 - 1,
+                "last_policy_hash": _FAKE_HASH,
+                "bundle_envelope_json": _FAKE_ENVELOPE,
+                "updated_at": 0,
+            }
+        )
     )
     version, h, env = load_persisted_state(state)
     assert version == 2**64 - 1
@@ -277,13 +301,15 @@ def test_load_returns_empty_when_oversized(tmp_path: Path) -> None:
     # Write a real-looking JSON file padded out past the cap.
     huge_envelope = json.dumps({"payload": "A" * (5 * 1024 * 1024)})
     state.write_text(
-        json.dumps({
-            "schema_version": POLICY_STATE_SCHEMA_VERSION,
-            "last_policy_version": 1,
-            "last_policy_hash": _FAKE_HASH,
-            "bundle_envelope_json": huge_envelope,
-            "updated_at": 0,
-        })
+        json.dumps(
+            {
+                "schema_version": POLICY_STATE_SCHEMA_VERSION,
+                "last_policy_version": 1,
+                "last_policy_hash": _FAKE_HASH,
+                "bundle_envelope_json": huge_envelope,
+                "updated_at": 0,
+            }
+        )
     )
     assert load_persisted_state(state) == (0, None, None)
 

@@ -32,8 +32,13 @@ def _mock_handler(request: httpx.Request) -> httpx.Response:
 @pytest.fixture(autouse=True)
 def _reset_state(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     monkeypatch.setenv("CHECKRD_CONFIG_DIR", str(tmp_path))
-    for var in ("CHECKRD_API_KEY", "CHECKRD_BASE_URL", "CHECKRD_AGENT_ID",
-                "CHECKRD_ENFORCE", "CHECKRD_DISABLED"):
+    for var in (
+        "CHECKRD_API_KEY",
+        "CHECKRD_BASE_URL",
+        "CHECKRD_AGENT_ID",
+        "CHECKRD_ENFORCE",
+        "CHECKRD_DISABLED",
+    ):
         monkeypatch.delenv(var, raising=False)
     checkrd.shutdown()
     set_degraded(False)
@@ -65,12 +70,13 @@ class TestWrapGracefulDegradation:
 
     @patch("checkrd.engine._get_module", side_effect=CheckrdInitError("WASM not found"))
     def test_wrap_logs_warning(self, _mock, caplog: pytest.LogCaptureFixture) -> None:
-        with caplog.at_level(logging.WARNING, logger="checkrd"), \
-             httpx.Client(transport=httpx.MockTransport(_mock_handler)) as client:
+        with (
+            caplog.at_level(logging.WARNING, logger="checkrd"),
+            httpx.Client(transport=httpx.MockTransport(_mock_handler)) as client,
+        ):
             checkrd.wrap(client, security_mode="permissive")
         assert any(
-            "pass-through" in r.message or "Policy enforcement is DISABLED"
-            in r.message
+            "pass-through" in r.message or "Policy enforcement is DISABLED" in r.message
             for r in caplog.records
         )
 

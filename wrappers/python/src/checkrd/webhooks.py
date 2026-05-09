@@ -128,9 +128,7 @@ def verify_webhook(
             ).hexdigest()
             if hmac.compare_digest(provided.lower(), expected):
                 return
-    raise WebhookVerificationError(
-        "no candidate signature matched", "signature_mismatch"
-    )
+    raise WebhookVerificationError("no candidate signature matched", "signature_mismatch")
 
 
 def _parse_signature_header(header: str) -> _SignatureEnvelope:
@@ -153,9 +151,7 @@ def _parse_signature_header(header: str) -> _SignatureEnvelope:
         elif key == "v1" and _V1_HEX_RE.match(value):
             sigs.append(value.lower())
     if timestamp is None or not sigs:
-        raise WebhookVerificationError(
-            "signature header is malformed", "malformed_header"
-        )
+        raise WebhookVerificationError("signature header is malformed", "malformed_header")
     return _SignatureEnvelope(timestamp=timestamp, signatures=tuple(sigs))
 
 

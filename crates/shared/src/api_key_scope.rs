@@ -44,9 +44,7 @@ use std::collections::BTreeMap;
 /// "Create API key" matrix. Removing one is a breaking change —
 /// existing restricted keys would drop the resource, silently
 /// downgrading to None. Don't.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Resource {
     /// `/v1/agents/*` — agent CRUD, kill switch, public key registration.
@@ -91,9 +89,7 @@ pub enum Resource {
 /// creator's role-based-access checks (`live_role_for_principal`),
 /// not the per-resource scope. Scopes constrain WHAT the key touches;
 /// roles constrain WHICH operations within that.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AccessLevel {
     None,
@@ -151,9 +147,10 @@ impl ApiKeyScope {
         match self {
             Self::All => AccessLevel::Write,
             Self::ReadOnly => AccessLevel::Read,
-            Self::Restricted { resources } => {
-                resources.get(&resource).copied().unwrap_or(AccessLevel::None)
-            }
+            Self::Restricted { resources } => resources
+                .get(&resource)
+                .copied()
+                .unwrap_or(AccessLevel::None),
         }
     }
 }

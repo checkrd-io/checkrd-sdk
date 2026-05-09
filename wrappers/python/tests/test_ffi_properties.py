@@ -20,6 +20,7 @@ Scope is focused, not exhaustive: ~100 examples per property, total
 runtime <10s on a laptop. The Rust core has its own Wycheproof + mutation
 coverage; these tests defend the *wrapper's* marshalling layer.
 """
+
 from __future__ import annotations
 
 import json
@@ -48,12 +49,8 @@ _method_st = st.sampled_from(["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "
 # encoded edge cases that belong in a separate URL-parser test.
 _url_st = st.builds(
     lambda host, path: f"https://{host}/{path}",
-    host=st.sampled_from(
-        ["api.stripe.com", "api.openai.com", "api.anthropic.com", "example.com"]
-    ),
-    path=st.text(
-        alphabet="abcdefghijklmnopqrstuvwxyz0123456789/-_", min_size=0, max_size=50
-    ),
+    host=st.sampled_from(["api.stripe.com", "api.openai.com", "api.anthropic.com", "example.com"]),
+    path=st.text(alphabet="abcdefghijklmnopqrstuvwxyz0123456789/-_", min_size=0, max_size=50),
 )
 
 # RFC 9110 header values: visible ASCII + space + tab. Keeping it narrow
@@ -66,9 +63,7 @@ _header_value_st = st.text(
     min_size=0,
     max_size=200,
 )
-_headers_st = st.lists(
-    st.tuples(_header_name_st, _header_value_st), min_size=0, max_size=8
-)
+_headers_st = st.lists(st.tuples(_header_name_st, _header_value_st), min_size=0, max_size=8)
 
 # Any valid Python string — UTF-8 only, no unpaired surrogates (those can't
 # cross the FFI boundary because Python rejects them at the encode step).
@@ -97,9 +92,7 @@ def allow_all_engine() -> WasmEngine:
 @pytest.fixture()
 def deny_all_engine() -> WasmEngine:
     policy = {"agent": "test-agent", "default": "deny", "rules": []}
-    return WasmEngine(
-        json.dumps(policy), "test-agent", private_key_bytes=b"", instance_id=""
-    )
+    return WasmEngine(json.dumps(policy), "test-agent", private_key_bytes=b"", instance_id="")
 
 
 # Hypothesis reuses the function-scoped engine fixture across all examples
@@ -119,9 +112,7 @@ _FIXTURE_SETTINGS = settings(
 
 @given(payload=_any_utf8_st)
 @_FIXTURE_SETTINGS
-def test_utf8_round_trip_via_request_id(
-    allow_all_engine: WasmEngine, payload: str
-) -> None:
+def test_utf8_round_trip_via_request_id(allow_all_engine: WasmEngine, payload: str) -> None:
     """Any UTF-8 string survives Python → WASM → Python unchanged.
 
     The ``request_id`` field is the cleanest probe for this: the WASM core
@@ -149,9 +140,7 @@ def test_utf8_round_trip_via_request_id(
     method=_method_st,
     url=_url_st,
     headers=_headers_st,
-    request_id=st.text(
-        alphabet="abcdefghijklmnopqrstuvwxyz0123456789-_", min_size=1, max_size=50
-    ),
+    request_id=st.text(alphabet="abcdefghijklmnopqrstuvwxyz0123456789-_", min_size=1, max_size=50),
 )
 @_FIXTURE_SETTINGS
 def test_evaluate_produces_valid_result_for_any_request(
@@ -273,6 +262,4 @@ def test_malformed_policy_raises_init_error(malformed: str) -> None:
     undefined state.
     """
     with pytest.raises(CheckrdInitError):
-        WasmEngine(
-            malformed, "test-agent", private_key_bytes=b"", instance_id=""
-        )
+        WasmEngine(malformed, "test-agent", private_key_bytes=b"", instance_id="")

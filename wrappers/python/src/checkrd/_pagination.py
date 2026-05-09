@@ -228,11 +228,7 @@ class AsyncCursorPage(BaseAsyncPage[T]):
         return self.next_cursor is not None and self._fetch_next is not None
 
     async def get_next_page(self) -> Optional["AsyncCursorPage[T]"]:
-        if (
-            not await self.has_next_page()
-            or self._fetch_next is None
-            or self.next_cursor is None
-        ):
+        if not await self.has_next_page() or self._fetch_next is None or self.next_cursor is None:
             return None
         return await self._fetch_next(self.next_cursor)
 
@@ -285,8 +281,14 @@ __all__ = [
 # of how they were imported. Avoids confusion when users grep through
 # logs for pagination-related stacks.
 for _cls in (
-    BasePage, SinglePage, CursorPage, OffsetPage,
-    BaseAsyncPage, AsyncSinglePage, AsyncCursorPage, AsyncOffsetPage,
+    BasePage,
+    SinglePage,
+    CursorPage,
+    OffsetPage,
+    BaseAsyncPage,
+    AsyncSinglePage,
+    AsyncCursorPage,
+    AsyncOffsetPage,
 ):
     _cls.__module__ = "checkrd._pagination"
 del _cls

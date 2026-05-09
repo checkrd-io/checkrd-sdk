@@ -76,15 +76,17 @@ class RateLimitFilter(logging.Filter):
 
 # Header names whose values must be redacted in log output. Case-insensitive.
 # Matches the same set as _SENSITIVE_HEADER_NAMES in transports/_httpx.py.
-_REDACT_HEADERS = frozenset({
-    "authorization",
-    "x-api-key",
-    "api-key",
-    "cookie",
-    "set-cookie",
-    "proxy-authorization",
-    "x-checkrd-api-key",
-})
+_REDACT_HEADERS = frozenset(
+    {
+        "authorization",
+        "x-api-key",
+        "api-key",
+        "cookie",
+        "set-cookie",
+        "proxy-authorization",
+        "x-checkrd-api-key",
+    }
+)
 
 # Regex that matches header-value patterns in log messages. Catches both
 # "Header: value" and "('Header', 'value')" tuple repr formats that
@@ -133,6 +135,7 @@ class SensitiveHeadersFilter(logging.Filter):
     @staticmethod
     def _redact(text: str) -> str:
         """Replace sensitive header values with [REDACTED]."""
+
         def _replacer(m: re.Match) -> str:  # type: ignore[type-arg]
             if m.group(1):
                 # "Header: value" format

@@ -136,9 +136,7 @@ class TestParserIsTotal:
         deadline=None,
         suppress_health_check=[HealthCheck.too_slow],
     )
-    def test_random_bytes_decoded_as_latin1_never_crashes(
-        self, header_bytes: bytes
-    ) -> None:
+    def test_random_bytes_decoded_as_latin1_never_crashes(self, header_bytes: bytes) -> None:
         # Real frameworks hand the header as a ``str``; if a buggy
         # framework hands raw bytes it'll be decoded as Latin-1 by
         # WSGI/ASGI before hitting us. Latin-1 round-trips every byte
@@ -198,9 +196,7 @@ class TestHexDecoder:
         sig_len=st.integers(min_value=0, max_value=128).filter(lambda n: n != 64),
     )
     @settings(max_examples=100, deadline=None)
-    def test_wrong_length_signature_is_malformed(
-        self, ts: int, sig_len: int
-    ) -> None:
+    def test_wrong_length_signature_is_malformed(self, ts: int, sig_len: int) -> None:
         # Build a hex-like string of the wrong length; parser must
         # reject without ever invoking HMAC.
         sig = "a" * sig_len
@@ -219,9 +215,7 @@ class TestHexDecoder:
         ts=_ts_st,
         # 64-char strings that are ALMOST hex but contain at least one
         # invalid char. Drawn deliberately to exercise the regex.
-        invalid_char=st.sampled_from(
-            ["G", "Z", "g", "z", "!", " ", "/", "ñ", "💀"]
-        ),
+        invalid_char=st.sampled_from(["G", "Z", "g", "z", "!", " ", "/", "ñ", "💀"]),
         position=st.integers(min_value=0, max_value=63),
     )
     @settings(max_examples=100, deadline=None)
@@ -244,14 +238,10 @@ class TestHexDecoder:
 
     @given(
         ts=_ts_st,
-        sig_hex=st.text(
-            alphabet="0123456789abcdefABCDEF", min_size=64, max_size=64
-        ),
+        sig_hex=st.text(alphabet="0123456789abcdefABCDEF", min_size=64, max_size=64),
     )
     @settings(max_examples=100, deadline=None)
-    def test_well_formed_hex_reaches_signature_compare(
-        self, ts: int, sig_hex: str
-    ) -> None:
+    def test_well_formed_hex_reaches_signature_compare(self, ts: int, sig_hex: str) -> None:
         # A correctly-shaped envelope with random hex must reach the
         # HMAC compare path (and fail there as ``signature_mismatch``
         # because the random hex has 1 in 2^256 odds of matching).
@@ -279,9 +269,7 @@ class TestRoundTripAndTamper:
 
     @given(secret=_secret_st, ts=_ts_st, body=_body_st)
     @settings(max_examples=100, deadline=None)
-    def test_signed_then_verified_round_trip(
-        self, secret: str, ts: int, body: bytes
-    ) -> None:
+    def test_signed_then_verified_round_trip(self, secret: str, ts: int, body: bytes) -> None:
         sig = _sign(secret, ts, body)
         # No exception → success. The verifier returns ``None``.
         verify_webhook(
@@ -319,9 +307,7 @@ class TestRoundTripAndTamper:
 
     @given(secret=_secret_st, ts=_ts_st, body=_body_st)
     @settings(max_examples=100, deadline=None)
-    def test_timestamp_replay_invalidates(
-        self, secret: str, ts: int, body: bytes
-    ) -> None:
+    def test_timestamp_replay_invalidates(self, secret: str, ts: int, body: bytes) -> None:
         # Sign at ``ts``, replay header with ``ts+1``. The signed
         # payload prefix changes, so HMAC must not match.
         sig = _sign(secret, ts, body)

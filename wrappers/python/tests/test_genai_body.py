@@ -19,11 +19,13 @@ from checkrd._genai_body import extract_request_attrs, extract_response_attrs
 
 
 def test_openai_request_extracts_model_and_stream() -> None:
-    body = json.dumps({
-        "model": "gpt-4o-mini",
-        "messages": [{"role": "user", "content": "hi"}],
-        "stream": True,
-    }).encode("utf-8")
+    body = json.dumps(
+        {
+            "model": "gpt-4o-mini",
+            "messages": [{"role": "user", "content": "hi"}],
+            "stream": True,
+        }
+    ).encode("utf-8")
     assert extract_request_attrs("openai", body) == {
         "gen_ai.request.model": "gpt-4o-mini",
         "gen_ai.request.stream": True,
@@ -38,16 +40,18 @@ def test_openai_request_handles_missing_stream() -> None:
 
 
 def test_openai_response_extracts_usage() -> None:
-    body = json.dumps({
-        "id": "chatcmpl-...",
-        "model": "gpt-4o-mini-2024-07-18",
-        "choices": [],
-        "usage": {
-            "prompt_tokens": 10,
-            "completion_tokens": 25,
-            "total_tokens": 35,
-        },
-    }).encode("utf-8")
+    body = json.dumps(
+        {
+            "id": "chatcmpl-...",
+            "model": "gpt-4o-mini-2024-07-18",
+            "choices": [],
+            "usage": {
+                "prompt_tokens": 10,
+                "completion_tokens": 25,
+                "total_tokens": 35,
+            },
+        }
+    ).encode("utf-8")
     assert extract_response_attrs("openai", body) == {
         "gen_ai.response.model": "gpt-4o-mini-2024-07-18",
         "gen_ai.usage.input_tokens": 10,
@@ -58,10 +62,12 @@ def test_openai_response_extracts_usage() -> None:
 def test_azure_openai_uses_same_shape() -> None:
     """Azure OpenAI ships the OpenAI-compatible response — extractor
     must route both providers through the same code path."""
-    body = json.dumps({
-        "model": "gpt-4o-mini",
-        "usage": {"prompt_tokens": 5, "completion_tokens": 10},
-    }).encode("utf-8")
+    body = json.dumps(
+        {
+            "model": "gpt-4o-mini",
+            "usage": {"prompt_tokens": 5, "completion_tokens": 10},
+        }
+    ).encode("utf-8")
     assert extract_response_attrs("azure.openai", body) == {
         "gen_ai.response.model": "gpt-4o-mini",
         "gen_ai.usage.input_tokens": 5,
@@ -75,11 +81,13 @@ def test_azure_openai_uses_same_shape() -> None:
 
 
 def test_anthropic_request_extracts_model_and_stream() -> None:
-    body = json.dumps({
-        "model": "claude-3-haiku-20240307",
-        "messages": [{"role": "user", "content": "hi"}],
-        "stream": False,
-    }).encode("utf-8")
+    body = json.dumps(
+        {
+            "model": "claude-3-haiku-20240307",
+            "messages": [{"role": "user", "content": "hi"}],
+            "stream": False,
+        }
+    ).encode("utf-8")
     assert extract_request_attrs("anthropic", body) == {
         "gen_ai.request.model": "claude-3-haiku-20240307",
         "gen_ai.request.stream": False,
@@ -87,13 +95,15 @@ def test_anthropic_request_extracts_model_and_stream() -> None:
 
 
 def test_anthropic_response_extracts_usage() -> None:
-    body = json.dumps({
-        "id": "msg_...",
-        "type": "message",
-        "model": "claude-3-haiku-20240307",
-        "content": [],
-        "usage": {"input_tokens": 12, "output_tokens": 38},
-    }).encode("utf-8")
+    body = json.dumps(
+        {
+            "id": "msg_...",
+            "type": "message",
+            "model": "claude-3-haiku-20240307",
+            "content": [],
+            "usage": {"input_tokens": 12, "output_tokens": 38},
+        }
+    ).encode("utf-8")
     assert extract_response_attrs("anthropic", body) == {
         "gen_ai.response.model": "claude-3-haiku-20240307",
         "gen_ai.usage.input_tokens": 12,
@@ -104,10 +114,12 @@ def test_anthropic_response_extracts_usage() -> None:
 def test_aws_bedrock_uses_anthropic_shape() -> None:
     """Anthropic-on-Bedrock returns the same envelope — extractor
     routes ``aws.bedrock`` through the same code path."""
-    body = json.dumps({
-        "model": "anthropic.claude-3-haiku-20240307-v1:0",
-        "usage": {"input_tokens": 7, "output_tokens": 14},
-    }).encode("utf-8")
+    body = json.dumps(
+        {
+            "model": "anthropic.claude-3-haiku-20240307-v1:0",
+            "usage": {"input_tokens": 7, "output_tokens": 14},
+        }
+    ).encode("utf-8")
     assert extract_response_attrs("aws.bedrock", body) == {
         "gen_ai.response.model": "anthropic.claude-3-haiku-20240307-v1:0",
         "gen_ai.usage.input_tokens": 7,
@@ -172,10 +184,12 @@ def test_missing_fields_extract_partial() -> None:
 
 def test_wrong_type_fields_skipped() -> None:
     """``usage.prompt_tokens`` must be an int — string values are skipped."""
-    body = json.dumps({
-        "model": "gpt-4o",
-        "usage": {"prompt_tokens": "ten", "completion_tokens": 5},
-    }).encode("utf-8")
+    body = json.dumps(
+        {
+            "model": "gpt-4o",
+            "usage": {"prompt_tokens": "ten", "completion_tokens": 5},
+        }
+    ).encode("utf-8")
     attrs = extract_response_attrs("openai", body)
     # ``completion_tokens`` is valid; ``prompt_tokens`` is skipped.
     assert "gen_ai.usage.input_tokens" not in attrs

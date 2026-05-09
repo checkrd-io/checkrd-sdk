@@ -22,11 +22,13 @@ from checkrd.exceptions import CheckrdPolicyDenied
 async def _hello_app(scope: dict[str, Any], receive: Any, send: Any) -> None:
     """Minimal ASGI app that always returns 200 'hello'."""
     await receive()  # consume the request body
-    await send({
-        "type": "http.response.start",
-        "status": 200,
-        "headers": [(b"content-type", b"text/plain")],
-    })
+    await send(
+        {
+            "type": "http.response.start",
+            "status": 200,
+            "headers": [(b"content-type", b"text/plain")],
+        }
+    )
     await send({"type": "http.response.body", "body": b"hello"})
 
 
@@ -41,7 +43,8 @@ async def _deny_app(scope: dict[str, Any], receive: Any, send: Any) -> None:
 
 
 async def _drive_request(
-    app: Any, scope: dict[str, Any] | None = None,
+    app: Any,
+    scope: dict[str, Any] | None = None,
 ) -> tuple[int, dict[bytes, bytes], bytes]:
     """Drive one HTTP request through an ASGI app and collect the response."""
     if scope is None:
@@ -87,10 +90,13 @@ class TestCheckrdASGIMiddleware:
 
     def test_preserves_dashboard_url_default(self) -> None:
         async def deny_no_dashboard(
-            scope: dict[str, Any], receive: Any, send: Any,
+            scope: dict[str, Any],
+            receive: Any,
+            send: Any,
         ) -> None:
             raise CheckrdPolicyDenied(
-                reason="blocked", request_id="r",
+                reason="blocked",
+                request_id="r",
             )
 
         wrapped = CheckrdASGIMiddleware(
@@ -108,7 +114,9 @@ class TestCheckrdASGIMiddleware:
         called = []
 
         async def lifespan_app(
-            scope: dict[str, Any], receive: Any, send: Any,
+            scope: dict[str, Any],
+            receive: Any,
+            send: Any,
         ) -> None:
             called.append(scope["type"])
 

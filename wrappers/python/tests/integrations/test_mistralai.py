@@ -47,9 +47,7 @@ class TestMistralInstrumentation:
 
         user_transport = httpx.MockTransport(lambda req: httpx.Response(200))
         with httpx.Client(transport=user_transport) as user_client:
-            client = fake_mistralai_module.Mistral(
-                api_key="mist-test", http_client=user_client
-            )
+            client = fake_mistralai_module.Mistral(api_key="mist-test", http_client=user_client)
 
             wrapper = client._client._transport
             assert isinstance(wrapper, CheckrdTransport)

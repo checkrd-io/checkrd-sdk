@@ -130,5 +130,6 @@ BeforeSendHint = "dict[str, object]"
 #: event but never takes down the calling thread or the user's
 #: request critical path.
 BeforeSendHook = Callable[
-    ["dict[str, object]", "dict[str, object]"], Optional["dict[str, object]"],
+    ["dict[str, object]", "dict[str, object]"],
+    Optional["dict[str, object]"],
 ]

@@ -138,6 +138,7 @@ from checkrd.sinks import (
 from checkrd.batcher import DropReason, OnDropCallback
 from checkrd.transports._httpx import CheckrdAsyncTransport, CheckrdTransport
 from checkrd.watchers import KillSwitchFileWatcher, PolicyFileWatcher
+
 # `Checkrd` / `AsyncCheckrd` are the single public entry point — they
 # match the OpenAI / Anthropic / Stripe SDK shape (one constructor,
 # keyword-only arguments, methods for every verb). The lower-level
@@ -248,6 +249,7 @@ logger.addFilter(_sensitive_filter)
 for _http_logger_name in ("httpx", "httpcore"):
     logging.getLogger(_http_logger_name).addFilter(_sensitive_filter)
 
+
 def _no_throw(default: Any = None) -> Callable[[_F], _F]:
     """Decorator that catches unexpected exceptions from public SDK methods.
 
@@ -258,6 +260,7 @@ def _no_throw(default: Any = None) -> Callable[[_F], _F]:
     Does NOT swallow ``CheckrdPolicyDenied`` or ``CheckrdInitError`` (those
     are deliberate user-facing signals) or ``KeyboardInterrupt``/``SystemExit``.
     """
+
     def decorator(fn: _F) -> _F:
         @functools.wraps(fn)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -272,7 +275,9 @@ def _no_throw(default: Any = None) -> Callable[[_F], _F]:
                     exc_info=True,
                 )
                 return default
+
         return wrapper  # type: ignore[return-value]
+
     return decorator
 
 
@@ -329,38 +334,59 @@ def wrap(
             owns its error handling.
     """
     runtime = _build_runtime(
-        agent_id=agent_id, policy=policy, identity=identity, enforce=enforce,
-        control_plane_url=control_plane_url, api_key=api_key,
-        telemetry_sink=telemetry_sink, security_mode=security_mode,
+        agent_id=agent_id,
+        policy=policy,
+        identity=identity,
+        enforce=enforce,
+        control_plane_url=control_plane_url,
+        api_key=api_key,
+        telemetry_sink=telemetry_sink,
+        security_mode=security_mode,
         on_telemetry_drop=on_telemetry_drop,
-        max_retries=max_retries, timeout=timeout, connect_timeout=connect_timeout,
+        max_retries=max_retries,
+        timeout=timeout,
+        connect_timeout=connect_timeout,
     )
     if runtime is None:
         return client
 
     client._transport = CheckrdTransport(
-        client._transport, runtime.engine,
-        enforce=runtime.effective_enforce, batcher=runtime.sink,
+        client._transport,
+        runtime.engine,
+        enforce=runtime.effective_enforce,
+        batcher=runtime.sink,
         agent_id=runtime.settings.agent_id,
         dashboard_url=runtime.settings.dashboard_url or "",
-        on_deny=on_deny, on_allow=on_allow, before_request=before_request,
+        on_deny=on_deny,
+        on_allow=on_allow,
+        before_request=before_request,
         security_mode=runtime.settings.security_mode,
     )
     _maybe_start_control(
-        runtime.engine, runtime.settings.agent_id,
-        runtime.settings.control_plane_url, runtime.settings.api_key, client,
+        runtime.engine,
+        runtime.settings.agent_id,
+        runtime.settings.control_plane_url,
+        runtime.settings.api_key,
+        client,
         api_version=runtime.settings.api_version,
         circuit_breaker=runtime.breaker,
     )
     _maybe_register_public_key(
-        runtime.settings.control_plane_url, runtime.settings.api_key,
-        runtime.settings.agent_id, runtime.identity,
+        runtime.settings.control_plane_url,
+        runtime.settings.api_key,
+        runtime.settings.agent_id,
+        runtime.identity,
         api_version=runtime.settings.api_version,
-        max_retries=max_retries, timeout=timeout,
+        max_retries=max_retries,
+        timeout=timeout,
     )
     _maybe_start_watchers(
-        client, runtime.engine, policy if policy_watch else None,
-        policy_watch_interval_secs, killswitch_file, killswitch_poll_interval_secs,
+        client,
+        runtime.engine,
+        policy if policy_watch else None,
+        policy_watch_interval_secs,
+        killswitch_file,
+        killswitch_poll_interval_secs,
     )
     if runtime.sink is not None:
         client._checkrd_batcher = runtime.sink  # type: ignore[attr-defined]
@@ -403,22 +429,33 @@ def wrap_async(
         cancellation differs from CPython asyncio's.
     """
     runtime = _build_runtime(
-        agent_id=agent_id, policy=policy, identity=identity, enforce=enforce,
-        control_plane_url=control_plane_url, api_key=api_key,
-        telemetry_sink=telemetry_sink, security_mode=security_mode,
+        agent_id=agent_id,
+        policy=policy,
+        identity=identity,
+        enforce=enforce,
+        control_plane_url=control_plane_url,
+        api_key=api_key,
+        telemetry_sink=telemetry_sink,
+        security_mode=security_mode,
         on_telemetry_drop=on_telemetry_drop,
         use_async_batcher=use_async_batcher,
-        max_retries=max_retries, timeout=timeout, connect_timeout=connect_timeout,
+        max_retries=max_retries,
+        timeout=timeout,
+        connect_timeout=connect_timeout,
     )
     if runtime is None:
         return client
 
     client._transport = CheckrdAsyncTransport(
-        client._transport, runtime.engine,
-        enforce=runtime.effective_enforce, batcher=runtime.sink,
+        client._transport,
+        runtime.engine,
+        enforce=runtime.effective_enforce,
+        batcher=runtime.sink,
         agent_id=runtime.settings.agent_id,
         dashboard_url=runtime.settings.dashboard_url or "",
-        on_deny=on_deny, on_allow=on_allow, before_request=before_request,
+        on_deny=on_deny,
+        on_allow=on_allow,
+        before_request=before_request,
         security_mode=runtime.settings.security_mode,
     )
     # Async wrap path: use ``AsyncControlReceiver`` so the SSE
@@ -428,20 +465,30 @@ def wrap_async(
     # ``httpx.AsyncClient`` outside an event loop are unusual but
     # legal — that path keeps working).
     _maybe_start_async_control(
-        runtime.engine, runtime.settings.agent_id,
-        runtime.settings.control_plane_url, runtime.settings.api_key, client,
+        runtime.engine,
+        runtime.settings.agent_id,
+        runtime.settings.control_plane_url,
+        runtime.settings.api_key,
+        client,
         api_version=runtime.settings.api_version,
         circuit_breaker=runtime.breaker,
     )
     _maybe_register_public_key(
-        runtime.settings.control_plane_url, runtime.settings.api_key,
-        runtime.settings.agent_id, runtime.identity,
+        runtime.settings.control_plane_url,
+        runtime.settings.api_key,
+        runtime.settings.agent_id,
+        runtime.identity,
         api_version=runtime.settings.api_version,
-        max_retries=max_retries, timeout=timeout,
+        max_retries=max_retries,
+        timeout=timeout,
     )
     _maybe_start_watchers(
-        client, runtime.engine, policy if policy_watch else None,
-        policy_watch_interval_secs, killswitch_file, killswitch_poll_interval_secs,
+        client,
+        runtime.engine,
+        policy if policy_watch else None,
+        policy_watch_interval_secs,
+        killswitch_file,
+        killswitch_poll_interval_secs,
     )
     if runtime.sink is not None:
         client._checkrd_batcher = runtime.sink  # type: ignore[attr-defined]
@@ -454,7 +501,8 @@ def wrap_async(
 
 
 def _resolve_policy(
-    policy: Union[str, Path, "Policy", None], agent_id: str,
+    policy: Union[str, Path, "Policy", None],
+    agent_id: str,
 ) -> tuple[str, bool]:
     if policy is not None:
         return load_config(policy=policy), True
@@ -516,7 +564,9 @@ def _resolve_effective_enforce(settings: Settings, policy_was_explicit: bool) ->
 
 
 def _create_engine_from_json(
-    policy_json: str, agent_id: str, identity: IdentityProvider,
+    policy_json: str,
+    agent_id: str,
+    identity: IdentityProvider,
 ) -> WasmEngine:
     # For LocalIdentity, use _private_key_ref() to get the mutable bytearray
     # directly. This avoids creating an immutable bytes() copy that cannot be
@@ -531,7 +581,9 @@ def _create_engine_from_json(
         # instance_id so the WASM core can identify the signer.
         private_key = identity.private_key_bytes or b""
         instance_id = identity.instance_id if identity.private_key_bytes is None else ""
-        engine = WasmEngine(policy_json, agent_id, private_key_bytes=private_key, instance_id=instance_id)
+        engine = WasmEngine(
+            policy_json, agent_id, private_key_bytes=private_key, instance_id=instance_id
+        )
     return engine
 
 
@@ -578,9 +630,12 @@ def _build_runtime(
     disable itself.
     """
     settings = resolve(
-        agent_id=agent_id, api_key=api_key,
-        control_plane_url=control_plane_url, enforce=enforce,
-        debug=debug, security_mode=security_mode,
+        agent_id=agent_id,
+        api_key=api_key,
+        control_plane_url=control_plane_url,
+        enforce=enforce,
+        debug=debug,
+        security_mode=security_mode,
         api_version=api_version,
     )
     # Operator-facing PII banner fires BEFORE the disabled short-circuit.
@@ -591,6 +646,7 @@ def _build_runtime(
     # Checkrd entry point observes ``debug=True`` or ``CHECKRD_DEBUG=1``.
     if settings.debug:
         from checkrd._logging import warn_debug_pii_risk
+
         warn_debug_pii_risk()
 
     if settings.disabled:
@@ -645,8 +701,11 @@ def _build_runtime(
     # operator dashboards see consistent behaviour.
     breaker = CircuitBreaker()
     sink = _resolve_sink(
-        telemetry_sink, settings.control_plane_url, settings.api_key,
-        engine, settings.agent_id,
+        telemetry_sink,
+        settings.control_plane_url,
+        settings.api_key,
+        engine,
+        settings.agent_id,
         on_drop=on_telemetry_drop,
         api_version=settings.api_version,
         use_async=use_async_batcher,
@@ -656,8 +715,11 @@ def _build_runtime(
         circuit_breaker=breaker,
     )
     return _Runtime(
-        engine=engine, identity=identity_provider, sink=sink,
-        effective_enforce=effective_enforce, settings=settings,
+        engine=engine,
+        identity=identity_provider,
+        sink=sink,
+        effective_enforce=effective_enforce,
+        settings=settings,
         breaker=breaker,
     )
 
@@ -711,12 +773,19 @@ def init(
     set_degraded(False)  # reset on re-init
 
     runtime = _build_runtime(
-        agent_id=agent_id, policy=policy, identity=identity, enforce=enforce,
-        control_plane_url=control_plane_url, api_key=api_key,
-        telemetry_sink=telemetry_sink, debug=debug,
+        agent_id=agent_id,
+        policy=policy,
+        identity=identity,
+        enforce=enforce,
+        control_plane_url=control_plane_url,
+        api_key=api_key,
+        telemetry_sink=telemetry_sink,
+        debug=debug,
         security_mode=security_mode,
         on_telemetry_drop=on_telemetry_drop,
-        max_retries=max_retries, timeout=timeout, connect_timeout=connect_timeout,
+        max_retries=max_retries,
+        timeout=timeout,
+        connect_timeout=connect_timeout,
     )
     if runtime is None:
         return _InitContextManager()  # disabled or degraded
@@ -738,23 +807,34 @@ def init(
                 logger.warning("checkrd: previous context cleanup failed: %s", exc)
 
         ctx = _GlobalContext(
-            engine=runtime.engine, identity=runtime.identity,
-            sink=runtime.sink, enforce=runtime.effective_enforce,
+            engine=runtime.engine,
+            identity=runtime.identity,
+            sink=runtime.sink,
+            enforce=runtime.effective_enforce,
             settings=runtime.settings,
-            on_deny=on_deny, on_allow=on_allow, before_request=before_request,
+            on_deny=on_deny,
+            on_allow=on_allow,
+            before_request=before_request,
         )
         set_context(ctx)
 
     _maybe_register_public_key(
-        runtime.settings.control_plane_url, runtime.settings.api_key,
-        runtime.settings.agent_id, runtime.identity,
+        runtime.settings.control_plane_url,
+        runtime.settings.api_key,
+        runtime.settings.agent_id,
+        runtime.identity,
         api_version=runtime.settings.api_version,
-        max_retries=max_retries, timeout=timeout,
+        max_retries=max_retries,
+        timeout=timeout,
     )
     _global_maybe_start_control(ctx, runtime)
     _global_maybe_start_watchers(
-        ctx, runtime, policy if policy_watch else None,
-        policy_watch_interval_secs, killswitch_file, killswitch_poll_interval_secs,
+        ctx,
+        runtime,
+        policy if policy_watch else None,
+        policy_watch_interval_secs,
+        killswitch_file,
+        killswitch_poll_interval_secs,
     )
     return _InitContextManager()
 
@@ -945,6 +1025,7 @@ def _global_maybe_start_control(ctx: _GlobalContext, runtime: _Runtime) -> None:
     if not (runtime.settings.control_plane_url and runtime.settings.api_key):
         return
     from checkrd.control import ControlReceiver
+
     receiver = ControlReceiver(
         base_url=runtime.settings.control_plane_url,
         agent_id=runtime.settings.agent_id,
@@ -958,7 +1039,8 @@ def _global_maybe_start_control(ctx: _GlobalContext, runtime: _Runtime) -> None:
 
 
 def _global_maybe_start_watchers(
-    ctx: _GlobalContext, runtime: _Runtime,
+    ctx: _GlobalContext,
+    runtime: _Runtime,
     policy: Union[str, Path, "Policy", None],
     policy_interval: float,
     killswitch_file: Union[str, Path, None],
@@ -974,7 +1056,9 @@ def _global_maybe_start_watchers(
     if killswitch_file is not None:
         try:
             ks = KillSwitchFileWatcher(
-                runtime.engine, killswitch_file, interval_secs=killswitch_interval,
+                runtime.engine,
+                killswitch_file,
+                interval_secs=killswitch_interval,
             )
             ks.start()
             ctx.watchers.append(ks)
@@ -1046,41 +1130,54 @@ def _uninstrument_one(attr: str, cls: type) -> None:
 def instrument_openai() -> None:
     _instrument_one("_OPENAI_INSTRUMENTOR", OpenAIInstrumentor)
 
+
 def uninstrument_openai() -> None:
     _uninstrument_one("_OPENAI_INSTRUMENTOR", OpenAIInstrumentor)
+
 
 def instrument_anthropic() -> None:
     _instrument_one("_ANTHROPIC_INSTRUMENTOR", AnthropicInstrumentor)
 
+
 def uninstrument_anthropic() -> None:
     _uninstrument_one("_ANTHROPIC_INSTRUMENTOR", AnthropicInstrumentor)
+
 
 def instrument_cohere() -> None:
     _instrument_one("_COHERE_INSTRUMENTOR", CohereInstrumentor)
 
+
 def uninstrument_cohere() -> None:
     _uninstrument_one("_COHERE_INSTRUMENTOR", CohereInstrumentor)
+
 
 def instrument_mistral() -> None:
     _instrument_one("_MISTRAL_INSTRUMENTOR", MistralInstrumentor)
 
+
 def uninstrument_mistral() -> None:
     _uninstrument_one("_MISTRAL_INSTRUMENTOR", MistralInstrumentor)
+
 
 def instrument_groq() -> None:
     _instrument_one("_GROQ_INSTRUMENTOR", GroqInstrumentor)
 
+
 def uninstrument_groq() -> None:
     _uninstrument_one("_GROQ_INSTRUMENTOR", GroqInstrumentor)
+
 
 def instrument_together() -> None:
     _instrument_one("_TOGETHER_INSTRUMENTOR", TogetherInstrumentor)
 
+
 def uninstrument_together() -> None:
     _uninstrument_one("_TOGETHER_INSTRUMENTOR", TogetherInstrumentor)
 
+
 def instrument_google_genai() -> None:
     _instrument_one("_GOOGLE_GENAI_INSTRUMENTOR", GoogleGenAIInstrumentor)
+
 
 def uninstrument_google_genai() -> None:
     _uninstrument_one("_GOOGLE_GENAI_INSTRUMENTOR", GoogleGenAIInstrumentor)
@@ -1092,8 +1189,10 @@ def uninstrument_google_genai() -> None:
 
 
 def _maybe_create_batcher(
-    control_plane_url: Union[str, None], api_key: Union[str, None],
-    engine: WasmEngine, agent_id: str,
+    control_plane_url: Union[str, None],
+    api_key: Union[str, None],
+    engine: WasmEngine,
+    agent_id: str,
     on_drop: Optional[OnDropCallback] = None,
     api_version: str = "",
     *,
@@ -1123,8 +1222,10 @@ def _maybe_create_batcher(
         from checkrd._async_batcher import AsyncTelemetryBatcher
 
         return AsyncTelemetryBatcher(
-            base_url=control_plane_url, api_key=api_key,
-            engine=engine, signer_agent_id=agent_id,
+            base_url=control_plane_url,
+            api_key=api_key,
+            engine=engine,
+            signer_agent_id=agent_id,
             on_drop=on_drop,
             api_version=api_version,
             max_attempts=max_retries,
@@ -1133,9 +1234,12 @@ def _maybe_create_batcher(
             circuit_breaker=circuit_breaker,
         )
     from checkrd.batcher import TelemetryBatcher
+
     return TelemetryBatcher(
-        base_url=control_plane_url, api_key=api_key,
-        engine=engine, signer_agent_id=agent_id,
+        base_url=control_plane_url,
+        api_key=api_key,
+        engine=engine,
+        signer_agent_id=agent_id,
         on_drop=on_drop,
         api_version=api_version,
         max_attempts=max_retries,
@@ -1145,8 +1249,11 @@ def _maybe_create_batcher(
 
 
 def _resolve_sink(
-    explicit: Union[TelemetrySink, None], control_plane_url: Union[str, None],
-    api_key: Union[str, None], engine: WasmEngine, agent_id: str,
+    explicit: Union[TelemetrySink, None],
+    control_plane_url: Union[str, None],
+    api_key: Union[str, None],
+    engine: WasmEngine,
+    agent_id: str,
     on_drop: Optional[OnDropCallback] = None,
     api_version: str = "",
     *,
@@ -1162,18 +1269,27 @@ def _resolve_sink(
         # on_drop has no plausible hookup target.
         return explicit
     return _maybe_create_batcher(
-        control_plane_url, api_key, engine, agent_id,
-        on_drop=on_drop, api_version=api_version,
+        control_plane_url,
+        api_key,
+        engine,
+        agent_id,
+        on_drop=on_drop,
+        api_version=api_version,
         use_async=use_async,
-        max_retries=max_retries, timeout=timeout, connect_timeout=connect_timeout,
+        max_retries=max_retries,
+        timeout=timeout,
+        connect_timeout=connect_timeout,
         circuit_breaker=circuit_breaker,
     )
 
 
 def _maybe_start_watchers(
-    client: object, engine: WasmEngine,
-    policy: Union[str, Path, "Policy", None], policy_interval: float,
-    killswitch_file: Union[str, Path, None], killswitch_interval: float,
+    client: object,
+    engine: WasmEngine,
+    policy: Union[str, Path, "Policy", None],
+    policy_interval: float,
+    killswitch_file: Union[str, Path, None],
+    killswitch_interval: float,
 ) -> None:
     watchers: list[Any] = []
     if policy is not None and isinstance(policy, (str, Path)):
@@ -1205,8 +1321,10 @@ _PK_REGISTER_MAX_DELAY = 10.0  # seconds
 
 
 def _maybe_register_public_key(
-    control_plane_url: Union[str, None], api_key: Union[str, None],
-    agent_id: str, identity: IdentityProvider,
+    control_plane_url: Union[str, None],
+    api_key: Union[str, None],
+    agent_id: str,
+    identity: IdentityProvider,
     api_version: str = "",
     *,
     max_retries: int = _PK_REGISTER_MAX_RETRIES,
@@ -1263,13 +1381,17 @@ def _maybe_register_public_key(
             if attempt > 0:
                 attempt_headers["X-Checkrd-Retry-Count"] = str(attempt)
             req = Request(
-                url, data=body, headers=attempt_headers, method="POST",
+                url,
+                data=body,
+                headers=attempt_headers,
+                method="POST",
             )
             try:
                 with urlopen(req, timeout=timeout) as resp:
                     if resp.status < 400:
                         logger.debug(
-                            "checkrd: public key registration ok (HTTP %d)", resp.status,
+                            "checkrd: public key registration ok (HTTP %d)",
+                            resp.status,
                         )
                         return  # success
             except HTTPError as e:
@@ -1294,9 +1416,11 @@ def _maybe_register_public_key(
                 # Transient server error — retry if attempts remain.
                 if attempt < max_retries - 1:
                     logger.debug(
-                        "checkrd: public key registration HTTP %d, "
-                        "retry %d/%d in %.1fs",
-                        e.code, attempt + 1, max_retries, delay,
+                        "checkrd: public key registration HTTP %d, retry %d/%d in %.1fs",
+                        e.code,
+                        attempt + 1,
+                        max_retries,
+                        delay,
                     )
                     time.sleep(delay)
                     # Jitter: uniform(delay/2, delay) — prevents thundering herd.
@@ -1308,9 +1432,10 @@ def _maybe_register_public_key(
                 # Network-level failure — retry if attempts remain.
                 if attempt < max_retries - 1:
                     logger.debug(
-                        "checkrd: public key registration failed (network), "
-                        "retry %d/%d in %.1fs",
-                        attempt + 1, max_retries, delay,
+                        "checkrd: public key registration failed (network), retry %d/%d in %.1fs",
+                        attempt + 1,
+                        max_retries,
+                        delay,
                     )
                     time.sleep(delay)
                     delay = min(delay * 2, _PK_REGISTER_MAX_DELAY)
@@ -1331,17 +1456,22 @@ def _maybe_register_public_key(
 
 
 def _maybe_start_control(
-    engine: WasmEngine, agent_id: str,
-    control_plane_url: Union[str, None], api_key: Union[str, None],
+    engine: WasmEngine,
+    agent_id: str,
+    control_plane_url: Union[str, None],
+    api_key: Union[str, None],
     client: object,
     api_version: str = "",
     circuit_breaker: Optional[CircuitBreaker] = None,
 ) -> None:
     if control_plane_url and api_key:
         from checkrd.control import ControlReceiver
+
         receiver = ControlReceiver(
-            base_url=control_plane_url, agent_id=agent_id,
-            api_key=api_key, engine=engine,
+            base_url=control_plane_url,
+            agent_id=agent_id,
+            api_key=api_key,
+            engine=engine,
             api_version=api_version,
             circuit_breaker=circuit_breaker,
         )
@@ -1350,8 +1480,10 @@ def _maybe_start_control(
 
 
 def _maybe_start_async_control(
-    engine: WasmEngine, agent_id: str,
-    control_plane_url: Union[str, None], api_key: Union[str, None],
+    engine: WasmEngine,
+    agent_id: str,
+    control_plane_url: Union[str, None],
+    api_key: Union[str, None],
     client: object,
     api_version: str = "",
     circuit_breaker: Optional[CircuitBreaker] = None,
@@ -1375,13 +1507,20 @@ def _maybe_start_async_control(
         # No running loop → fall back to the sync receiver. The
         # daemon thread cooperates fine with an httpx.AsyncClient.
         _maybe_start_control(
-            engine, agent_id, control_plane_url, api_key, client,
-            api_version=api_version, circuit_breaker=circuit_breaker,
+            engine,
+            agent_id,
+            control_plane_url,
+            api_key,
+            client,
+            api_version=api_version,
+            circuit_breaker=circuit_breaker,
         )
         return
     receiver = AsyncControlReceiver(
-        base_url=control_plane_url, agent_id=agent_id,
-        api_key=api_key, engine=engine,
+        base_url=control_plane_url,
+        agent_id=agent_id,
+        api_key=api_key,
+        engine=engine,
         api_version=api_version,
         circuit_breaker=circuit_breaker,
     )
@@ -1442,8 +1581,7 @@ def __getattr__(name: str) -> Any:
             f"https://github.com/checkrd-io/checkrd-sdk/issues."
         )
     raise AttributeError(
-        f"module 'checkrd' has no attribute {name!r}. "
-        f"Public API: see checkrd.__all__."
+        f"module 'checkrd' has no attribute {name!r}. Public API: see checkrd.__all__."
     )
 
 

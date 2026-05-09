@@ -18,12 +18,19 @@ def _mock_handler(request: httpx.Request) -> httpx.Response:
 @pytest.fixture(autouse=True)
 def _reset(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     monkeypatch.setenv("CHECKRD_CONFIG_DIR", str(tmp_path))
-    for var in ("CHECKRD_API_KEY", "CHECKRD_BASE_URL", "CHECKRD_AGENT_ID",
-                "CHECKRD_ENFORCE", "CHECKRD_DISABLED", "CHECKRD_DEBUG"):
+    for var in (
+        "CHECKRD_API_KEY",
+        "CHECKRD_BASE_URL",
+        "CHECKRD_AGENT_ID",
+        "CHECKRD_ENFORCE",
+        "CHECKRD_DISABLED",
+        "CHECKRD_DEBUG",
+    ):
         monkeypatch.delenv(var, raising=False)
     checkrd.shutdown()
     # Reset last eval via the ContextVar directly.
     from checkrd import _state
+
     _state._LAST_EVAL_AT = None
     yield
     checkrd.uninstrument()
@@ -45,8 +52,13 @@ class TestHealthyBeforeInit:
         # see ``None`` here and a stable token in the degraded case.
         result = checkrd.healthy()
         expected_keys = {
-            "status", "engine_loaded", "control_plane_connected",
-            "agent_id", "enforce", "last_eval_at", "degradation_reason",
+            "status",
+            "engine_loaded",
+            "control_plane_connected",
+            "agent_id",
+            "enforce",
+            "last_eval_at",
+            "degradation_reason",
         }
         assert expected_keys == set(result.keys())
         assert result["degradation_reason"] is None

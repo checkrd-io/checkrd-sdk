@@ -85,7 +85,8 @@ def _make_event(**overrides: Any) -> dict[str, Any]:
 
 class TestOTelSpanSinkBasics:
     def test_enqueue_creates_one_span(
-        self, span_exporter: InMemorySpanExporter,
+        self,
+        span_exporter: InMemorySpanExporter,
     ) -> None:
         sink = _sink_with(span_exporter)
         sink.enqueue(_make_event())
@@ -93,7 +94,8 @@ class TestOTelSpanSinkBasics:
         assert len(spans) == 1
 
     def test_span_name_matches_event(
-        self, span_exporter: InMemorySpanExporter,
+        self,
+        span_exporter: InMemorySpanExporter,
     ) -> None:
         sink = _sink_with(span_exporter)
         sink.enqueue(_make_event(span_name="POST custom.example.com"))
@@ -101,7 +103,8 @@ class TestOTelSpanSinkBasics:
         assert spans[0].name == "POST custom.example.com"
 
     def test_span_name_falls_back_to_method_host(
-        self, span_exporter: InMemorySpanExporter,
+        self,
+        span_exporter: InMemorySpanExporter,
     ) -> None:
         """Without an explicit ``span_name``, derive ``{METHOD} {host}``.
 
@@ -117,7 +120,8 @@ class TestOTelSpanSinkBasics:
         assert spans[0].name == "POST api.openai.com"
 
     def test_span_kind_is_client(
-        self, span_exporter: InMemorySpanExporter,
+        self,
+        span_exporter: InMemorySpanExporter,
     ) -> None:
         from opentelemetry.trace import SpanKind
 
@@ -131,7 +135,8 @@ class TestSemConvAttributes:
     """Attribute names are a public contract — dashboards hang off them."""
 
     def test_http_attributes(
-        self, span_exporter: InMemorySpanExporter,
+        self,
+        span_exporter: InMemorySpanExporter,
     ) -> None:
         sink = _sink_with(span_exporter)
         sink.enqueue(_make_event())
@@ -143,7 +148,8 @@ class TestSemConvAttributes:
         assert attrs["checkrd.latency_ms"] == 142.5
 
     def test_gen_ai_attributes(
-        self, span_exporter: InMemorySpanExporter,
+        self,
+        span_exporter: InMemorySpanExporter,
     ) -> None:
         """Telemetry events now use the OTel-spec field names directly
         (``gen_ai.provider.name``, ``gen_ai.request.model``, etc.) —
@@ -153,15 +159,19 @@ class TestSemConvAttributes:
         model/usage. The sink iterates a fixed allowlist of known
         OTel keys so dashboards have a single source of truth."""
         sink = _sink_with(span_exporter)
-        sink.enqueue(_make_event(**{
-            "gen_ai.provider.name": "openai",
-            "gen_ai.operation.name": "chat",
-            "gen_ai.request.model": "gpt-4o",
-            "gen_ai.response.model": "gpt-4o-2024-07-18",
-            "gen_ai.usage.input_tokens": 120,
-            "gen_ai.usage.output_tokens": 80,
-            "gen_ai.request.stream": True,
-        }))
+        sink.enqueue(
+            _make_event(
+                **{
+                    "gen_ai.provider.name": "openai",
+                    "gen_ai.operation.name": "chat",
+                    "gen_ai.request.model": "gpt-4o",
+                    "gen_ai.response.model": "gpt-4o-2024-07-18",
+                    "gen_ai.usage.input_tokens": 120,
+                    "gen_ai.usage.output_tokens": 80,
+                    "gen_ai.request.stream": True,
+                }
+            )
+        )
         attrs = span_exporter.get_finished_spans()[0].attributes
         assert attrs is not None
         assert attrs["gen_ai.provider.name"] == "openai"
@@ -173,16 +183,19 @@ class TestSemConvAttributes:
         assert attrs["gen_ai.request.stream"] is True
 
     def test_checkrd_namespace_attributes(
-        self, span_exporter: InMemorySpanExporter,
+        self,
+        span_exporter: InMemorySpanExporter,
     ) -> None:
         sink = _sink_with(span_exporter)
-        sink.enqueue(_make_event(
-            agent_id="prod-agent-42",
-            policy_result="denied",
-            deny_reason="rate-limit-exceeded",
-            matched_rule="block-new-models",
-            matched_rule_kind="deny",
-        ))
+        sink.enqueue(
+            _make_event(
+                agent_id="prod-agent-42",
+                policy_result="denied",
+                deny_reason="rate-limit-exceeded",
+                matched_rule="block-new-models",
+                matched_rule_kind="deny",
+            )
+        )
         attrs = span_exporter.get_finished_spans()[0].attributes
         assert attrs is not None
         assert attrs["checkrd.agent_id"] == "prod-agent-42"
@@ -192,7 +205,8 @@ class TestSemConvAttributes:
         assert attrs["checkrd.matched_rule_kind"] == "deny"
 
     def test_missing_fields_dont_stamp_keys(
-        self, span_exporter: InMemorySpanExporter,
+        self,
+        span_exporter: InMemorySpanExporter,
     ) -> None:
         """Attributes with a ``None`` / missing source value must not appear.
 
@@ -212,7 +226,8 @@ class TestSemConvAttributes:
 
 class TestSpanStatus:
     def test_status_ok_is_set_on_allowed(
-        self, span_exporter: InMemorySpanExporter,
+        self,
+        span_exporter: InMemorySpanExporter,
     ) -> None:
         from opentelemetry.trace import StatusCode
 
@@ -222,21 +237,25 @@ class TestSpanStatus:
         assert span.status.status_code == StatusCode.OK
 
     def test_status_error_carries_message(
-        self, span_exporter: InMemorySpanExporter,
+        self,
+        span_exporter: InMemorySpanExporter,
     ) -> None:
         from opentelemetry.trace import StatusCode
 
         sink = _sink_with(span_exporter)
-        sink.enqueue(_make_event(
-            span_status_code="ERROR",
-            span_status_message="rate-limit exceeded",
-        ))
+        sink.enqueue(
+            _make_event(
+                span_status_code="ERROR",
+                span_status_message="rate-limit exceeded",
+            )
+        )
         span = span_exporter.get_finished_spans()[0]
         assert span.status.status_code == StatusCode.ERROR
         assert span.status.description == "rate-limit exceeded"
 
     def test_status_unset_when_not_provided(
-        self, span_exporter: InMemorySpanExporter,
+        self,
+        span_exporter: InMemorySpanExporter,
     ) -> None:
         from opentelemetry.trace import StatusCode
 
@@ -250,7 +269,8 @@ class TestSpanStatus:
 
 class TestInjection:
     def test_accepts_explicit_tracer(
-        self, span_exporter: InMemorySpanExporter,
+        self,
+        span_exporter: InMemorySpanExporter,
     ) -> None:
         """Callers who don't want to touch the global provider can inject.
 
@@ -273,14 +293,16 @@ class TestInjection:
 
 class TestRobustness:
     def test_stop_is_idempotent(
-        self, span_exporter: InMemorySpanExporter,
+        self,
+        span_exporter: InMemorySpanExporter,
     ) -> None:
         sink = _sink_with(span_exporter)
         sink.stop()
         sink.stop()  # must not raise
 
     def test_enqueue_after_stop_is_noop(
-        self, span_exporter: InMemorySpanExporter,
+        self,
+        span_exporter: InMemorySpanExporter,
     ) -> None:
         sink = _sink_with(span_exporter)
         sink.stop()
@@ -288,7 +310,8 @@ class TestRobustness:
         assert len(span_exporter.get_finished_spans()) == 0
 
     def test_malformed_event_does_not_raise(
-        self, span_exporter: InMemorySpanExporter,
+        self,
+        span_exporter: InMemorySpanExporter,
     ) -> None:
         """A broken event (wrong type, missing critical field) must NOT
         raise out of enqueue(). Telemetry is best-effort; a bug in the

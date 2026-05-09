@@ -63,13 +63,9 @@ class TestSyncInstrumentation:
         inst = OpenAIInstrumentor()
         inst.instrument()
 
-        user_transport = httpx.MockTransport(
-            lambda req: httpx.Response(200, json={"ok": True})
-        )
+        user_transport = httpx.MockTransport(lambda req: httpx.Response(200, json={"ok": True}))
         with httpx.Client(transport=user_transport) as user_client:
-            client = fake_openai_module.OpenAI(
-                api_key="sk-test", http_client=user_client
-            )
+            client = fake_openai_module.OpenAI(api_key="sk-test", http_client=user_client)
 
             wrapper = client._client._transport
             assert isinstance(wrapper, CheckrdTransport)
@@ -100,9 +96,9 @@ class TestAsyncInstrumentation:
         inst.instrument()
 
         client = fake_openai_module.AsyncOpenAI(api_key="sk-test")
-        assert isinstance(
-            client._client._transport, CheckrdAsyncTransport
-        ), "async OpenAI transport should be wrapped by CheckrdAsyncTransport"
+        assert isinstance(client._client._transport, CheckrdAsyncTransport), (
+            "async OpenAI transport should be wrapped by CheckrdAsyncTransport"
+        )
 
     def test_async_user_transport_preserved(
         self,
@@ -112,13 +108,9 @@ class TestAsyncInstrumentation:
         inst = OpenAIInstrumentor()
         inst.instrument()
 
-        user_transport = httpx.MockTransport(
-            lambda req: httpx.Response(200)
-        )
+        user_transport = httpx.MockTransport(lambda req: httpx.Response(200))
         user_client = httpx.AsyncClient(transport=user_transport)
-        client = fake_openai_module.AsyncOpenAI(
-            api_key="sk-test", http_client=user_client
-        )
+        client = fake_openai_module.AsyncOpenAI(api_key="sk-test", http_client=user_client)
         wrapper = client._client._transport
         assert isinstance(wrapper, CheckrdAsyncTransport)
         assert wrapper._transport is user_transport
@@ -140,9 +132,9 @@ class TestSubclassCoverage:
         inst.instrument()
 
         azure_client = fake_openai_module.AzureOpenAI(api_key="sk-test")
-        assert isinstance(
-            azure_client._client._transport, CheckrdTransport
-        ), "AzureOpenAI should inherit instrumentation via super().__init__"
+        assert isinstance(azure_client._client._transport, CheckrdTransport), (
+            "AzureOpenAI should inherit instrumentation via super().__init__"
+        )
 
 
 @requires_wasm
@@ -180,9 +172,7 @@ class TestIdempotency:
             outer_transport_before = user_client._transport
             assert isinstance(outer_transport_before, CheckrdTransport)
 
-            client = fake_openai_module.OpenAI(
-                api_key="sk-test", http_client=user_client
-            )
+            client = fake_openai_module.OpenAI(api_key="sk-test", http_client=user_client)
             # Should be the SAME CheckrdTransport — not re-wrapped.
             assert client._client._transport is outer_transport_before
 

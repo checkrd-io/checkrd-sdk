@@ -612,7 +612,8 @@ class AsyncCheckrd(Checkrd):
     """
 
     def wrap(  # type: ignore[override]
-        self, client: httpx.AsyncClient,
+        self,
+        client: httpx.AsyncClient,
     ) -> httpx.AsyncClient:
         """Attach Checkrd enforcement to an ``httpx.AsyncClient``."""
         from checkrd import wrap_async as _wrap_async

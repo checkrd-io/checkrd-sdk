@@ -132,6 +132,7 @@ class TestBeforeRequest:
     def test_before_request_returning_event_proceeds_normally(self) -> None:
         def hook(event: CheckrdEvent) -> Optional[CheckrdEvent]:
             return event
+
         with httpx.Client(transport=httpx.MockTransport(_mock_handler)) as client:
             mock_wrap(client, default="deny", before_request=hook)
 
@@ -143,6 +144,7 @@ class TestBeforeRequest:
     def test_before_request_returning_none_skips_evaluation(self) -> None:
         def hook(event: CheckrdEvent) -> None:
             return None  # skip evaluation
+
         with httpx.Client(transport=httpx.MockTransport(_mock_handler)) as client:
             mock_wrap(client, default="deny", before_request=hook)
 
@@ -156,6 +158,7 @@ class TestBeforeRequest:
         def hook(event: CheckrdEvent) -> CheckrdEvent:
             captured.append(event)
             return event
+
         with httpx.Client(transport=httpx.MockTransport(_mock_handler)) as client:
             mock_wrap(client, default="allow", before_request=hook)
 
@@ -169,6 +172,7 @@ class TestBeforeRequest:
     def test_before_request_exception_does_not_crash(self) -> None:
         def hook(event: CheckrdEvent) -> CheckrdEvent:
             raise RuntimeError("hook crashed")
+
         with httpx.Client(transport=httpx.MockTransport(_mock_handler)) as client:
             mock_wrap(client, default="allow", before_request=hook)
 
@@ -204,7 +208,8 @@ class TestAsyncHooks:
     async def test_async_before_request_none_skips(self) -> None:
         async with httpx.AsyncClient(transport=httpx.MockTransport(_mock_handler)) as client:
             mock_wrap_async(
-                client, default="deny",
+                client,
+                default="deny",
                 before_request=lambda e: None,
             )
             response = await client.get("https://api.example.com")
@@ -223,8 +228,11 @@ class TestCombinedHooks:
         deny = MagicMock()
         with httpx.Client(transport=httpx.MockTransport(_mock_handler)) as client:
             mock_wrap(
-                client, default="allow",
-                before_request=before, on_allow=allow, on_deny=deny,
+                client,
+                default="allow",
+                before_request=before,
+                on_allow=allow,
+                on_deny=deny,
             )
 
             client.get("https://api.example.com")
@@ -239,8 +247,11 @@ class TestCombinedHooks:
         deny = MagicMock()
         with httpx.Client(transport=httpx.MockTransport(_mock_handler)) as client:
             mock_wrap(
-                client, rules=DENY_RULES,
-                before_request=before, on_allow=allow, on_deny=deny,
+                client,
+                rules=DENY_RULES,
+                before_request=before,
+                on_allow=allow,
+                on_deny=deny,
             )
 
             with pytest.raises(CheckrdPolicyDenied):

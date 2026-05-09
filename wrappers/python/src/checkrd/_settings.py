@@ -188,14 +188,14 @@ DEFAULT_SECURITY_MODE: SecurityMode = "strict"
 # ``CHECKRD_AGENT_ID`` is set. Ordered by how precisely each one identifies
 # a logical service (vs. a physical host or a one-off invocation).
 _PAAS_ENV_KEYS: tuple[str, ...] = (
-    "FLY_APP_NAME",             # Fly.io
-    "K_SERVICE",                # Knative / Google Cloud Run
-    "AWS_LAMBDA_FUNCTION_NAME", # AWS Lambda
-    "HEROKU_APP_NAME",          # Heroku
-    "RAILWAY_SERVICE_NAME",     # Railway
-    "RENDER_SERVICE_NAME",      # Render
-    "KOYEB_APP_NAME",           # Koyeb
-    "FUNCTION_TARGET",          # Google Cloud Functions (2nd gen)
+    "FLY_APP_NAME",  # Fly.io
+    "K_SERVICE",  # Knative / Google Cloud Run
+    "AWS_LAMBDA_FUNCTION_NAME",  # AWS Lambda
+    "HEROKU_APP_NAME",  # Heroku
+    "RAILWAY_SERVICE_NAME",  # Railway
+    "RENDER_SERVICE_NAME",  # Render
+    "KOYEB_APP_NAME",  # Koyeb
+    "FUNCTION_TARGET",  # Google Cloud Functions (2nd gen)
 )
 
 # Values accepted as a truthy boolean in env vars. Matches the convention
@@ -385,18 +385,12 @@ def _validate_url(url: str, param_name: str, environ: Mapping[str, str]) -> None
     try:
         parsed = urlparse(url)
     except Exception:
-        raise ValueError(
-            f"{param_name} is not a valid URL: {url!r}"
-        )
+        raise ValueError(f"{param_name} is not a valid URL: {url!r}")
 
     if not parsed.scheme:
-        raise ValueError(
-            f"{param_name} has no scheme (expected https://...): {url!r}"
-        )
+        raise ValueError(f"{param_name} has no scheme (expected https://...): {url!r}")
     if not parsed.hostname:
-        raise ValueError(
-            f"{param_name} has no hostname: {url!r}"
-        )
+        raise ValueError(f"{param_name} has no hostname: {url!r}")
 
     if parsed.scheme.lower() != "https":
         if _http_allowed(environ):
@@ -449,9 +443,7 @@ def _wasm_integrity_skipped(environ: Mapping[str, str]) -> bool:
             only reasonable resolution path: either unset the flag or
             add the acknowledgment env var.
     """
-    requested = (
-        environ.get(ENV_SKIP_WASM_INTEGRITY, "").strip().lower() in _TRUTHY
-    )
+    requested = environ.get(ENV_SKIP_WASM_INTEGRITY, "").strip().lower() in _TRUTHY
     legacy = environ.get(ENV_DEV, "").strip().lower() in _TRUTHY
     if not (requested or legacy):
         return False
@@ -525,6 +517,7 @@ def _warn_dev_deprecated() -> None:
         return
     _dev_warning_emitted = True
     import warnings
+
     warnings.warn(
         "CHECKRD_DEV is deprecated and will be removed in 1.0. "
         "It bundled two independent security controls behind one flag. "
@@ -547,10 +540,7 @@ def _resolve_security_mode(
     """
     if explicit is not None:
         if explicit not in ("strict", "permissive"):
-            raise ValueError(
-                f"security_mode must be 'strict' or 'permissive'; "
-                f"got {explicit!r}"
-            )
+            raise ValueError(f"security_mode must be 'strict' or 'permissive'; got {explicit!r}")
         return explicit
     raw = environ.get(ENV_SECURITY_MODE, "").strip().lower()
     if raw == "permissive":
@@ -588,9 +578,7 @@ def _resolve_enforce(
             return None
         parsed = _parse_bool(raw)
         return parsed  # None if unrecognized value -> "auto" fallback
-    raise ValueError(
-        f"enforce must be True, False, or 'auto'; got {enforce!r}"
-    )
+    raise ValueError(f"enforce must be True, False, or 'auto'; got {enforce!r}")
 
 
 def _parse_bool(value: Optional[str]) -> Optional[bool]:

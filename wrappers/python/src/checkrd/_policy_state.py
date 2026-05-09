@@ -161,23 +161,21 @@ def load_persisted_state(
             logger.warning(
                 "checkrd: policy_state.json is %d bytes (cap %d); "
                 "treating as corrupt and starting fresh",
-                size, _MAX_PERSISTED_ENVELOPE_BYTES + 65_536,
+                size,
+                _MAX_PERSISTED_ENVELOPE_BYTES + 65_536,
             )
             return (0, None, None)
         contents = state_path.read_text(encoding="utf-8")
         data = json.loads(contents)
     except (OSError, json.JSONDecodeError) as exc:
         logger.warning(
-            "checkrd: could not read policy_state.json (%s); "
-            "starting fresh",
+            "checkrd: could not read policy_state.json (%s); starting fresh",
             exc,
         )
         return (0, None, None)
 
     if not isinstance(data, dict):
-        logger.warning(
-            "checkrd: policy_state.json is not a JSON object; starting fresh"
-        )
+        logger.warning("checkrd: policy_state.json is not a JSON object; starting fresh")
         return (0, None, None)
     schema = data.get("schema_version")
     if schema != POLICY_STATE_SCHEMA_VERSION:
@@ -187,15 +185,15 @@ def load_persisted_state(
         logger.info(
             "checkrd: policy_state.json schema_version=%r — current "
             "version is %d; will reinitialize from server",
-            schema, POLICY_STATE_SCHEMA_VERSION,
+            schema,
+            POLICY_STATE_SCHEMA_VERSION,
         )
         return (0, None, None)
 
     version = data.get("last_policy_version")
     if not isinstance(version, int) or isinstance(version, bool):
         logger.warning(
-            "checkrd: policy_state.json last_policy_version=%r is not an "
-            "integer; starting fresh",
+            "checkrd: policy_state.json last_policy_version=%r is not an integer; starting fresh",
             version,
         )
         return (0, None, None)
@@ -222,14 +220,12 @@ def load_persisted_state(
     raw_envelope = data.get("bundle_envelope_json")
     if not isinstance(raw_envelope, str):
         logger.warning(
-            "checkrd: policy_state.json bundle_envelope_json is not a string; "
-            "starting fresh"
+            "checkrd: policy_state.json bundle_envelope_json is not a string; starting fresh"
         )
         return (0, None, None)
     if len(raw_envelope.encode("utf-8")) > _MAX_PERSISTED_ENVELOPE_BYTES:
         logger.warning(
-            "checkrd: policy_state.json bundle_envelope_json exceeds %d byte "
-            "cap; starting fresh",
+            "checkrd: policy_state.json bundle_envelope_json exceeds %d byte cap; starting fresh",
             _MAX_PERSISTED_ENVELOPE_BYTES,
         )
         return (0, None, None)
@@ -249,8 +245,7 @@ def load_persisted_state(
         return (0, None, None)
     if not isinstance(envelope_obj, dict):
         logger.warning(
-            "checkrd: policy_state.json bundle_envelope_json is not a JSON "
-            "object; starting fresh"
+            "checkrd: policy_state.json bundle_envelope_json is not a JSON object; starting fresh"
         )
         return (0, None, None)
 
@@ -311,13 +306,15 @@ def persist_state(
     state_path = path or _default_state_path()
     state_path.parent.mkdir(parents=True, exist_ok=True)
 
-    payload = json.dumps({
-        "schema_version": POLICY_STATE_SCHEMA_VERSION,
-        "last_policy_version": version,
-        "last_policy_hash": bundle_hash,
-        "bundle_envelope_json": bundle_envelope_json,
-        "updated_at": int(time.time()),
-    })
+    payload = json.dumps(
+        {
+            "schema_version": POLICY_STATE_SCHEMA_VERSION,
+            "last_policy_version": version,
+            "last_policy_hash": bundle_hash,
+            "bundle_envelope_json": bundle_envelope_json,
+            "updated_at": int(time.time()),
+        }
+    )
 
     temp_fd, temp_path = tempfile.mkstemp(
         dir=str(state_path.parent),

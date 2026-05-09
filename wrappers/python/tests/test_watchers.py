@@ -147,9 +147,7 @@ class TestPolicyFileWatcher:
         finally:
             watcher.stop()
 
-    def test_missing_file_logs_warning_and_keeps_old_policy(
-        self, tmp_path: Path
-    ) -> None:
+    def test_missing_file_logs_warning_and_keeps_old_policy(self, tmp_path: Path) -> None:
         policy = tmp_path / "policy.yaml"
         policy.write_text(VALID_POLICY_YAML)
 
@@ -283,8 +281,10 @@ class TestKillSwitchFileWatcher:
 
             sentinel.touch()
             wait_for(
-                lambda: engine.set_kill_switch.called
-                and engine.set_kill_switch.call_args_list[-1][0][0] is True,
+                lambda: (
+                    engine.set_kill_switch.called
+                    and engine.set_kill_switch.call_args_list[-1][0][0] is True
+                ),
                 timeout=2.0,
                 poll=0.02,
             )
@@ -303,10 +303,7 @@ class TestKillSwitchFileWatcher:
 
             sentinel.unlink()
             wait_for(
-                lambda: any(
-                    call[0][0] is False
-                    for call in engine.set_kill_switch.call_args_list
-                ),
+                lambda: any(call[0][0] is False for call in engine.set_kill_switch.call_args_list),
                 timeout=2.0,
                 poll=0.02,
             )
@@ -336,10 +333,7 @@ class TestKillSwitchFileWatcher:
                 # Enable
                 sentinel.touch()
                 wait_for(
-                    lambda: any(
-                        c[0][0] is True
-                        for c in engine.set_kill_switch.call_args_list
-                    ),
+                    lambda: any(c[0][0] is True for c in engine.set_kill_switch.call_args_list),
                     timeout=2.0,
                     poll=0.02,
                 )
@@ -348,10 +342,7 @@ class TestKillSwitchFileWatcher:
                 # Disable
                 sentinel.unlink()
                 wait_for(
-                    lambda: any(
-                        c[0][0] is False
-                        for c in engine.set_kill_switch.call_args_list
-                    ),
+                    lambda: any(c[0][0] is False for c in engine.set_kill_switch.call_args_list),
                     timeout=2.0,
                     poll=0.02,
                 )
@@ -414,7 +405,10 @@ class TestPolicyFileWatcherEdgeCases:
         # multiple writes within a poll interval into a single reload.
         # The watchdog equivalent is exercised in test_watchers_backend.py.
         watcher = PolicyFileWatcher(
-            engine, policy, interval_secs=0.05, backend="poll",
+            engine,
+            policy,
+            interval_secs=0.05,
+            backend="poll",
         )
         try:
             watcher.start()
@@ -454,9 +448,7 @@ class TestPolicyFileWatcherEdgeCases:
             engine.reload_policy.assert_not_called()
 
             # Recreate with different content
-            policy.write_text(
-                "agent: test-agent\ndefault: allow\nrules: []\n"
-            )
+            policy.write_text("agent: test-agent\ndefault: allow\nrules: []\n")
 
             wait_for(
                 lambda: engine.reload_policy.called,
@@ -485,8 +477,10 @@ class TestKillSwitchFileWatcherEdgeCases:
             tmp_file.rename(sentinel)
 
             wait_for(
-                lambda: engine.set_kill_switch.called
-                and engine.set_kill_switch.call_args_list[-1][0][0] is True,
+                lambda: (
+                    engine.set_kill_switch.called
+                    and engine.set_kill_switch.call_args_list[-1][0][0] is True
+                ),
                 timeout=2.0,
                 poll=0.02,
             )

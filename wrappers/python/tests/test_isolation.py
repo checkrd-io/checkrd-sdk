@@ -45,6 +45,7 @@ RATE_LIMITED = json.dumps(
     }
 )
 
+
 def _eval(
     engine: WasmEngine,
     method: str = "GET",
@@ -93,9 +94,7 @@ class TestMultiInstanceIsolation:
 
         # Engine B should still have its full quota
         result_b1 = _eval(engine_b)
-        assert result_b1.allowed, (
-            "engine B should NOT be affected by engine A's rate limit"
-        )
+        assert result_b1.allowed, "engine B should NOT be affected by engine A's rate limit"
 
     def test_kill_switch_isolation(self) -> None:
         """Activating kill switch on one engine does not affect the other."""
@@ -106,9 +105,7 @@ class TestMultiInstanceIsolation:
         engine_a.set_kill_switch(True)
 
         assert not _eval(engine_a).allowed, "engine A should be killed"
-        assert _eval(engine_b).allowed, (
-            "engine B should NOT be affected by engine A's kill switch"
-        )
+        assert _eval(engine_b).allowed, "engine B should NOT be affected by engine A's kill switch"
 
     def test_identity_isolation(self) -> None:
         """Each engine uses its own signing key."""

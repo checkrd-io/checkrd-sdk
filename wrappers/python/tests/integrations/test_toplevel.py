@@ -41,9 +41,7 @@ class TestInitAndInstrument:
         anthropic_client = fake_anthropic_module.Anthropic(api_key="sk-ant-test")
 
         assert isinstance(openai_client._client._transport, CheckrdTransport)
-        assert isinstance(
-            anthropic_client._client._transport, CheckrdTransport
-        )
+        assert isinstance(anthropic_client._client._transport, CheckrdTransport)
 
     def test_instrument_patches_async_libraries(
         self,
@@ -56,12 +54,8 @@ class TestInitAndInstrument:
         async_oai = fake_openai_module.AsyncOpenAI(api_key="sk-test")
         async_anthropic = fake_anthropic_module.AsyncAnthropic(api_key="sk-ant")
 
-        assert isinstance(
-            async_oai._client._transport, CheckrdAsyncTransport
-        )
-        assert isinstance(
-            async_anthropic._client._transport, CheckrdAsyncTransport
-        )
+        assert isinstance(async_oai._client._transport, CheckrdAsyncTransport)
+        assert isinstance(async_anthropic._client._transport, CheckrdAsyncTransport)
 
     def test_uninstrument_reverts_both(
         self,
@@ -75,12 +69,8 @@ class TestInitAndInstrument:
         openai_client = fake_openai_module.OpenAI(api_key="sk-test")
         anthropic_client = fake_anthropic_module.Anthropic(api_key="sk-ant")
 
-        assert not isinstance(
-            openai_client._client._transport, CheckrdTransport
-        )
-        assert not isinstance(
-            anthropic_client._client._transport, CheckrdTransport
-        )
+        assert not isinstance(openai_client._client._transport, CheckrdTransport)
+        assert not isinstance(anthropic_client._client._transport, CheckrdTransport)
 
     def test_instrument_is_idempotent(
         self,
@@ -186,9 +176,7 @@ class TestLibrarySpecificEntryPoints:
 
         assert isinstance(openai_client._client._transport, CheckrdTransport)
         # Anthropic was NOT instrumented — its transport is still raw.
-        assert not isinstance(
-            anthropic_client._client._transport, CheckrdTransport
-        )
+        assert not isinstance(anthropic_client._client._transport, CheckrdTransport)
 
     def test_uninstrument_openai_leaves_anthropic_patched(
         self,
@@ -202,12 +190,8 @@ class TestLibrarySpecificEntryPoints:
         openai_client = fake_openai_module.OpenAI(api_key="sk-test")
         anthropic_client = fake_anthropic_module.Anthropic(api_key="sk-ant")
 
-        assert not isinstance(
-            openai_client._client._transport, CheckrdTransport
-        )
-        assert isinstance(
-            anthropic_client._client._transport, CheckrdTransport
-        )
+        assert not isinstance(openai_client._client._transport, CheckrdTransport)
+        assert isinstance(anthropic_client._client._transport, CheckrdTransport)
 
 
 @requires_wasm
@@ -265,10 +249,9 @@ class TestEndToEndHttpFlow:
         def _handler(request: httpx.Request) -> httpx.Response:
             captured.append(request)
             return httpx.Response(200, json={"ok": True})
+
         with httpx.Client(transport=httpx.MockTransport(_handler)) as user_client:
-            client = fake_openai_module.OpenAI(
-                api_key="sk-test", http_client=user_client
-            )
+            client = fake_openai_module.OpenAI(api_key="sk-test", http_client=user_client)
 
             response = client._client.get("https://api.openai.com/v1/models")
             assert response.status_code == 200

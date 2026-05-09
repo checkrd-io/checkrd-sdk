@@ -321,7 +321,9 @@ class TestCircuitBreakerIntegration:
         with (
             patch.object(receiver, "_run_sse", new=fake_sse),
             patch.object(
-                receiver._stop_event, "wait", side_effect=stop_after_first_iteration,
+                receiver._stop_event,
+                "wait",
+                side_effect=stop_after_first_iteration,
             ),
         ):
             await receiver._run_loop()

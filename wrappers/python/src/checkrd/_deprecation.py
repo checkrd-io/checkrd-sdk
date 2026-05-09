@@ -51,8 +51,7 @@ def deprecation_warning(
     if os.environ.get("CHECKRD_QUIET_DEPRECATIONS") == "1":
         return
     parts = [
-        f"checkrd: '{name}' is deprecated and will be removed in "
-        f"{removed_in_version}.",
+        f"checkrd: '{name}' is deprecated and will be removed in {removed_in_version}.",
     ]
     if detail:
         parts.append(detail)

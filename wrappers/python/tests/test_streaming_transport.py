@@ -103,7 +103,8 @@ class TestSyncStreaming:
         """
         chunks = _sse_chunks(["Hello", " world", "!"])
         with httpx.Client(
-            transport=_make_streaming_transport(chunks), base_url="https://x",
+            transport=_make_streaming_transport(chunks),
+            base_url="https://x",
         ) as client:
             try:
                 checkrd.wrap(client, agent_id="t", policy=ALLOW_ALL)
@@ -123,7 +124,8 @@ class TestSyncStreaming:
         whole point of SSE."""
         chunks = _sse_chunks(["chunk-a", "chunk-b", "chunk-c"])
         with httpx.Client(
-            transport=_make_streaming_transport(chunks), base_url="https://x",
+            transport=_make_streaming_transport(chunks),
+            base_url="https://x",
         ) as client:
             try:
                 checkrd.wrap(client, agent_id="t", policy=ALLOW_ALL)
@@ -142,7 +144,8 @@ class TestSyncStreaming:
         even after partial iteration."""
         chunks = _sse_chunks([f"tok-{i}" for i in range(50)])
         with httpx.Client(
-            transport=_make_streaming_transport(chunks), base_url="https://x",
+            transport=_make_streaming_transport(chunks),
+            base_url="https://x",
         ) as client:
             try:
                 checkrd.wrap(client, agent_id="t", policy=ALLOW_ALL)
@@ -162,11 +165,15 @@ class TestSyncStreaming:
         before the deny takes effect."""
         chunks = _sse_chunks(["should never be seen"])
         with httpx.Client(
-            transport=_make_streaming_transport(chunks), base_url="https://x",
+            transport=_make_streaming_transport(chunks),
+            base_url="https://x",
         ) as client:
             try:
                 checkrd.wrap(
-                    client, agent_id="t", policy=DENY_ALL, enforce=True,
+                    client,
+                    agent_id="t",
+                    policy=DENY_ALL,
+                    enforce=True,
                 )
                 with pytest.raises(checkrd.CheckrdPolicyDenied):
                     client.stream("POST", "/v1/chat").__enter__()
@@ -207,11 +214,7 @@ class TestAsyncStreaming:
             try:
                 checkrd.wrap_async(client, agent_id="t", policy=ALLOW_ALL)
                 async with client.stream("POST", "/v1/chat") as response:
-                    lines = [
-                        line
-                        async for line in response.aiter_lines()
-                        if line
-                    ]
+                    lines = [line async for line in response.aiter_lines() if line]
                 assert len(lines) == 5  # 4 data + DONE
             finally:
                 await client.aclose()
@@ -225,7 +228,10 @@ class TestAsyncStreaming:
         ) as client:
             try:
                 checkrd.wrap_async(
-                    client, agent_id="t", policy=DENY_ALL, enforce=True,
+                    client,
+                    agent_id="t",
+                    policy=DENY_ALL,
+                    enforce=True,
                 )
                 with pytest.raises(checkrd.CheckrdPolicyDenied):
                     async with client.stream("POST", "/v1/chat") as _:

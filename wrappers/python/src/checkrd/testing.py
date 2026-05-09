@@ -166,7 +166,7 @@ class MockEngine:
         url_for_match = url
         for prefix in ("https://", "http://"):
             if url_for_match.startswith(prefix):
-                url_for_match = url_for_match[len(prefix):]
+                url_for_match = url_for_match[len(prefix) :]
                 break
 
         trace = [f"eval {method} {url}"]
@@ -245,9 +245,7 @@ class _MockEvalResult:
                 "request_id": request_id,
                 "policy_result": "allowed" if allowed else "denied",
                 "deny_reason": deny_reason,
-                "timestamp": datetime.now(timezone.utc).strftime(
-                    "%Y-%m-%dT%H:%M:%SZ"
-                ),
+                "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "span_name": "mock",
                 "span_kind": "INTERNAL",
                 "span_status_code": "UNSET",

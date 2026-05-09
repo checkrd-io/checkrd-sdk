@@ -54,9 +54,7 @@ FileWatcherBackend = Literal["auto", "watchdog", "poll"]
 # live watcher in the forked child and call ``_reinit_after_fork`` on each.
 # Same pattern as the telemetry batcher; see ``checkrd._fork``.
 _LIVE_POLICY_WATCHERS: "weakref.WeakSet[PolicyFileWatcher]" = weakref.WeakSet()
-_LIVE_KILLSWITCH_WATCHERS: "weakref.WeakSet[KillSwitchFileWatcher]" = (
-    weakref.WeakSet()
-)
+_LIVE_KILLSWITCH_WATCHERS: "weakref.WeakSet[KillSwitchFileWatcher]" = weakref.WeakSet()
 
 
 def _resolve_backend(
@@ -115,7 +113,9 @@ class _WatchdogObserverHandle:
     """
 
     def __init__(
-        self, target: Path, on_change: Callable[[], None],
+        self,
+        target: Path,
+        on_change: Callable[[], None],
     ) -> None:
         # Lazy imports — keeps `import checkrd.watchers` cheap and
         # callable in environments that don't install the optional dep.
@@ -131,10 +131,7 @@ class _WatchdogObserverHandle:
             ignores anything that isn't our target path."""
 
             def _is_target(self, event: FileSystemEvent) -> bool:
-                return (
-                    not event.is_directory
-                    and event.src_path == target_str
-                )
+                return not event.is_directory and event.src_path == target_str
 
             def on_modified(self, event: FileSystemEvent) -> None:
                 if self._is_target(event):
@@ -328,8 +325,7 @@ class PolicyFileWatcher:
             self._engine.reload_policy(policy_json)
         except (OSError, yaml.YAMLError, CheckrdInitError, ValueError) as exc:
             logger.warning(
-                "checkrd: failed to reload policy from %s (%s); "
-                "keeping previous policy",
+                "checkrd: failed to reload policy from %s (%s); keeping previous policy",
                 self._path,
                 exc,
             )
@@ -500,8 +496,12 @@ def _set_default_poll_interval_for_tests(interval_secs: float) -> None:
 # class definitions) so the forward-references inside the WeakSets are
 # resolved by the time the handlers walk the registries.
 register_fork_handler(
-    _LIVE_POLICY_WATCHERS, "_reinit_after_fork", "policy file watcher",
+    _LIVE_POLICY_WATCHERS,
+    "_reinit_after_fork",
+    "policy file watcher",
 )
 register_fork_handler(
-    _LIVE_KILLSWITCH_WATCHERS, "_reinit_after_fork", "kill switch file watcher",
+    _LIVE_KILLSWITCH_WATCHERS,
+    "_reinit_after_fork",
+    "kill switch file watcher",
 )

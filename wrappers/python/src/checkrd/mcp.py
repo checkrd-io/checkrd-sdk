@@ -135,29 +135,17 @@ def _resolve_options(
         if ctx is not None:
             engine = engine if engine is not None else ctx.engine
             enforce = enforce if enforce is not None else ctx.enforce
-            agent_id = (
-                agent_id
-                if agent_id is not None
-                else ctx.settings.agent_id
-            )
+            agent_id = agent_id if agent_id is not None else ctx.settings.agent_id
             sink = sink if sink is not None else ctx.sink
             dashboard_url = (
-                dashboard_url
-                if dashboard_url is not None
-                else ctx.settings.dashboard_url
+                dashboard_url if dashboard_url is not None else ctx.settings.dashboard_url
             )
     if engine is None:
-        raise TypeError(
-            "wrap_mcp_*() requires engine= or a prior checkrd.init() call"
-        )
+        raise TypeError("wrap_mcp_*() requires engine= or a prior checkrd.init() call")
     if enforce is None:
-        raise TypeError(
-            "wrap_mcp_*() requires enforce= or a prior checkrd.init() call"
-        )
+        raise TypeError("wrap_mcp_*() requires enforce= or a prior checkrd.init() call")
     if agent_id is None:
-        raise TypeError(
-            "wrap_mcp_*() requires agent_id= or a prior checkrd.init() call"
-        )
+        raise TypeError("wrap_mcp_*() requires agent_id= or a prior checkrd.init() call")
     return McpPolicyOptions(
         engine=engine,
         enforce=enforce,
@@ -212,7 +200,9 @@ def _evaluate_or_raise(
     )
 
     _enqueue_telemetry(
-        options.sink, getattr(result, "telemetry_json", ""), options.agent_id,
+        options.sink,
+        getattr(result, "telemetry_json", ""),
+        options.agent_id,
     )
 
     if result.allowed:
@@ -220,7 +210,10 @@ def _evaluate_or_raise(
 
     logger.warning(
         "checkrd: MCP %s '%s' denied: %s (request_id=%s)",
-        method_kind, name, result.deny_reason, result.request_id,
+        method_kind,
+        name,
+        result.deny_reason,
+        result.request_id,
     )
 
     if not options.enforce:
@@ -251,7 +244,9 @@ def _synthetic_url(server_name: str, method_kind: str, name: str) -> str:
 
 
 def _enqueue_telemetry(
-    sink: Optional[TelemetrySink], telemetry_json: str, agent_id: str,
+    sink: Optional[TelemetrySink],
+    telemetry_json: str,
+    agent_id: str,
 ) -> None:
     """Fan an engine telemetry event into the sink (best-effort)."""
     if sink is None or not telemetry_json:
@@ -327,14 +322,16 @@ class _ClientProxy:
     underlying object.
     """
 
-    _WRAPPED_METHODS = frozenset({
-        "call_tool",
-        "read_resource",
-        "get_prompt",
-        "list_tools",
-        "list_resources",
-        "list_prompts",
-    })
+    _WRAPPED_METHODS = frozenset(
+        {
+            "call_tool",
+            "read_resource",
+            "get_prompt",
+            "list_tools",
+            "list_resources",
+            "list_prompts",
+        }
+    )
 
     def __init__(self, target: Any, options: McpPolicyOptions) -> None:
         # Use object.__setattr__ to bypass __setattr__ delegation
@@ -348,7 +345,8 @@ class _ClientProxy:
         if name not in _ClientProxy._WRAPPED_METHODS:
             return attr
         opts: McpPolicyOptions = object.__getattribute__(
-            self, "_checkrd_options",
+            self,
+            "_checkrd_options",
         )
         return _build_client_shim(attr, name, opts)
 
@@ -389,7 +387,10 @@ def _build_client_shim(
         @functools.wraps(underlying)
         async def async_shim(*args: Any, **kwargs: Any) -> Any:
             target_name, arguments = _extract_target(
-                method_name, name_kw, args, kwargs,
+                method_name,
+                name_kw,
+                args,
+                kwargs,
             )
             _evaluate_or_raise(
                 options,
@@ -404,7 +405,10 @@ def _build_client_shim(
     @functools.wraps(underlying)
     def sync_shim(*args: Any, **kwargs: Any) -> Any:
         target_name, arguments = _extract_target(
-            method_name, name_kw, args, kwargs,
+            method_name,
+            name_kw,
+            args,
+            kwargs,
         )
         _evaluate_or_raise(
             options,
@@ -637,7 +641,8 @@ def _wrap_server_handler(
 
 
 def _extract_server_target(
-    args: tuple[Any, ...], kwargs: dict[str, Any],
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
 ) -> tuple[str, Any]:
     """Pull the target name + arguments out of a server handler call.
 
@@ -673,4 +678,3 @@ except ImportError:
         "import, but require the user to provide an MCP-shaped client "
         "or server object. Install with: pip install mcp",
     )
-

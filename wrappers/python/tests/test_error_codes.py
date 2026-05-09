@@ -47,20 +47,23 @@ class TestDeriveInitCode:
 class TestCheckrdPolicyDeniedCode:
     def test_auto_derived_from_reason(self) -> None:
         exc = CheckrdPolicyDenied(
-            reason="denied by rule 'my-rule'", request_id="req-1",
+            reason="denied by rule 'my-rule'",
+            request_id="req-1",
         )
         assert exc.code == "policy_denied"
 
     def test_explicit_code_overrides(self) -> None:
         exc = CheckrdPolicyDenied(
-            reason="denied by rule 'my-rule'", request_id="req-1",
+            reason="denied by rule 'my-rule'",
+            request_id="req-1",
             code="custom_code",
         )
         assert exc.code == "custom_code"
 
     def test_kill_switch_code(self) -> None:
         exc = CheckrdPolicyDenied(
-            reason="kill switch active", request_id="req-1",
+            reason="kill switch active",
+            request_id="req-1",
         )
         assert exc.code == "kill_switch_active"
 

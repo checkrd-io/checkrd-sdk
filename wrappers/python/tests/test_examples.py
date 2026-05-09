@@ -29,10 +29,7 @@ def _example_paths() -> list[Path]:
     """Every `.py` file in the examples directory, excluding __init__."""
     if not EXAMPLES_DIR.is_dir():
         return []
-    return sorted(
-        p for p in EXAMPLES_DIR.glob("*.py")
-        if p.name != "__init__.py"
-    )
+    return sorted(p for p in EXAMPLES_DIR.glob("*.py") if p.name != "__init__.py")
 
 
 @pytest.mark.parametrize("example_path", _example_paths(), ids=lambda p: p.name)
