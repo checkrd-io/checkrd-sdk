@@ -2,6 +2,13 @@
 
 Connects to the control plane SSE endpoint to receive kill switch
 and policy update signals. Falls back to polling if SSE is unavailable.
+
+Policy bundles delivered on ``init`` and ``policy_updated`` are the
+*effective* policy: the control plane has already merged the org-level
+deny rules with the agent-level allow rules before signing. This module
+installs the bytes verbatim through ``reload_policy_signed`` and never
+merges -- the merge logic lives in one place on the server, matching
+the Envoy xDS / OPA Bundles industry pattern.
 """
 
 from __future__ import annotations

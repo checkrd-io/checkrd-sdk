@@ -13,8 +13,15 @@
  *
  *   - `init`               → set kill switch from initial server state
  *   - `kill_switch`        → toggle kill switch
- *   - `policy_updated`     → reserved (signed bundle install path)
+ *   - `policy_updated`     → install signed bundle (server-merged org + agent)
  *   - `policy_deactivated` → install local default-deny policy
+ *
+ * Bundles delivered on `init` and `policy_updated` are the *effective*
+ * policy: the control plane has already merged the org-level deny rules
+ * with the agent-level allow rules before signing. The SDK installs the
+ * bytes verbatim through `reloadPolicySigned` and never merges -- single
+ * source of truth on the server, matching the Envoy xDS / OPA Bundles
+ * pattern.
  *
  * Locally constructed default-deny is consistent with the SDK's "no
  * unsigned distribution path" rule because the bytes never traverse the
