@@ -23,8 +23,8 @@ OpenTelemetry's ``opentelemetry-instrumentation-*`` packages use
 ``wrapt.importer.when_imported`` to hook at module-load time. We
 considered that pattern and chose the simpler ``__init__`` swap
 because every modern AI SDK we support (openai, anthropic, cohere,
-mistralai, groq, together, google-genai) is constructed via a
-top-level class — patching ``__init__`` covers 100% of user
+groq, together, google-genai) is constructed via a top-level class —
+patching ``__init__`` covers 100% of user
 constructions without an import-order dependency that cuts both ways:
 
   - **wrapt.when_imported** lets you patch a module that's already
@@ -193,8 +193,8 @@ class Instrumentor:
 class HttpxClientInstrumentor(Instrumentor):
     """Generic instrumentor for libraries built on an ``httpx.Client``.
 
-    Every modern Python AI SDK (openai, anthropic, cohere, mistralai,
-    groq, together, fireworks, etc.) follows the same architectural
+    Every modern Python AI SDK (openai, anthropic, cohere, groq,
+    together, fireworks, etc.) follows the same architectural
     pattern: a user-facing client class holds an ``httpx.Client`` (or
     ``httpx.AsyncClient``) in an instance attribute and makes every
     outbound HTTP request through it. This instrumentor hooks the target

@@ -53,7 +53,6 @@ export default defineConfig({
     "integrations/_anthropic": "src/integrations/_anthropic.ts",
     "integrations/_cohere": "src/integrations/_cohere.ts",
     "integrations/_groq": "src/integrations/_groq.ts",
-    "integrations/_mistral": "src/integrations/_mistral.ts",
     "integrations/_together": "src/integrations/_together.ts",
     "integrations/_google_genai": "src/integrations/_google_genai.ts",
     // Framework adapters

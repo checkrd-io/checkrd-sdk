@@ -8,7 +8,7 @@
  * Instrumentor injects into the SDK constructor. This file is the
  * single source of truth for those response builders so a regression
  * in one vendor's test exercises the same fixture a future Anthropic /
- * Cohere / Mistral test will use.
+ * Cohere test will use.
  *
  * Design:
  * - Every builder returns a `Response` (the standard Web type), not a

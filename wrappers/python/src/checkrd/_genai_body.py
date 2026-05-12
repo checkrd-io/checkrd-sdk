@@ -30,7 +30,7 @@ Two formats today, both with high adoption:
 
   - **OpenAI** — ``api.openai.com/v1/chat/completions``, also matches
     Azure OpenAI and any provider that ships the OpenAI-compatible
-    response shape (Together, Groq, Mistral with their OpenAI-compat
+    response shape (Together, Groq with their OpenAI-compat
     endpoints, etc.).
   - **Anthropic** — ``api.anthropic.com/v1/messages``, also AWS
     Bedrock with the Anthropic-on-Bedrock shape.

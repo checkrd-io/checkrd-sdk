@@ -3,7 +3,7 @@
  *
  * Exposes `wrapFetch()` which returns a drop-in replacement for the
  * global `fetch`. Every modern LLM SDK (OpenAI v4+, Anthropic, Cohere,
- * Mistral, Groq, Together, Google GenAI) accepts a custom `fetch`
+ * Groq, Together, Google GenAI) accepts a custom `fetch`
  * through its client constructor, so the interception model is uniform:
  * the SDK thinks it's talking to upstream; the wrapped fetch runs
  * policy evaluation first, forwards on allow, and tees streaming

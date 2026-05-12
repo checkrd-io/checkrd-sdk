@@ -124,16 +124,6 @@
         "default": "./dist/integrations/_groq.cjs"
       }
     },
-    "./mistral": {
-      "import": {
-        "types": "./dist/integrations/_mistral.d.ts",
-        "default": "./dist/integrations/_mistral.js"
-      },
-      "require": {
-        "types": "./dist/integrations/_mistral.d.cts",
-        "default": "./dist/integrations/_mistral.cjs"
-      }
-    },
     "./together": {
       "import": {
         "types": "./dist/integrations/_together.d.ts",
@@ -327,12 +317,6 @@
     {
       "name": "checkrd/groq",
       "path": "dist/integrations/_groq.js",
-      "limit": "8 KB",
-      "gzip": true
-    },
-    {
-      "name": "checkrd/mistral",
-      "path": "dist/integrations/_mistral.js",
       "limit": "8 KB",
       "gzip": true
     },

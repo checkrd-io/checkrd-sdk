@@ -24,7 +24,7 @@
  * # Vendor coverage
  *
  *   - **OpenAI** + Azure OpenAI, also matches OpenAI-compatible
- *     endpoints (Together, Groq, Mistral compat).
+ *     endpoints (Together, Groq compat).
  *   - **Anthropic** + Anthropic-on-Bedrock.
  *
  * Other providers (Vertex Gemini, Cohere) ship distinct shapes;

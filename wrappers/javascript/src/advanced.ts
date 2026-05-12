@@ -168,8 +168,6 @@ export { CohereInstrumentor } from "./integrations/_cohere.js";
 export type { CohereInstrumentorOptions } from "./integrations/_cohere.js";
 export { GroqInstrumentor } from "./integrations/_groq.js";
 export type { GroqInstrumentorOptions } from "./integrations/_groq.js";
-export { MistralInstrumentor } from "./integrations/_mistral.js";
-export type { MistralInstrumentorOptions } from "./integrations/_mistral.js";
 export { TogetherInstrumentor } from "./integrations/_together.js";
 export type { TogetherInstrumentorOptions } from "./integrations/_together.js";
 export { GoogleGenAIInstrumentor } from "./integrations/_google_genai.js";

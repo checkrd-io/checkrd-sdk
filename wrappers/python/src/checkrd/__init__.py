@@ -123,7 +123,6 @@ from checkrd.integrations import (
     GroqInstrumentor,
     HttpxClientInstrumentor,
     Instrumentor,
-    MistralInstrumentor,
     OpenAIInstrumentor,
     TogetherInstrumentor,
 )
@@ -167,7 +166,6 @@ __all__ = [
     "OpenAIInstrumentor",
     "AnthropicInstrumentor",
     "CohereInstrumentor",
-    "MistralInstrumentor",
     "GroqInstrumentor",
     "TogetherInstrumentor",
     "GoogleGenAIInstrumentor",
@@ -1073,7 +1071,6 @@ def _global_maybe_start_watchers(
 _OPENAI_INSTRUMENTOR: Union[OpenAIInstrumentor, None] = None
 _ANTHROPIC_INSTRUMENTOR: Union[AnthropicInstrumentor, None] = None
 _COHERE_INSTRUMENTOR: Union[CohereInstrumentor, None] = None
-_MISTRAL_INSTRUMENTOR: Union[MistralInstrumentor, None] = None
 _GROQ_INSTRUMENTOR: Union[GroqInstrumentor, None] = None
 _TOGETHER_INSTRUMENTOR: Union[TogetherInstrumentor, None] = None
 _GOOGLE_GENAI_INSTRUMENTOR: Union[GoogleGenAIInstrumentor, None] = None
@@ -1109,7 +1106,6 @@ _ALL_INSTRUMENTORS: list[tuple[str, type]] = [
     ("_OPENAI_INSTRUMENTOR", OpenAIInstrumentor),
     ("_ANTHROPIC_INSTRUMENTOR", AnthropicInstrumentor),
     ("_COHERE_INSTRUMENTOR", CohereInstrumentor),
-    ("_MISTRAL_INSTRUMENTOR", MistralInstrumentor),
     ("_GROQ_INSTRUMENTOR", GroqInstrumentor),
     ("_TOGETHER_INSTRUMENTOR", TogetherInstrumentor),
     ("_GOOGLE_GENAI_INSTRUMENTOR", GoogleGenAIInstrumentor),
@@ -1149,14 +1145,6 @@ def instrument_cohere() -> None:
 
 def uninstrument_cohere() -> None:
     _uninstrument_one("_COHERE_INSTRUMENTOR", CohereInstrumentor)
-
-
-def instrument_mistral() -> None:
-    _instrument_one("_MISTRAL_INSTRUMENTOR", MistralInstrumentor)
-
-
-def uninstrument_mistral() -> None:
-    _uninstrument_one("_MISTRAL_INSTRUMENTOR", MistralInstrumentor)
 
 
 def instrument_groq() -> None:

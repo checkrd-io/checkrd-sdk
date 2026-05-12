@@ -31,7 +31,6 @@ import * as openaiSubpath from "../src/integrations/_openai.js";
 import * as anthropicSubpath from "../src/integrations/_anthropic.js";
 import * as cohereSubpath from "../src/integrations/_cohere.js";
 import * as groqSubpath from "../src/integrations/_groq.js";
-import * as mistralSubpath from "../src/integrations/_mistral.js";
 import * as togetherSubpath from "../src/integrations/_together.js";
 import * as googleGenAISubpath from "../src/integrations/_google_genai.js";
 
@@ -78,11 +77,6 @@ const CONTRACTS: readonly SubpathContract[] = [
     subpath: "checkrd/groq",
     module: groqSubpath,
     primaryExports: ["GroqInstrumentor"],
-  },
-  {
-    subpath: "checkrd/mistral",
-    module: mistralSubpath,
-    primaryExports: ["MistralInstrumentor"],
   },
   {
     subpath: "checkrd/together",

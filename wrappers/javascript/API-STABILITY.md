@@ -11,7 +11,7 @@ The public API is exactly what is **exported from the package's
 `exports` map** in `package.json`. That includes:
 
 - The default entry: `import { ... } from "checkrd"`.
-- Per-vendor subpath entries: `import { OpenAIInstrumentor } from "checkrd/openai"` (and the analogous Anthropic, Cohere, Groq, Mistral, Together, Google GenAI subpaths).
+- Per-vendor subpath entries: `import { OpenAIInstrumentor } from "checkrd/openai"` (and the analogous Anthropic, Cohere, Groq, Together, Google GenAI subpaths).
 - The Vercel AI SDK middleware: `import { checkrdMiddleware } from "checkrd/ai-sdk"`.
 - Any other documented subpath listed in the README's "Subpath exports" section.
 

@@ -20,7 +20,6 @@ class TestDetectProvider:
             ("api.cohere.com", "cohere"),
             ("api.cohere.ai", "cohere"),
             ("api.groq.com", "groq"),
-            ("api.mistral.ai", "mistral.ai"),
             ("api.together.xyz", "together.ai"),
             ("api.together.ai", "together.ai"),
             ("generativelanguage.googleapis.com", "google.gemini"),

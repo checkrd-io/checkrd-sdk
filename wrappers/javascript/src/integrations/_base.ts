@@ -27,7 +27,7 @@
  *     instrumentation.
  *
  * Constructor injection works because every modern AI vendor SDK
- * (OpenAI, Anthropic, Cohere, Groq, Mistral, Together, Google GenAI)
+ * (OpenAI, Anthropic, Cohere, Groq, Together, Google GenAI)
  * accepts a ``fetch`` option in its constructor — Stainless's
  * generator emits it as a stable contract. We Proxy the constructor
  * so user code that does ``new OpenAI({...})`` transparently flows
@@ -159,9 +159,9 @@ export function assertVendorShape(
 
 /**
  * Variant of {@link assertVendorShape} for vendors that ship the
- * patch target under more than one possible name (e.g. `Mistral`
- * exported as both a `default` and a named `Mistral` depending on
- * the major). Returns `true` when AT LEAST ONE of the candidate
+ * patch target under more than one possible name (e.g. `Cohere`
+ * exported as both a `default` and a named export depending on the
+ * major). Returns `true` when AT LEAST ONE of the candidate
  * names is a function on the module. The instrumentor still
  * patches whichever names actually exist; the assertion just
  * guards against the case where ALL of them disappear in a vendor

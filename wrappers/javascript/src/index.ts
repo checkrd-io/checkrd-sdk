@@ -33,7 +33,6 @@ import { AnthropicInstrumentor } from "./integrations/_anthropic.js";
 import { CohereInstrumentor } from "./integrations/_cohere.js";
 import { GoogleGenAIInstrumentor } from "./integrations/_google_genai.js";
 import { GroqInstrumentor } from "./integrations/_groq.js";
-import { MistralInstrumentor } from "./integrations/_mistral.js";
 import {
   OpenAIInstrumentor,
   type OpenAIInstrumentorOptions,
@@ -1014,7 +1013,6 @@ let _openaiInstrumentor: OpenAIInstrumentor | null = null;
 let _anthropicInstrumentor: AnthropicInstrumentor | null = null;
 let _cohereInstrumentor: CohereInstrumentor | null = null;
 let _groqInstrumentor: GroqInstrumentor | null = null;
-let _mistralInstrumentor: MistralInstrumentor | null = null;
 let _togetherInstrumentor: TogetherInstrumentor | null = null;
 let _googleGenAIInstrumentor: GoogleGenAIInstrumentor | null = null;
 
@@ -1076,19 +1074,6 @@ export function uninstrumentGroq(): void {
   _groqInstrumentor?.uninstrument();
 }
 
-/** Patch the `@mistralai/mistralai` package. */
-export function instrumentMistral(): void {
-  ensureInitialized("instrumentMistral()");
-  if (isDegraded()) return;
-  _mistralInstrumentor ??= new MistralInstrumentor(buildInstrumentorOptions());
-  _mistralInstrumentor.instrument();
-}
-
-/** Revert the Mistral patch installed by {@link instrumentMistral}. */
-export function uninstrumentMistral(): void {
-  _mistralInstrumentor?.uninstrument();
-}
-
 /** Patch the `together-ai` package. */
 export function instrumentTogether(): void {
   ensureInitialized("instrumentTogether()");
@@ -1121,7 +1106,6 @@ export function instrument(): void {
   instrumentAnthropic();
   instrumentCohere();
   instrumentGroq();
-  instrumentMistral();
   instrumentTogether();
   instrumentGoogleGenAI();
 }
@@ -1132,7 +1116,6 @@ export function uninstrument(): void {
   uninstrumentAnthropic();
   uninstrumentCohere();
   uninstrumentGroq();
-  uninstrumentMistral();
   uninstrumentTogether();
   uninstrumentGoogleGenAI();
 }

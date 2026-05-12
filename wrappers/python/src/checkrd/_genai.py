@@ -23,11 +23,10 @@ Why URL-only (not body-derived):
     ``gen_ai.operation.name`` as required / recommended for
     GenAI spans; everything else is opportunistic.
 
-Stable across the seven vendor integrations the SDK ships
+Stable across the six vendor integrations the SDK ships
 (`integrations/_openai.py`, `_anthropic.py`, `_cohere.py`,
-`_groq.py`, `_mistralai.py`, `_together.py`, `_google_genai.py`) plus
-AWS Bedrock and Google Vertex AI for users wiring the httpx
-transport directly.
+`_groq.py`, `_together.py`, `_google_genai.py`) plus AWS Bedrock and
+Google Vertex AI for users wiring the httpx transport directly.
 """
 
 from __future__ import annotations
@@ -50,7 +49,6 @@ _PROVIDER_EXACT: Dict[str, str] = {
     "api.cohere.com": "cohere",
     "api.cohere.ai": "cohere",
     "api.groq.com": "groq",
-    "api.mistral.ai": "mistral.ai",
     "api.together.xyz": "together.ai",
     "api.together.ai": "together.ai",
     "generativelanguage.googleapis.com": "google.gemini",

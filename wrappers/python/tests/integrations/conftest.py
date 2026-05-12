@@ -148,25 +148,6 @@ def _make_cohere_module() -> types.ModuleType:
     return module
 
 
-def _make_mistralai_module() -> types.ModuleType:
-    """Build a minimal stand-in for ``mistralai``."""
-    module = types.ModuleType("mistralai")
-
-    class Mistral:
-        def __init__(
-            self,
-            *,
-            api_key: Optional[str] = None,
-            http_client: Optional[httpx.Client] = None,
-            **_kwargs: Any,
-        ) -> None:
-            self.api_key = api_key
-            self._client: httpx.Client = http_client or httpx.Client()
-
-    module.Mistral = Mistral  # type: ignore[attr-defined]
-    return module
-
-
 def _make_groq_module() -> types.ModuleType:
     """Build a minimal stand-in for ``groq``."""
     module = types.ModuleType("groq")
@@ -316,21 +297,6 @@ def fake_cohere_module() -> Iterator[types.ModuleType]:
             sys.modules["cohere"] = saved
         else:
             sys.modules.pop("cohere", None)
-
-
-@pytest.fixture
-def fake_mistralai_module() -> Iterator[types.ModuleType]:
-    """Inject a fake ``mistralai`` module into sys.modules for one test."""
-    saved = sys.modules.get("mistralai")
-    fake = _make_mistralai_module()
-    sys.modules["mistralai"] = fake
-    try:
-        yield fake
-    finally:
-        if saved is not None:
-            sys.modules["mistralai"] = saved
-        else:
-            sys.modules.pop("mistralai", None)
 
 
 @pytest.fixture

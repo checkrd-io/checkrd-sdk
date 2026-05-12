@@ -41,8 +41,8 @@ class OpenAIInstrumentor(HttpxClientInstrumentor):
     This instrumentor is a near-empty subclass: all the behavior lives
     in :class:`HttpxClientInstrumentor`. Two declarative class
     attributes fully specify what to patch, which makes adding support
-    for additional httpx-based SDKs (cohere, mistralai, groq, fireworks,
-    together, etc.) a one-file change.
+    for additional httpx-based SDKs (cohere, groq, fireworks, together,
+    etc.) a one-file change.
     """
 
     _target_module_name: ClassVar[str] = "openai"

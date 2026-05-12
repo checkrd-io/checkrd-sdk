@@ -86,7 +86,6 @@ openai = ["openai>=1.0,<3"]
 anthropic = ["anthropic>=0.20,<1"]
 cohere = ["cohere>=5.0,<7"]
 groq = ["groq>=0.4,<2"]
-mistral = ["mistralai>=0.2,<2"]
 together = ["together>=1.0,<3"]
 google-genai = ["google-genai>=0.1,<2"]
 # Agent-framework integration extras. Each is the canonical extension
@@ -104,7 +103,6 @@ all = [
     "anthropic>=0.20,<1",
     "cohere>=5.0,<7",
     "groq>=0.4,<2",
-    "mistralai>=0.2,<2",
     "together>=1.0,<3",
     "google-genai>=0.1,<2",
     "langchain-core>=0.3,<1",
@@ -138,7 +136,6 @@ test = [
     "anthropic>=0.20,<1",
     "cohere>=5.0,<7",
     "groq>=0.4,<2",
-    "mistralai>=0.2,<2",
     "together>=1.0,<3",
     "google-genai>=0.1,<2",
     # Agent-framework integrations (smoke tests).
@@ -209,7 +206,6 @@ filterwarnings = [
     # submodules (e.g. cohere.client, google.genai._api_client).
     "ignore::DeprecationWarning:wasmtime.*",
     "ignore::DeprecationWarning:cohere.*",
-    "ignore::DeprecationWarning:mistralai.*",
     "ignore::DeprecationWarning:google.*",
     "ignore::DeprecationWarning:httpcore.*",
     "ignore::DeprecationWarning:pydantic.*",

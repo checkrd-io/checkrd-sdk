@@ -24,7 +24,7 @@ http = Checkrd().wrap(httpx.Client())  # Pass to OpenAI / Anthropic / your clien
   call before the bytes leave the machine — no agent code change, no
   vendor SDK fork. Wraps both `httpx.Client` and `httpx.AsyncClient`,
   works with every AI client that takes a transport option (OpenAI,
-  Anthropic, Cohere, Mistral, Groq, Together, Google GenAI…).
+  Anthropic, Cohere, Groq, Together, Google GenAI…).
 - **Kill switch in &lt; 1s.** Toggle from the dashboard and every
   running agent stops mid-stream. Useful when your agent decides to
   refund every customer at 3am.
@@ -451,7 +451,7 @@ checkrd.instrument_openai()
 checkrd.instrument_anthropic()
 ```
 
-Supported: OpenAI, Anthropic, Cohere, Groq, Mistral, Together, Google GenAI.
+Supported: OpenAI, Anthropic, Cohere, Groq, Together, Google GenAI.
 
 Libraries that aren't installed are silently skipped. Calling `instrument()` twice is safe (idempotent).
 

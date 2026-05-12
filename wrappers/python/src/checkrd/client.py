@@ -433,7 +433,7 @@ class Checkrd:
         """Instrument every supported vendor SDK in one call.
 
         Patches the global constructors for OpenAI, Anthropic, Cohere,
-        Mistral, Groq, Together, and Google GenAI. Idempotent.
+        Groq, Together, and Google GenAI. Idempotent.
         """
         from checkrd import instrument as _instrument
 
