@@ -132,6 +132,7 @@ def _guard_wasm_cache() -> Iterator[None]:
 
 SAMPLE_POLICY = {
     "agent": "test-agent",
+    "mode": "enforce",
     "default": "deny",
     "rules": [
         {
@@ -153,6 +154,7 @@ SAMPLE_POLICY = {
 
 ALLOW_ALL_POLICY = {
     "agent": "test-agent",
+    "mode": "enforce",
     "default": "allow",
     "rules": [],
 }

@@ -168,7 +168,7 @@ class TestIdempotency:
         inst.instrument()
         with httpx.Client() as user_client:
             # Manually install a CheckrdTransport like wrap() would.
-            checkrd.wrap(user_client, policy={"agent": "x", "default": "allow", "rules": []})
+            checkrd.wrap(user_client, policy={"agent": "x", "mode": "enforce", "default": "allow", "rules": []})
             outer_transport_before = user_client._transport
             assert isinstance(outer_transport_before, CheckrdTransport)
 

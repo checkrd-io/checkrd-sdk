@@ -301,6 +301,7 @@ class TestWrapWithFileWatchers:
         policy_file.write_text(
             """
 agent: test-agent
+mode: enforce
 default: allow
 rules: []
 """

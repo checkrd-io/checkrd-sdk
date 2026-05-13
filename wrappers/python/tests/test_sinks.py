@@ -66,7 +66,7 @@ class TestTelemetrySinkProtocol:
 
         private, _ = WasmEngine.generate_keypair()
         engine = WasmEngine(
-            policy_json='{"agent":"test-agent","default":"allow","rules":[]}',
+            policy_json='{"agent":"test-agent","mode": "enforce", "default": "allow","rules":[]}',
             agent_id="test-agent",
             private_key_bytes=private,
         )
@@ -410,7 +410,7 @@ class TestControlPlaneSink:
 
         private, _ = WasmEngine.generate_keypair()
         engine = WasmEngine(
-            policy_json='{"agent":"test-agent","default":"allow","rules":[]}',
+            policy_json='{"agent":"test-agent","mode": "enforce", "default": "allow","rules":[]}',
             agent_id="test-agent",
             private_key_bytes=private,
         )

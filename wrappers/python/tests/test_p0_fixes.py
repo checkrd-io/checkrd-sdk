@@ -54,11 +54,12 @@ from tests.conftest import requires_wasm, unique_id
 _TS = "2026-04-15T00:00:00Z"
 _TS_MS = 1776297600000
 
-_ALLOW_ALL = json.dumps({"agent": "test", "default": "allow", "rules": []})
+_ALLOW_ALL = json.dumps({"agent": "test", "mode": "enforce", "default": "allow", "rules": []})
 
 _DENY_UNKNOWN = json.dumps(
     {
         "agent": "test",
+        "mode": "enforce",
         "default": "deny",
         "rules": [
             {

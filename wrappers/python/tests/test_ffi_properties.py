@@ -91,7 +91,7 @@ def allow_all_engine() -> WasmEngine:
 
 @pytest.fixture()
 def deny_all_engine() -> WasmEngine:
-    policy = {"agent": "test-agent", "default": "deny", "rules": []}
+    policy = {"agent": "test-agent", "mode": "enforce", "default": "deny", "rules": []}
     return WasmEngine(json.dumps(policy), "test-agent", private_key_bytes=b"", instance_id="")
 
 
@@ -249,8 +249,8 @@ def test_generate_keypair_derive_public_matches(_iter: int) -> None:
         st.just("[]"),
         st.just("{"),  # truncated JSON
         st.just('{"default": "not_a_mode"}'),
-        st.just('{"default": "allow", "rules": [null]}'),
-        st.just('{"default": "allow", "rules": [{"name": null}]}'),
+        st.just('{"mode": "enforce", "default": "allow", "rules": [null]}'),
+        st.just('{"mode": "enforce", "default": "allow", "rules": [{"name": null}]}'),
     )
 )
 @settings(max_examples=50, deadline=None)

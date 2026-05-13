@@ -1128,7 +1128,8 @@ mod tests {
         ));
         assert!(result.allowed, "expected allow before reload");
 
-        let deny_all = r#"{"agent": "test-agent", "mode": "enforce", "default": "deny", "rules": []}"#;
+        let deny_all =
+            r#"{"agent": "test-agent", "mode": "enforce", "default": "deny", "rules": []}"#;
         let config: PolicyConfig = serde_json::from_str(deny_all).unwrap();
         let policy = PolicyEngine::from_config(config).unwrap();
         ENGINE.with(|cell| {
@@ -1206,7 +1207,8 @@ mod tests {
         // Verify trace_id, span_id, and parent_span_id flow through the full
         // init -> evaluate_request -> log_event_json path.
         reset_engine();
-        let allow_all = r#"{"agent": "test-agent", "mode": "enforce", "default": "allow", "rules": []}"#;
+        let allow_all =
+            r#"{"agent": "test-agent", "mode": "enforce", "default": "allow", "rules": []}"#;
         init_test_engine(allow_all);
 
         let trace_id = "a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8";
@@ -1458,7 +1460,8 @@ mod tests {
     fn trace_context_on_kill_switch() {
         // Trace context must appear even when kill switch short-circuits evaluation.
         reset_engine();
-        let allow_all = r#"{"agent": "test-agent", "mode": "enforce", "default": "allow", "rules": []}"#;
+        let allow_all =
+            r#"{"agent": "test-agent", "mode": "enforce", "default": "allow", "rules": []}"#;
         init_test_engine(allow_all);
 
         ENGINE.with(|cell| {
@@ -2264,7 +2267,8 @@ mod tests {
         // Replace the payload AFTER signing — base64 of a different policy.
         use base64::engine::general_purpose::STANDARD as B64;
         use base64::Engine;
-        envelope.payload = B64.encode(br#"{"agent":"x","mode":"enforce","default":"allow","rules":[]}"#);
+        envelope.payload =
+            B64.encode(br#"{"agent":"x","mode":"enforce","default":"allow","rules":[]}"#);
         let tampered = serde_json::to_string(&envelope).unwrap();
         let trusted = make_trusted_keys_json(&signing_key);
 

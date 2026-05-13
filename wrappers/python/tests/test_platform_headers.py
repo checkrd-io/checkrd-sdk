@@ -171,7 +171,7 @@ class TestBatcherSendsPlatformHeaders:
 
         private, _ = WasmEngine.generate_keypair()
         engine = WasmEngine(
-            policy_json='{"agent":"t","default":"allow","rules":[]}',
+            policy_json='{"agent":"t","mode": "enforce", "default": "allow","rules":[]}',
             agent_id="t",
             private_key_bytes=private,
         )

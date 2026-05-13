@@ -23,7 +23,7 @@ from checkrd import AsyncCheckrd, Checkrd
 from tests.conftest import requires_wasm
 
 
-ALLOW_ALL = {"agent": "test", "default": "allow", "rules": []}
+ALLOW_ALL = {"agent": "test", "mode": "enforce", "default": "allow", "rules": []}
 
 
 @requires_wasm

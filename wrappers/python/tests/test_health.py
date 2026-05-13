@@ -76,7 +76,7 @@ class TestHealthyAfterInit:
     def test_enforce_reflects_settings(self) -> None:
         checkrd.init(
             agent_id="test",
-            policy={"agent": "test", "default": "allow", "rules": []},
+            policy={"agent": "test", "mode": "enforce", "default": "allow", "rules": []},
         )
         result = checkrd.healthy()
         assert result["enforce"] is True

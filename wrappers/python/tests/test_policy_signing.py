@@ -45,6 +45,7 @@ def _make_engine() -> WasmEngine:
         policy_json=json.dumps(
             {
                 "agent": "test-agent",
+                "mode": "enforce",
                 "default": "deny",
                 "rules": [],
             }
@@ -55,6 +56,7 @@ def _make_engine() -> WasmEngine:
 
 _PERMISSIVE_POLICY = {
     "agent": "test-agent",
+    "mode": "enforce",
     "default": "allow",
     "rules": [],
 }
@@ -196,7 +198,7 @@ def test_tampered_envelope_is_rejected() -> None:
     payload = _build_policy_bundle(_PERMISSIVE_POLICY)
     envelope = _build_dsse_envelope(sk_bytes, "test-cp", payload)
     # Tamper: replace the payload with a different policy AFTER signing.
-    tampered_payload = json.dumps({"agent": "evil", "default": "allow", "rules": []}).encode()
+    tampered_payload = json.dumps({"agent": "evil", "mode": "enforce", "default": "allow", "rules": []}).encode()
     envelope["payload"] = base64.b64encode(tampered_payload).decode()
 
     engine = _make_engine()

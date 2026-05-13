@@ -26,7 +26,7 @@ from tests.conftest import requires_wasm
 def _engine() -> WasmEngine:
     private, _public = WasmEngine.generate_keypair()
     return WasmEngine(
-        policy_json='{"agent":"test","default":"allow","rules":[]}',
+        policy_json='{"agent":"test","mode": "enforce", "default": "allow","rules":[]}',
         agent_id="test",
         private_key_bytes=private,
     )

@@ -13,13 +13,14 @@ from checkrd.exceptions import CheckrdInitError
 
 class TestPolicyFromDict:
     def test_dict_serialized_to_json(self) -> None:
-        policy = {"agent": "test", "default": "allow", "rules": []}
+        policy = {"agent": "test", "mode": "enforce", "default": "allow", "rules": []}
         policy_json = load_config(policy=policy)
         assert json.loads(policy_json) == policy
 
     def test_nested_dict(self) -> None:
         policy = {
             "agent": "test",
+            "mode": "enforce",
             "default": "deny",
             "rules": [{"name": "r1", "allow": {"method": ["GET"], "url": "example.com/*"}}],
         }

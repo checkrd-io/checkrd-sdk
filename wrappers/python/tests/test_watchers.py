@@ -34,6 +34,7 @@ def _make_mock_engine() -> MagicMock:
 
 VALID_POLICY_YAML = """
 agent: test-agent
+mode: enforce
 default: deny
 rules:
   - name: allow-stripe
@@ -222,6 +223,7 @@ class TestPolicyFileWatcher:
             policy.write_text(
                 """
 agent: test-agent
+mode: enforce
 default: allow
 rules: []
 """

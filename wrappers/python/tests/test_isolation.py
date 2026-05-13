@@ -28,13 +28,14 @@ _TS_MS = 1774708200000
 
 # --- Policies ---
 
-ALLOW_ALL = json.dumps({"agent": "agent-allow", "default": "allow", "rules": []})
+ALLOW_ALL = json.dumps({"agent": "agent-allow", "mode": "enforce", "default": "allow", "rules": []})
 
-DENY_ALL = json.dumps({"agent": "agent-deny", "default": "deny", "rules": []})
+DENY_ALL = json.dumps({"agent": "agent-deny", "mode": "enforce", "default": "deny", "rules": []})
 
 RATE_LIMITED = json.dumps(
     {
         "agent": "agent-rl",
+        "mode": "enforce",
         "default": "allow",
         "rules": [
             {

@@ -403,7 +403,7 @@ class TestInitShutdownLifecycle:
     def test_init_explicit_policy_enforces(self) -> None:
         checkrd.init(
             agent_id="enforce-test",
-            policy={"agent": "enforce-test", "default": "allow", "rules": []},
+            policy={"agent": "enforce-test", "mode": "enforce", "default": "allow", "rules": []},
         )
         ctx = get_context()
         assert ctx.enforce is True
@@ -415,7 +415,7 @@ class TestInitShutdownLifecycle:
         # week before flipping to block.
         checkrd.init(
             agent_id="observe-test",
-            policy={"agent": "observe-test", "default": "deny", "rules": []},
+            policy={"agent": "observe-test", "mode": "enforce", "default": "deny", "rules": []},
             enforce=False,
         )
         ctx = get_context()

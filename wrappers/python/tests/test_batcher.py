@@ -67,7 +67,7 @@ def _make_engine_for_batcher() -> WasmEngine:
     """
     private, _public = WasmEngine.generate_keypair()
     return WasmEngine(
-        policy_json='{"agent":"test-agent","default":"allow","rules":[]}',
+        policy_json='{"agent":"test-agent","mode": "enforce", "default": "allow","rules":[]}',
         agent_id="test-agent",
         private_key_bytes=private,
     )
@@ -771,7 +771,7 @@ def _make_anonymous_engine() -> WasmEngine:
     batcher REJECTS anonymous mode rather than silently sending unsigned.
     """
     return WasmEngine(
-        policy_json='{"agent":"test-agent","default":"allow","rules":[]}',
+        policy_json='{"agent":"test-agent","mode": "enforce", "default": "allow","rules":[]}',
         agent_id="test-agent",
         # No private_key_bytes => anonymous
     )
@@ -862,7 +862,7 @@ class TestSigningRoundTrip:
         # Generate a fresh key so we can extract the public key for verification.
         private, public_key_bytes = WasmEngine.generate_keypair()
         engine = WasmEngine(
-            policy_json='{"agent":"test-agent","default":"allow","rules":[]}',
+            policy_json='{"agent":"test-agent","mode": "enforce", "default": "allow","rules":[]}',
             agent_id="test-agent",
             private_key_bytes=private,
         )

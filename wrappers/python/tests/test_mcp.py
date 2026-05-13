@@ -19,11 +19,12 @@ from checkrd.engine import WasmEngine
 from checkrd.exceptions import CheckrdPolicyDenied
 from checkrd.mcp import wrap_mcp_client, wrap_mcp_server
 
-ALLOW_ALL = json.dumps({"agent": "t", "default": "allow", "rules": []})
-DENY_ALL = json.dumps({"agent": "t", "default": "deny", "rules": []})
+ALLOW_ALL = json.dumps({"agent": "t", "mode": "enforce", "default": "allow", "rules": []})
+DENY_ALL = json.dumps({"agent": "t", "mode": "enforce", "default": "deny", "rules": []})
 DENY_SEARCH = json.dumps(
     {
         "agent": "t",
+        "mode": "enforce",
         "default": "allow",
         "rules": [
             {

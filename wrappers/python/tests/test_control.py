@@ -75,6 +75,7 @@ def make_receiver(engine: Optional[Mock] = None) -> ControlReceiver:
 
 _PERMISSIVE_POLICY: dict[str, Any] = {
     "agent": "test",
+    "mode": "enforce",
     "default": "allow",
     "rules": [],
 }
@@ -547,7 +548,7 @@ class TestWrapIntegration:
                 wrap(
                     client,
                     agent_id="test",
-                    policy={"agent": "test", "default": "allow", "rules": []},
+                    policy={"agent": "test", "mode": "enforce", "default": "allow", "rules": []},
                     control_plane_url="http://localhost:8080",
                     api_key="ck_test_fake",
                 )
@@ -567,7 +568,7 @@ class TestWrapIntegration:
                 wrap(
                     client,
                     agent_id="test",
-                    policy={"agent": "test", "default": "allow", "rules": []},
+                    policy={"agent": "test", "mode": "enforce", "default": "allow", "rules": []},
                 )
                 assert not hasattr(client, "_checkrd_control")
             finally:

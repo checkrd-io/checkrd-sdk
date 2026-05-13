@@ -50,6 +50,7 @@ class TestPolicyTypedDict:
 
         policy: Policy = {
             "agent": "test",
+            "mode": "enforce",
             "default": "deny",
             "rules": [
                 {
@@ -71,6 +72,7 @@ class TestPolicyTypedDict:
 
         minimal: Policy = {
             "agent": "test",
+            "mode": "enforce",
             "default": "allow",
             "rules": [],
         }

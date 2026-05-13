@@ -359,7 +359,7 @@ class TestKeyZeroization:
         assert pk is not None
 
         engine = WasmEngine(
-            '{"agent":"test","default":"allow","rules":[]}',
+            '{"agent":"test","mode": "enforce", "default": "allow","rules":[]}',
             "test-agent",
             private_key_bytes=pk,
         )
@@ -377,7 +377,7 @@ class TestKeyZeroization:
         assert pk is not None
 
         engine = WasmEngine(
-            '{"agent":"test","default":"allow","rules":[]}',
+            '{"agent":"test","mode": "enforce", "default": "allow","rules":[]}',
             "test-agent",
             private_key_bytes=pk,
         )
@@ -396,7 +396,7 @@ class TestKeyZeroization:
         li = LocalIdentity(key_path=tmp_path / "identity.key")
         pub = li.public_key
         engine = WasmEngine(
-            '{"agent":"test","default":"allow","rules":[]}',
+            '{"agent":"test","mode": "enforce", "default": "allow","rules":[]}',
             "test-agent",
             private_key_bytes=li.private_key_bytes or b"",
         )
@@ -420,7 +420,7 @@ class TestKeyZeroization:
         li = LocalIdentity.from_bytes(bytes(32))
         pub_before = li.public_key
         engine = WasmEngine(
-            '{"agent":"test","default":"allow","rules":[]}',
+            '{"agent":"test","mode": "enforce", "default": "allow","rules":[]}',
             "test-agent",
             private_key_bytes=li.private_key_bytes or b"",
         )
@@ -445,7 +445,7 @@ class TestKeyZeroization:
         assert any(b != 0 for b in internal_key), "key should have non-zero bytes"
 
         engine = WasmEngine(
-            '{"agent":"test","default":"allow","rules":[]}',
+            '{"agent":"test","mode": "enforce", "default": "allow","rules":[]}',
             "test-agent",
             private_key_bytes=bytes(internal_key),
         )
@@ -536,7 +536,7 @@ class TestLocalIdentitySign:
         assert private_key is not None
 
         engine = WasmEngine(
-            '{"agent":"test","default":"allow","rules":[]}',
+            '{"agent":"test","mode": "enforce", "default": "allow","rules":[]}',
             "test-agent",
             private_key_bytes=private_key,
         )
@@ -551,7 +551,7 @@ class TestLocalIdentitySign:
 
         li = LocalIdentity(key_path=tmp_path / "identity.key")
         engine = WasmEngine(
-            '{"agent":"test","default":"allow","rules":[]}',
+            '{"agent":"test","mode": "enforce", "default": "allow","rules":[]}',
             "test-agent",
             private_key_bytes=li.private_key_bytes or b"",
         )
@@ -565,7 +565,7 @@ class TestLocalIdentitySign:
 
         li = LocalIdentity(key_path=tmp_path / "identity.key")
         engine = WasmEngine(
-            '{"agent":"test","default":"allow","rules":[]}',
+            '{"agent":"test","mode": "enforce", "default": "allow","rules":[]}',
             "test-agent",
             private_key_bytes=li.private_key_bytes or b"",
         )
@@ -580,7 +580,7 @@ class TestLocalIdentitySign:
 
         li = LocalIdentity(key_path=tmp_path / "identity.key")
         engine = WasmEngine(
-            '{"agent":"test","default":"allow","rules":[]}',
+            '{"agent":"test","mode": "enforce", "default": "allow","rules":[]}',
             "test-agent",
             private_key_bytes=li.private_key_bytes or b"",
         )
@@ -599,7 +599,7 @@ class TestSignUniformProtocol:
         # Local provider
         li = LocalIdentity(key_path=tmp_path / "identity.key")
         engine = WasmEngine(
-            '{"agent":"test","default":"allow","rules":[]}',
+            '{"agent":"test","mode": "enforce", "default": "allow","rules":[]}',
             "test-agent",
             private_key_bytes=li.private_key_bytes or b"",
         )

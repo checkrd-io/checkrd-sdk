@@ -30,8 +30,8 @@ import checkrd
 from tests.conftest import requires_wasm
 
 
-ALLOW_ALL = {"agent": "test", "default": "allow", "rules": []}
-DENY_ALL = {"agent": "test", "default": "deny", "rules": []}
+ALLOW_ALL = {"agent": "test", "mode": "enforce", "default": "allow", "rules": []}
+DENY_ALL = {"agent": "test", "mode": "enforce", "default": "deny", "rules": []}
 
 
 # ---------------------------------------------------------------------------
