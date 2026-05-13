@@ -15,8 +15,8 @@ import {
   type MastraAgentLike,
 } from "../../src/integrations/_mastra.js";
 
-const ALLOW_ALL = JSON.stringify({ agent: "t", default: "allow", rules: [] });
-const DENY_ALL = JSON.stringify({ agent: "t", default: "deny", rules: [] });
+const ALLOW_ALL = JSON.stringify({ agent: "t", mode: "enforce", default: "allow", rules: [] });
+const DENY_ALL = JSON.stringify({ agent: "t", mode: "enforce", default: "deny", rules: [] });
 
 function stubAgent(): MastraAgentLike & {
   generate: ReturnType<typeof vi.fn>;

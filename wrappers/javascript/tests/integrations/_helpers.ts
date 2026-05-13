@@ -8,7 +8,7 @@ import { vi } from "vitest";
 
 import { WasmEngine } from "../../src/engine.js";
 
-const ALLOW_ALL = JSON.stringify({ agent: "t", default: "allow", rules: [] });
+const ALLOW_ALL = JSON.stringify({ agent: "t", mode: "enforce", default: "allow", rules: [] });
 
 /** Construct a fresh `InstrumentorOptions` for a single test case. */
 export function makeInstrumentorOptions(): {

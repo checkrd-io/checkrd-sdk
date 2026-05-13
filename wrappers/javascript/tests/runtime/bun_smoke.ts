@@ -40,8 +40,8 @@ if (!Bun) {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const { WasmEngine, wrapFetch } = (await import("../../dist/index.js")) as any;
 
-const policy = JSON.stringify({ agent: "bun-test", default: "allow", rules: [] });
-const denyPolicy = JSON.stringify({ agent: "bun-test", default: "deny", rules: [] });
+const policy = JSON.stringify({ agent: "bun-test", mode: "enforce", default: "allow", rules: [] });
+const denyPolicy = JSON.stringify({ agent: "bun-test", mode: "enforce", default: "deny", rules: [] });
 
 const wasmBuf = await Bun.file(
   new URL("../../checkrd_core.wasm", import.meta.url).pathname,

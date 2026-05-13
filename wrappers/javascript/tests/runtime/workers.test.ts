@@ -99,7 +99,7 @@ describe("Cloudflare Workers (workerd) runtime", () => {
       // production CF Workers WASM-loading idiom.
       import wasmModule from "wasm/checkrd.wasm";
 
-      const POLICY = '{"agent":"workers-test","default":"allow","rules":[]}';
+      const POLICY = '{"agent":"workers-test","mode":"enforce","default":"allow","rules":[]}';
 
       export default {
         async fetch(req, env) {

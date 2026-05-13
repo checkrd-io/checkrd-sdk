@@ -5,8 +5,8 @@ import { CheckrdPolicyDenied } from "../src/exceptions.js";
 import { WasmEngine } from "../src/engine.js";
 import type { TelemetrySink } from "../src/sinks.js";
 
-const ALLOW_ALL = JSON.stringify({ agent: "t", default: "allow", rules: [] });
-const DENY_ALL = JSON.stringify({ agent: "t", default: "deny", rules: [] });
+const ALLOW_ALL = JSON.stringify({ agent: "t", mode: "enforce", default: "allow", rules: [] });
+const DENY_ALL = JSON.stringify({ agent: "t", mode: "enforce", default: "deny", rules: [] });
 
 function makeSink(): TelemetrySink & { calls: Record<string, unknown>[] } {
   const calls: Record<string, unknown>[] = [];

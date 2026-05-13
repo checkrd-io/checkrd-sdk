@@ -15,8 +15,8 @@ import { CheckrdInitError } from "../src/exceptions.js";
 const TS = "2026-03-28T14:30:00Z";
 const TS_MS = 1_774_708_200_000;
 
-const ALLOW_ALL = JSON.stringify({ agent: "test", default: "allow", rules: [] });
-const DENY_ALL = JSON.stringify({ agent: "test", default: "deny", rules: [] });
+const ALLOW_ALL = JSON.stringify({ agent: "test", mode: "enforce", default: "allow", rules: [] });
+const DENY_ALL = JSON.stringify({ agent: "test", mode: "enforce", default: "deny", rules: [] });
 
 const methodArb = fc.constantFrom("GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS");
 
@@ -193,8 +193,8 @@ describe("Malformed policy input", () => {
     "[]",
     "{",
     '{"default": "not_a_mode"}',
-    '{"default": "allow", "rules": [null]}',
-    '{"default": "allow", "rules": [{"name": null}]}',
+    '{"mode": "enforce", "default": "allow", "rules": [null]}',
+    '{"mode": "enforce", "default": "allow", "rules": [{"name": null}]}',
     "not-json-at-all",
   ];
 

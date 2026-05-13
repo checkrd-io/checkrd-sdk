@@ -23,8 +23,8 @@ import {
   wrap,
 } from "../src/index.js";
 
-const ALLOW_ALL = { agent: "test", default: "allow", rules: [] };
-const DENY_ALL = { agent: "test", default: "deny", rules: [] };
+const ALLOW_ALL = { agent: "test", mode: "enforce", default: "allow", rules: [] };
+const DENY_ALL = { agent: "test", mode: "enforce", default: "deny", rules: [] };
 
 afterEach(async () => {
   // Reset any global context set by `.instrument*()` in tests so

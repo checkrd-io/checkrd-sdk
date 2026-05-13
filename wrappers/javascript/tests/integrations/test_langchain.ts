@@ -15,8 +15,8 @@ import { WasmEngine } from "../../src/engine.js";
 import { CheckrdPolicyDenied } from "../../src/exceptions.js";
 import { CheckrdCallbackHandler } from "../../src/integrations/_langchain.js";
 
-const ALLOW = JSON.stringify({ agent: "t", default: "allow", rules: [] });
-const DENY = JSON.stringify({ agent: "t", default: "deny", rules: [] });
+const ALLOW = JSON.stringify({ agent: "t", mode: "enforce", default: "allow", rules: [] });
+const DENY = JSON.stringify({ agent: "t", mode: "enforce", default: "deny", rules: [] });
 
 interface CapturedEvent {
   event_type?: unknown;

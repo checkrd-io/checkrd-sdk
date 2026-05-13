@@ -20,10 +20,11 @@ import {
   type McpServerLike,
 } from "../../src/integrations/_mcp.js";
 
-const ALLOW_ALL = JSON.stringify({ agent: "t", default: "allow", rules: [] });
-const DENY_ALL = JSON.stringify({ agent: "t", default: "deny", rules: [] });
+const ALLOW_ALL = JSON.stringify({ agent: "t", mode: "enforce", default: "allow", rules: [] });
+const DENY_ALL = JSON.stringify({ agent: "t", mode: "enforce", default: "deny", rules: [] });
 const DENY_SEARCH = JSON.stringify({
   agent: "t",
+  mode: "enforce",
   default: "allow",
   rules: [
     {

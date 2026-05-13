@@ -4,8 +4,8 @@ import { WasmEngine } from "../../src/engine.js";
 import { CheckrdPolicyDenied } from "../../src/exceptions.js";
 import { wrapFetch } from "../../src/transports/fetch.js";
 
-const ALLOW_ALL = JSON.stringify({ agent: "test", default: "allow", rules: [] });
-const DENY_ALL = JSON.stringify({ agent: "test", default: "deny", rules: [] });
+const ALLOW_ALL = JSON.stringify({ agent: "test", mode: "enforce", default: "allow", rules: [] });
+const DENY_ALL = JSON.stringify({ agent: "test", mode: "enforce", default: "deny", rules: [] });
 
 function fakeFetch(): typeof fetch {
   return vi

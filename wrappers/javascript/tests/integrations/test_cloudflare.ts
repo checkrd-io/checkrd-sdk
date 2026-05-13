@@ -18,7 +18,7 @@ import { CheckrdPolicyDenied } from "../../src/exceptions.js";
 import { withCheckrd } from "../../src/integrations/_cloudflare.js";
 import { shutdown } from "../../src/index.js";
 
-const ALLOW_ALL = { agent: "t", default: "allow", rules: [] };
+const ALLOW_ALL = { agent: "t", mode: "enforce", default: "allow", rules: [] };
 const wasmPath = fileURLToPath(new URL("../../checkrd_core.wasm", import.meta.url));
 let wasmBytes: Uint8Array;
 

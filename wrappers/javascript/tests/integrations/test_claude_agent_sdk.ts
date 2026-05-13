@@ -19,8 +19,8 @@ import {
   type ClaudeAgentOptionsLike,
 } from "../../src/integrations/_claude_agent_sdk.js";
 
-const ALLOW = JSON.stringify({ agent: "t", default: "allow", rules: [] });
-const DENY = JSON.stringify({ agent: "t", default: "deny", rules: [] });
+const ALLOW = JSON.stringify({ agent: "t", mode: "enforce", default: "allow", rules: [] });
+const DENY = JSON.stringify({ agent: "t", mode: "enforce", default: "deny", rules: [] });
 
 describe("makePreToolUseHook", () => {
   it("returns block decision on deny+enforce", async () => {

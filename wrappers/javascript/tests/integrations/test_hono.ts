@@ -13,7 +13,7 @@ import { CheckrdPolicyDenied } from "../../src/exceptions.js";
 import { checkrdHono } from "../../src/integrations/_hono.js";
 import { resetCheckrdNext } from "../../src/integrations/_next.js";
 
-const ALLOW_ALL = { agent: "t", default: "allow", rules: [] };
+const ALLOW_ALL = { agent: "t", mode: "enforce", default: "allow", rules: [] };
 
 interface StubContext {
   vars: Record<string, unknown>;

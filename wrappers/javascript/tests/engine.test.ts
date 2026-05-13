@@ -8,12 +8,14 @@ const TS_MS = 1_774_708_200_000;
 
 const ALLOW_ALL = JSON.stringify({
   agent: "test-agent",
+  mode: "enforce",
   default: "allow",
   rules: [],
 });
 
 const DENY_ALL = JSON.stringify({
   agent: "test-agent",
+  mode: "enforce",
   default: "deny",
   rules: [],
 });

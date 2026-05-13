@@ -6,8 +6,8 @@ import { WasmEngine, __resetWasmModuleCache } from "../src/engine.js";
 import { initAsync, wrapAsync, shutdown } from "../src/index.js";
 import { CheckrdInitError } from "../src/exceptions.js";
 
-const ALLOW_ALL = JSON.stringify({ agent: "t", default: "allow", rules: [] });
-const DENY_ALL = JSON.stringify({ agent: "t", default: "deny", rules: [] });
+const ALLOW_ALL = JSON.stringify({ agent: "t", mode: "enforce", default: "allow", rules: [] });
+const DENY_ALL = JSON.stringify({ agent: "t", mode: "enforce", default: "deny", rules: [] });
 
 // Path to the bundled binary relative to this test file.
 const wasmPath = fileURLToPath(

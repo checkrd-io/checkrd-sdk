@@ -17,7 +17,7 @@ import {
   resetCheckrdNext,
 } from "../../src/integrations/_next.js";
 
-const ALLOW_ALL = { agent: "t", default: "allow", rules: [] };
+const ALLOW_ALL = { agent: "t", mode: "enforce", default: "allow", rules: [] };
 
 afterEach(() => {
   resetCheckrdNext();

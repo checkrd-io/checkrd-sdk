@@ -59,6 +59,7 @@ describe("edge-runtime smoke", () => {
     }).wasmBytes = new Uint8Array(wasmBytes);
     (vm.context as unknown as { policy: string }).policy = JSON.stringify({
       agent: "t",
+      mode: "enforce",
       default: "allow",
       rules: [],
     });
@@ -184,6 +185,7 @@ describe("edge-runtime smoke", () => {
     }).wasmBytes = new Uint8Array(wasmBytes);
     (vm.context as unknown as { policy: string }).policy = JSON.stringify({
       agent: "t",
+      mode: "enforce",
       default: "deny",
       rules: [],
     });
@@ -254,6 +256,7 @@ describe("edge-runtime smoke", () => {
     }).wasmBytes = tampered;
     (vm.context as unknown as { policy: string }).policy = JSON.stringify({
       agent: "t",
+      mode: "enforce",
       default: "allow",
       rules: [],
     });
