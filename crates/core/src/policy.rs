@@ -1094,7 +1094,7 @@ mod tests {
     fn simple_policy() -> PolicyConfig {
         PolicyConfig {
             default: DefaultAction::Deny,
-            mode: checkrd_shared::PolicyMode::default(),
+            mode: checkrd_shared::PolicyMode::Enforce,
             rules: vec![
                 PolicyRule {
                     name: "allow-get-contacts".into(),
@@ -1202,7 +1202,7 @@ mod tests {
     fn eval_default_allow_policy() {
         let config = PolicyConfig {
             default: DefaultAction::Allow,
-            mode: checkrd_shared::PolicyMode::default(),
+            mode: checkrd_shared::PolicyMode::Enforce,
             rules: vec![],
         };
         let engine = PolicyEngine::from_config(config).unwrap();
@@ -1216,7 +1216,7 @@ mod tests {
     fn eval_rate_limit_exceeded() {
         let config = PolicyConfig {
             default: DefaultAction::Allow,
-            mode: checkrd_shared::PolicyMode::default(),
+            mode: checkrd_shared::PolicyMode::Enforce,
             rules: vec![PolicyRule {
                 name: "global-limit".into(),
                 kind: PolicyRuleKind::Limit(RateLimitConfig {
@@ -1247,7 +1247,7 @@ mod tests {
     fn eval_deny_with_time_restriction() {
         let config = PolicyConfig {
             default: DefaultAction::Allow,
-            mode: checkrd_shared::PolicyMode::default(),
+            mode: checkrd_shared::PolicyMode::Enforce,
             rules: vec![PolicyRule {
                 name: "business-hours-only".into(),
                 kind: PolicyRuleKind::Deny(RequestMatcher {
@@ -1282,7 +1282,7 @@ mod tests {
         // More specific URL pattern should be checked first
         let config = PolicyConfig {
             default: DefaultAction::Deny,
-            mode: checkrd_shared::PolicyMode::default(),
+            mode: checkrd_shared::PolicyMode::Enforce,
             rules: vec![
                 PolicyRule {
                     name: "allow-all-stripe".into(),
@@ -1355,7 +1355,7 @@ mod tests {
     fn eval_deny_rule_fires_on_unparseable_body() {
         let config = PolicyConfig {
             default: DefaultAction::Allow,
-            mode: checkrd_shared::PolicyMode::default(),
+            mode: checkrd_shared::PolicyMode::Enforce,
             rules: vec![PolicyRule {
                 name: "block-large-charges".into(),
                 kind: PolicyRuleKind::Deny(RequestMatcher {
@@ -1382,7 +1382,7 @@ mod tests {
     fn eval_allow_rule_skips_on_unparseable_body() {
         let config = PolicyConfig {
             default: DefaultAction::Deny,
-            mode: checkrd_shared::PolicyMode::default(),
+            mode: checkrd_shared::PolicyMode::Enforce,
             rules: vec![PolicyRule {
                 name: "allow-small-charges".into(),
                 kind: PolicyRuleKind::Allow(RequestMatcher {
@@ -1414,7 +1414,7 @@ mod tests {
     fn eval_rate_limit_endpoint_ignores_query_params() {
         let config = PolicyConfig {
             default: DefaultAction::Allow,
-            mode: checkrd_shared::PolicyMode::default(),
+            mode: checkrd_shared::PolicyMode::Enforce,
             rules: vec![PolicyRule {
                 name: "endpoint-limit".into(),
                 kind: PolicyRuleKind::Limit(RateLimitConfig {
@@ -1876,7 +1876,7 @@ mod tests {
     fn eval_body_field_rate_limit() {
         let config = PolicyConfig {
             default: DefaultAction::Allow,
-            mode: checkrd_shared::PolicyMode::default(),
+            mode: checkrd_shared::PolicyMode::Enforce,
             rules: vec![PolicyRule {
                 name: "per-model-limit".into(),
                 kind: PolicyRuleKind::Limit(RateLimitConfig {
@@ -1922,7 +1922,7 @@ mod tests {
     fn eval_ai_model_restriction_policy() {
         let config = PolicyConfig {
             default: DefaultAction::Deny,
-            mode: checkrd_shared::PolicyMode::default(),
+            mode: checkrd_shared::PolicyMode::Enforce,
             rules: vec![
                 PolicyRule {
                     name: "allow-approved-models".into(),
@@ -2104,7 +2104,7 @@ mod tests {
     fn body_field_rate_limit_missing_field_shares_bucket() {
         let config = PolicyConfig {
             default: DefaultAction::Allow,
-            mode: checkrd_shared::PolicyMode::default(),
+            mode: checkrd_shared::PolicyMode::Enforce,
             rules: vec![PolicyRule {
                 name: "per-model-limit".into(),
                 kind: PolicyRuleKind::Limit(RateLimitConfig {
@@ -2190,7 +2190,7 @@ mod tests {
     fn audit_rate_limit_reports_rule_name() {
         let config = PolicyConfig {
             default: DefaultAction::Allow,
-            mode: checkrd_shared::PolicyMode::default(),
+            mode: checkrd_shared::PolicyMode::Enforce,
             rules: vec![PolicyRule {
                 name: "global-limit".into(),
                 kind: PolicyRuleKind::Limit(RateLimitConfig {
@@ -2340,7 +2340,7 @@ mod tests {
     fn enforce_mode_is_default() {
         let config = PolicyConfig {
             default: DefaultAction::Allow,
-            mode: checkrd_shared::PolicyMode::default(),
+            mode: checkrd_shared::PolicyMode::Enforce,
             rules: vec![],
         };
         let engine = PolicyEngine::from_config(config).unwrap();
@@ -2355,10 +2355,12 @@ mod tests {
     }
 
     #[test]
-    fn mode_omitted_defaults_to_enforce() {
+    fn mode_omitted_defaults_to_dry_run() {
+        // Default is dry_run so a first policy is non-destructive.
+        // Operators set `mode: enforce` explicitly when they're ready to block.
         let json = r#"{"agent": "test", "default": "deny", "rules": []}"#;
         let config: PolicyConfig = serde_json::from_str(json).unwrap();
-        assert_eq!(config.mode, PolicyMode::Enforce);
+        assert_eq!(config.mode, PolicyMode::DryRun);
     }
 
     // ================================================================
@@ -2479,12 +2481,12 @@ mod tests {
     fn diff_added_rule() {
         let a = PolicyConfig {
             default: DefaultAction::Deny,
-            mode: checkrd_shared::PolicyMode::default(),
+            mode: checkrd_shared::PolicyMode::Enforce,
             rules: vec![],
         };
         let b = PolicyConfig {
             default: DefaultAction::Deny,
-            mode: checkrd_shared::PolicyMode::default(),
+            mode: checkrd_shared::PolicyMode::Enforce,
             rules: vec![PolicyRule {
                 name: "new-rule".into(),
                 kind: PolicyRuleKind::Allow(matcher(vec![HttpMethod::GET], Some("*"))),
@@ -2502,7 +2504,7 @@ mod tests {
     fn diff_removed_rule() {
         let a = PolicyConfig {
             default: DefaultAction::Deny,
-            mode: checkrd_shared::PolicyMode::default(),
+            mode: checkrd_shared::PolicyMode::Enforce,
             rules: vec![PolicyRule {
                 name: "old-rule".into(),
                 kind: PolicyRuleKind::Allow(matcher(vec![HttpMethod::GET], Some("*"))),
@@ -2511,7 +2513,7 @@ mod tests {
         };
         let b = PolicyConfig {
             default: DefaultAction::Deny,
-            mode: checkrd_shared::PolicyMode::default(),
+            mode: checkrd_shared::PolicyMode::Enforce,
             rules: vec![],
         };
         let diff = checkrd_shared::diff_policies(&a, &b);
@@ -2523,12 +2525,12 @@ mod tests {
     fn diff_default_action_changed() {
         let a = PolicyConfig {
             default: DefaultAction::Allow,
-            mode: checkrd_shared::PolicyMode::default(),
+            mode: checkrd_shared::PolicyMode::Enforce,
             rules: vec![],
         };
         let b = PolicyConfig {
             default: DefaultAction::Deny,
-            mode: checkrd_shared::PolicyMode::default(),
+            mode: checkrd_shared::PolicyMode::Enforce,
             rules: vec![],
         };
         let diff = checkrd_shared::diff_policies(&a, &b);
@@ -2558,7 +2560,7 @@ mod tests {
     fn org_policy() -> PolicyConfig {
         PolicyConfig {
             default: DefaultAction::Deny,
-            mode: PolicyMode::default(),
+            mode: PolicyMode::Enforce,
             rules: vec![
                 PolicyRule {
                     name: "org-block-deletes".into(),
@@ -2586,7 +2588,7 @@ mod tests {
     fn agent_policy() -> PolicyConfig {
         PolicyConfig {
             default: DefaultAction::Allow,
-            mode: PolicyMode::default(),
+            mode: PolicyMode::Enforce,
             rules: vec![
                 PolicyRule {
                     name: "agent-allow-stripe".into(),
@@ -2639,7 +2641,7 @@ mod tests {
     fn merge_org_allows_used_when_agent_has_none() {
         let agent = PolicyConfig {
             default: DefaultAction::Deny,
-            mode: PolicyMode::default(),
+            mode: PolicyMode::Enforce,
             rules: vec![], // No rules at all
         };
         let merged = checkrd_shared::merge_policies(&org_policy(), &agent);
@@ -2685,7 +2687,7 @@ mod tests {
     fn analyze_contradictory_allow_deny() {
         let config = PolicyConfig {
             default: DefaultAction::Deny,
-            mode: PolicyMode::default(),
+            mode: PolicyMode::Enforce,
             rules: vec![
                 PolicyRule {
                     name: "deny-all-deletes".into(),
@@ -2713,7 +2715,7 @@ mod tests {
     fn analyze_redundant_deny_rules() {
         let config = PolicyConfig {
             default: DefaultAction::Allow,
-            mode: PolicyMode::default(),
+            mode: PolicyMode::Enforce,
             rules: vec![
                 PolicyRule {
                     name: "deny-a".into(),
@@ -2738,7 +2740,7 @@ mod tests {
     fn analyze_overly_broad_allow() {
         let config = PolicyConfig {
             default: DefaultAction::Deny,
-            mode: PolicyMode::default(),
+            mode: PolicyMode::Enforce,
             rules: vec![PolicyRule {
                 name: "allow-everything".into(),
                 kind: PolicyRuleKind::Allow(matcher(vec![], Some("*"))),
@@ -2768,7 +2770,7 @@ mod tests {
     fn analyze_unreachable_default_deny_no_allows() {
         let config = PolicyConfig {
             default: DefaultAction::Deny,
-            mode: PolicyMode::default(),
+            mode: PolicyMode::Enforce,
             rules: vec![PolicyRule {
                 name: "deny-deletes".into(),
                 kind: PolicyRuleKind::Deny(matcher(vec![HttpMethod::DELETE], Some("*"))),
@@ -2789,7 +2791,7 @@ mod tests {
     fn analyze_redundant_rate_limits() {
         let config = PolicyConfig {
             default: DefaultAction::Allow,
-            mode: PolicyMode::default(),
+            mode: PolicyMode::Enforce,
             rules: vec![
                 PolicyRule {
                     name: "limit-100".into(),

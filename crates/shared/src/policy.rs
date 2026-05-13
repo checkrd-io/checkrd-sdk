@@ -299,9 +299,12 @@ pub struct EvaluationStep {
 #[non_exhaustive]
 pub enum PolicyMode {
     /// Normal enforcement — decisions are applied.
-    #[default]
     Enforce,
     /// Shadow/dry-run — decisions are logged but not enforced (always allows).
+    /// This is the default so an operator's first policy is non-destructive:
+    /// decisions land in the dashboard Events table; the operator validates
+    /// against real traffic; then sets `mode: enforce` explicitly to block.
+    #[default]
     DryRun,
 }
 

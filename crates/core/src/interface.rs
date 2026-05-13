@@ -982,6 +982,7 @@ mod tests {
     fn default_deny_policy() -> &'static str {
         r#"{
             "agent": "test-agent",
+            "mode": "enforce",
             "default": "deny",
             "rules": [
                 {
@@ -1127,7 +1128,7 @@ mod tests {
         ));
         assert!(result.allowed, "expected allow before reload");
 
-        let deny_all = r#"{"agent": "test-agent", "default": "deny", "rules": []}"#;
+        let deny_all = r#"{"agent": "test-agent", "mode": "enforce", "default": "deny", "rules": []}"#;
         let config: PolicyConfig = serde_json::from_str(deny_all).unwrap();
         let policy = PolicyEngine::from_config(config).unwrap();
         ENGINE.with(|cell| {
@@ -1151,6 +1152,7 @@ mod tests {
 
         let rate_limit_policy = r#"{
             "agent": "test-agent",
+            "mode": "enforce",
             "default": "allow",
             "rules": [
                 {
@@ -1204,7 +1206,7 @@ mod tests {
         // Verify trace_id, span_id, and parent_span_id flow through the full
         // init -> evaluate_request -> log_event_json path.
         reset_engine();
-        let allow_all = r#"{"agent": "test-agent", "default": "allow", "rules": []}"#;
+        let allow_all = r#"{"agent": "test-agent", "mode": "enforce", "default": "allow", "rules": []}"#;
         init_test_engine(allow_all);
 
         let trace_id = "a1b2c3d4e5f6a7b8a1b2c3d4e5f6a7b8";
@@ -1328,7 +1330,7 @@ mod tests {
     #[test]
     fn init_rejects_invalid_utf8_in_agent_id() {
         reset_engine();
-        let policy = br#"{"agent":"t","default":"allow","rules":[]}"#;
+        let policy = br#"{"agent":"t","mode":"enforce","default":"allow","rules":[]}"#;
         let invalid: &[u8] = &[0xFE, 0xFF];
         let no_key: &[u8] = &[];
         let no_iid: &[u8] = &[];
@@ -1425,7 +1427,7 @@ mod tests {
     #[test]
     fn ffi_init_success_and_evaluate_returns_result() {
         reset_engine();
-        let policy = br#"{"agent":"test","default":"allow","rules":[]}"#;
+        let policy = br#"{"agent":"test","mode":"enforce","default":"allow","rules":[]}"#;
         let agent = b"test-agent";
         let no_key: &[u8] = &[];
         let no_iid: &[u8] = &[];
@@ -1456,7 +1458,7 @@ mod tests {
     fn trace_context_on_kill_switch() {
         // Trace context must appear even when kill switch short-circuits evaluation.
         reset_engine();
-        let allow_all = r#"{"agent": "test-agent", "default": "allow", "rules": []}"#;
+        let allow_all = r#"{"agent": "test-agent", "mode": "enforce", "default": "allow", "rules": []}"#;
         init_test_engine(allow_all);
 
         ENGINE.with(|cell| {
@@ -1496,7 +1498,7 @@ mod tests {
     fn ffi_init_with_valid_key() {
         reset_engine();
         let (private, _public) = crate::identity::generate_keypair();
-        let policy = br#"{"agent":"test","default":"allow","rules":[]}"#;
+        let policy = br#"{"agent":"test","mode":"enforce","default":"allow","rules":[]}"#;
         let agent = b"test-agent";
         let no_iid: &[u8] = &[];
 
@@ -1526,7 +1528,7 @@ mod tests {
     fn ffi_init_with_invalid_key_length() {
         reset_engine();
         let bad_key = [0u8; 16]; // wrong length
-        let policy = br#"{"agent":"test","default":"allow","rules":[]}"#;
+        let policy = br#"{"agent":"test","mode":"enforce","default":"allow","rules":[]}"#;
         let agent = b"test-agent";
         let no_iid: &[u8] = &[];
 
@@ -1546,7 +1548,7 @@ mod tests {
     #[test]
     fn ffi_init_with_instance_id_override() {
         reset_engine();
-        let policy = br#"{"agent":"test","default":"allow","rules":[]}"#;
+        let policy = br#"{"agent":"test","mode":"enforce","default":"allow","rules":[]}"#;
         let agent = b"test-agent";
         let no_key: &[u8] = &[];
         let custom_iid = b"kms-derived-12345678";
@@ -1573,7 +1575,7 @@ mod tests {
     #[test]
     fn ffi_init_anonymous_uses_agent_id_as_instance_id() {
         reset_engine();
-        let policy = br#"{"agent":"test","default":"allow","rules":[]}"#;
+        let policy = br#"{"agent":"test","mode":"enforce","default":"allow","rules":[]}"#;
         let agent = b"my-agent";
         let no_key: &[u8] = &[];
         let no_iid: &[u8] = &[];
@@ -1613,7 +1615,7 @@ mod tests {
     fn ffi_sign_round_trip_with_verify() {
         reset_engine();
         let (private, public) = crate::identity::generate_keypair();
-        let policy = br#"{"agent":"test","default":"allow","rules":[]}"#;
+        let policy = br#"{"agent":"test","mode":"enforce","default":"allow","rules":[]}"#;
         let agent = b"test-agent";
         let no_iid: &[u8] = &[];
 
@@ -1649,7 +1651,7 @@ mod tests {
     fn ffi_sign_deterministic() {
         reset_engine();
         let (private, _) = crate::identity::generate_keypair();
-        let policy = br#"{"agent":"test","default":"allow","rules":[]}"#;
+        let policy = br#"{"agent":"test","mode":"enforce","default":"allow","rules":[]}"#;
         let agent = b"test-agent";
         let no_iid: &[u8] = &[];
 
@@ -1683,7 +1685,7 @@ mod tests {
     #[test]
     fn ffi_sign_anonymous_returns_zero() {
         reset_engine();
-        let policy = br#"{"agent":"test","default":"allow","rules":[]}"#;
+        let policy = br#"{"agent":"test","mode":"enforce","default":"allow","rules":[]}"#;
         let agent = b"test-agent";
         let no_key: &[u8] = &[];
         let no_iid: &[u8] = &[];
@@ -1709,7 +1711,7 @@ mod tests {
     fn ffi_sign_empty_payload() {
         reset_engine();
         let (private, public) = crate::identity::generate_keypair();
-        let policy = br#"{"agent":"test","default":"allow","rules":[]}"#;
+        let policy = br#"{"agent":"test","mode":"enforce","default":"allow","rules":[]}"#;
         let agent = b"test-agent";
         let no_iid: &[u8] = &[];
 
@@ -1739,7 +1741,7 @@ mod tests {
     fn ffi_sign_service_id_on_identity() {
         reset_engine();
         let (private, _) = crate::identity::generate_keypair();
-        let policy = br#"{"agent":"test","default":"allow","rules":[]}"#;
+        let policy = br#"{"agent":"test","mode":"enforce","default":"allow","rules":[]}"#;
         let agent = b"sales-agent";
         let no_iid: &[u8] = &[];
 
@@ -1770,7 +1772,7 @@ mod tests {
     // directly and only verify the FFI shim's zero-return paths.
 
     fn init_keyed_engine_with(private: &[u8; 32]) {
-        let policy = br#"{"agent":"test","default":"allow","rules":[]}"#;
+        let policy = br#"{"agent":"test","mode":"enforce","default":"allow","rules":[]}"#;
         let agent = b"sales-agent";
         let no_iid: &[u8] = &[];
         let rc = init(
@@ -1811,7 +1813,7 @@ mod tests {
         // Anonymous identities have no signing capability — the wrapper must
         // be able to detect this and skip signing rather than crashing.
         reset_engine();
-        let policy = br#"{"agent":"test","default":"allow","rules":[]}"#;
+        let policy = br#"{"agent":"test","mode":"enforce","default":"allow","rules":[]}"#;
         let agent = b"sales-agent";
         let no_key: &[u8] = &[];
         let no_iid: &[u8] = &[];
@@ -2173,6 +2175,7 @@ mod tests {
     fn permissive_policy_json() -> &'static str {
         r#"{
             "agent": "test-agent",
+            "mode": "enforce",
             "default": "allow",
             "rules": []
         }"#
@@ -2261,7 +2264,7 @@ mod tests {
         // Replace the payload AFTER signing — base64 of a different policy.
         use base64::engine::general_purpose::STANDARD as B64;
         use base64::Engine;
-        envelope.payload = B64.encode(br#"{"agent":"x","default":"allow","rules":[]}"#);
+        envelope.payload = B64.encode(br#"{"agent":"x","mode":"enforce","default":"allow","rules":[]}"#);
         let tampered = serde_json::to_string(&envelope).unwrap();
         let trusted = make_trusted_keys_json(&signing_key);
 

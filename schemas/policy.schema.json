@@ -10,8 +10,8 @@
     "mode": {
       "type": "string",
       "enum": ["enforce", "dry_run"],
-      "default": "enforce",
-      "description": "Enforcement mode. dry_run logs decisions but always allows (shadow testing)."
+      "default": "dry_run",
+      "description": "Enforcement mode. dry_run logs decisions but always allows (shadow testing). Default is dry_run so a first policy is non-destructive; set explicitly to enforce when ready to block."
     },
     "rules": {
       "type": "array",
