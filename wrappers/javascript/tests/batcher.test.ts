@@ -47,8 +47,11 @@ describe("TelemetryBatcher", () => {
     await new Promise((r) => setTimeout(r, 10));
     await batcher.flush();
     expect(calls).toHaveLength(1);
-    const events = JSON.parse(calls[0]!.body) as { n: number }[];
-    expect(events).toHaveLength(3);
+    const body = JSON.parse(calls[0]!.body) as {
+      events: { n: number }[];
+      sdk_version: string;
+    };
+    expect(body.events).toHaveLength(3);
   });
 
   it("stamps every POST with a fresh Idempotency-Key and API key", async () => {
@@ -203,7 +206,8 @@ describe("TelemetryBatcher", () => {
     batcher.enqueue({ n: 2 });
     await batcher.stop();
     expect(calls).toHaveLength(1);
-    expect(JSON.parse(calls[0]!)).toHaveLength(2);
+    const body = JSON.parse(calls[0]!) as { events: unknown[] };
+    expect(body.events).toHaveLength(2);
     batcher = null;
   });
 });

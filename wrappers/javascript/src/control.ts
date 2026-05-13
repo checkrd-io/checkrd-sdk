@@ -257,15 +257,20 @@ async function installSignedPolicy(
   const nowUnixSecs =
     (opts.nowUnixSecs ?? ((): number => Math.floor(Date.now() / 1000)))();
   const maxAgeSecs = opts.maxAgeSecs ?? 24 * 60 * 60;
-  const reloadSigned = engine.reloadPolicySigned;
-  if (!reloadSigned) {
+  if (!engine.reloadPolicySigned) {
     // Caller-side check in handleControlEvent should have prevented
     // this; guard defensively so we never silently fall through.
     logger.warn("policy_updated fired without reloadPolicySigned; dropping");
     return;
   }
   try {
-    reloadSigned({
+    // Call as method so `this` binds to the engine. Earlier code held a
+    // bare reference `const fn = engine.reloadPolicySigned; fn({...})`
+    // which dropped `this`; the WASM-backed implementation accesses
+    // `this.exports.reload_policy_signed` and `this.writeString(...)`
+    // internally so calling it unbound threw a `TypeError: Cannot read
+    // properties of undefined (reading 'writeString')` at runtime.
+    engine.reloadPolicySigned({
       envelopeJson,
       trustedKeysJson,
       nowUnixSecs,

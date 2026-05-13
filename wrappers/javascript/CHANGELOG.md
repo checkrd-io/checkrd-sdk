@@ -7,6 +7,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.3.4 (2026-05-13)
+
+### Fixed
+
+- `Checkrd.wrap()` now boots the full runtime (engine + telemetry
+  batcher + SSE control receiver + public-key registration) on first
+  call, instead of building a bare engine with no sink. Previously
+  events evaluated by the wrapped fetch had nowhere to flow -- the
+  batcher only got created via `init()` / `instrument*()`. Brings the
+  JS class to parity with the Python `Checkrd` class's one-liner
+  setup: `new Checkrd({...}).wrap(globalThis.fetch)` now produces a
+  fully-functional client.
+- `Checkrd.close()` always calls `shutdown()` (was gated on
+  `globalContextInstalled`, which was only set by `.instrument*()`).
+  Callers who only used `.wrap()` had their telemetry never drained
+  on close.
+- `policy_updated` SSE event no longer crashes with
+  `TypeError: Cannot read properties of undefined (reading 'writeString')`.
+  The handler was extracting `engine.reloadPolicySigned` into a bare
+  variable and calling it without `this` -- now calls it as a method
+  on the engine so the WASM-backed implementation can access
+  `this.exports` and `this.writeString`.
+- Telemetry batcher posts to `/v1/telemetry` with the correct wire
+  shape. Previously sent a bare JSON array and the server rejected
+  it as `invalid type: map, expected a sequence`. Now wraps in
+  `{ events: [...], sdk_version: VERSION }` to match the server's
+  `IngestRequest` deserializer. Each event is also flattened from the
+  WASM-emitted nested `{ request: {...}, response: {...} }` shape
+  into the flat fields the server expects, and `event_id` is
+  renamed to `request_id`. Empty-string optional fields (trace_id,
+  span_id, parent_span_id, etc.) are omitted so the server's
+  `Option<String>` deserializer treats them as `None` instead of
+  rejecting the batch with `invalid value for trace_id: `.
+
 ## 0.3.3 (2026-05-13)
 
 ### Fixed

@@ -31,16 +31,16 @@ import {
   shutdown,
   uninstrumentAnthropic,
   uninstrumentOpenAI,
-  wrap,
   wrapAsync,
   type HealthReport,
   type InitAsyncOptions,
   type InitOptions,
 } from "./index.js";
+import { maybeContext } from "./_state.js";
 import { CheckrdInitError } from "./exceptions.js";
 import { readEnv } from "./_env.js";
 import { resolve } from "./_settings.js";
-import type { FetchFn } from "./transports/fetch.js";
+import { wrapFetch, type FetchFn } from "./transports/fetch.js";
 
 /**
  * Strongly-typed sentinel used by {@link Checkrd.withOptions} to
@@ -182,7 +182,38 @@ export class Checkrd {
           "would leak resources.",
       );
     }
-    return wrap(baseFetch, this.options);
+    // Boot the global runtime (engine + telemetry batcher + control
+    // receiver + public-key registration) on the first wrap() call.
+    // Subsequent calls reuse the booted state. This mirrors the Python
+    // Checkrd class's wrap() semantics: one engine + one batcher per
+    // client, shared by every wrap() invocation, so telemetry flows
+    // through the same control-plane connection regardless of how
+    // many fetches the caller wraps.
+    this.ensureGlobalContext();
+    const base = baseFetch ?? globalThis.fetch.bind(globalThis);
+    const ctx = maybeContext();
+    if (!ctx) {
+      // init() degraded (e.g. WASM load failed in permissive mode);
+      // return passthrough fetch. The engine isn't enforcing anything
+      // here, so wrapping would be a lie about behaviour.
+      return base;
+    }
+    const wrapOpts: Parameters<typeof wrapFetch>[1] = {
+      engine: ctx.engine,
+      enforce: ctx.enforce,
+      agentId: ctx.settings.agentId,
+      dashboardUrl: ctx.settings.dashboardUrl,
+      securityMode: ctx.settings.securityMode,
+    };
+    if (ctx.sink !== undefined) wrapOpts.sink = ctx.sink;
+    if (ctx.onAllow !== undefined) wrapOpts.onAllow = ctx.onAllow;
+    if (ctx.onDeny !== undefined) wrapOpts.onDeny = ctx.onDeny;
+    if (ctx.beforeRequest !== undefined) {
+      wrapOpts.beforeRequest = ctx.beforeRequest;
+    }
+    // `ctx.logger` is non-optional on GlobalContext -- assign unconditionally.
+    wrapOpts.logger = ctx.logger;
+    return wrapFetch(base, wrapOpts);
   }
 
   /**
@@ -309,16 +340,19 @@ export class Checkrd {
   async close(): Promise<void> {
     if (this.closed) return;
     this.closed = true;
-    if (this.globalContextInstalled) {
-      try {
-        await shutdown();
-      } catch {
-        // close() must never raise — a failing shutdown in test or
-        // production is a warning, not a new exception to propagate.
-      }
+    // Always shutdown -- not just when `.instrument*()` was used.
+    // The wrap() path also registers disposables (telemetry batcher,
+    // SSE receiver) via init(), and gating close() on
+    // `globalContextInstalled` here was a leak: telemetry never got
+    // drained for callers who only used `.wrap()`. shutdown() is a
+    // no-op when nothing is registered, so the unconditional call is
+    // safe for the class-uninitialized case too.
+    try {
+      await shutdown();
+    } catch {
+      // close() must never raise -- a failing shutdown in test or
+      // production is a warning, not a new exception to propagate.
     }
-    // No separate return value — consumers don't need per-subsystem
-    // results; they need a single "cleanly stopped" signal.
   }
 
   /**

@@ -313,7 +313,11 @@ describe("pagehide → urgentFlush → fetch (integrated)", () => {
     // 3. Body integrity: every enqueued event arrives intact, in
     //    order, with no duplicate or dropped entries.
     const body = init.body as string;
-    const parsed = JSON.parse(body) as Array<{ request_id: string }>;
+    const envelope = JSON.parse(body) as {
+      events: Array<{ request_id: string }>;
+      sdk_version: string;
+    };
+    const parsed = envelope.events;
     expect(parsed.map((e) => e.request_id)).toEqual(["r-A", "r-B"]);
 
     // 4. Body size never exceeds the keepalive ceiling.
@@ -401,7 +405,11 @@ describe("pagehide → urgentFlush → fetch (integrated)", () => {
     // Parsed body is a contiguous tail of the original sequence —
     // each event's request_id is one greater than the last, and the
     // last entry is r-099 (newest never trimmed).
-    const parsed = JSON.parse(body) as Array<{ request_id: string }>;
+    const envelope = JSON.parse(body) as {
+      events: Array<{ request_id: string }>;
+      sdk_version: string;
+    };
+    const parsed = envelope.events;
     expect(parsed.length).toBeGreaterThan(0);
     const ids = parsed.map((e) => Number.parseInt(e.request_id.slice(2, 5), 10));
     for (let i = 1; i < ids.length; i++) {

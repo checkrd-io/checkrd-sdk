@@ -25,6 +25,98 @@ import { APIUserAbortError } from "./exceptions.js";
 import type { Logger } from "./_logger.js";
 import type { WasmEngine } from "./engine.js";
 import { CircuitBreaker, type CircuitBreakerDiagnostics } from "./_circuit_breaker.js";
+import { VERSION } from "./_version.js";
+
+/**
+ * Flatten a WASM-emitted telemetry event into the flat shape the
+ * ingestion API's `TelemetryEventInput` deserializer expects.
+ *
+ * The WASM core produces a nested record:
+ *   { event_id, agent_id, timestamp, request: {url_host, url_path, method, body_hash}, response: {status_code, latency_ms}, mode, ... }
+ *
+ * The server side expects flat fields with one rename:
+ *   { request_id, agent_id, timestamp, url_host, url_path, method, body_hash, status_code, latency_ms, policy_mode, ... }
+ *
+ * Mirrors `_flatten_event` in the Python batcher (wrappers/python/src/
+ * checkrd/batcher.py) so both SDKs land on the same wire format.
+ */
+function flattenEvent(event: TelemetryEvent): Record<string, unknown> {
+  // `TelemetryEvent` is already `Record<string, unknown>`; alias for
+  // readability of the WASM-shape accesses below.
+  const src = event;
+  const flat: Record<string, unknown> = {};
+  const passthrough = [
+    "event_id",
+    // `request_id` survives if the event is already pre-flat (custom
+    // sink, integration adapter, hand-constructed event). WASM-shape
+    // events use `event_id`; the rename block below overrides
+    // `request_id` only when `event_id` is present.
+    "request_id",
+    "agent_id",
+    "instance_id",
+    "timestamp",
+    "policy_result",
+    "deny_reason",
+    "trace_id",
+    "span_id",
+    "parent_span_id",
+    "span_name",
+    "span_kind",
+    "span_status_code",
+    "span_status_message",
+    "matched_rule",
+    "matched_rule_kind",
+    "evaluation_path",
+  ];
+  // Server-side `TelemetryEventInput` (in `crates/shared/src/telemetry.rs`)
+  // declares trace_id / span_id / parent_span_id / policy_result /
+  // deny_reason / instance_id / matched_rule* / span_* as `Option<String>`.
+  // The WASM core fills them with empty strings when unset; serde
+  // accepts `None` (missing field) but rejects `""` for trace_id with
+  // a 422. Omit empty optionals so the server treats them as `None`.
+  const optionalStringFields = new Set([
+    "instance_id",
+    "policy_result",
+    "deny_reason",
+    "trace_id",
+    "span_id",
+    "parent_span_id",
+    "span_name",
+    "span_kind",
+    "span_status_code",
+    "span_status_message",
+    "matched_rule",
+    "matched_rule_kind",
+  ]);
+  for (const key of passthrough) {
+    if (!(key in src)) continue;
+    const v = src[key];
+    if (optionalStringFields.has(key) && (v === "" || v == null)) continue;
+    flat[key] = v;
+  }
+  // event_id -> request_id (WASM uses event_id, API expects request_id).
+  if (flat.event_id !== undefined) {
+    flat.request_id = flat.event_id;
+    delete flat.event_id;
+  }
+  // mode -> policy_mode (WASM uses mode, API uses policy_mode).
+  if ("mode" in src) flat.policy_mode = src.mode;
+  // Flatten request sub-object.
+  const req = src.request as Record<string, unknown> | undefined;
+  if (req && typeof req === "object") {
+    flat.url_host = req.url_host ?? "";
+    flat.url_path = req.url_path ?? "";
+    flat.method = req.method ?? "";
+    if (req.body_hash !== undefined) flat.body_hash = req.body_hash;
+  }
+  // Flatten response sub-object.
+  const resp = src.response as Record<string, unknown> | undefined;
+  if (resp && typeof resp === "object") {
+    if (resp.status_code !== undefined) flat.status_code = resp.status_code;
+    if (resp.latency_ms !== undefined) flat.latency_ms = resp.latency_ms;
+  }
+  return flat;
+}
 
 /** Parse an RFC 6585 integer header, tolerating absent / non-numeric values. */
 function parseIntHeader(value: string | null): number | null {
@@ -505,8 +597,13 @@ export class TelemetryBatcher {
     // oldest events (FIFO) until under cap, then serialize the trimmed
     // form for the actual ship. For the common case (small batches),
     // the second serialize is a no-op miss — we keep the first result
-    // when nothing was trimmed.
-    let bodyJson = JSON.stringify(batch);
+    // when nothing was trimmed. Wrap in the ingest envelope and flatten
+    // each event the same way `sendBatch` does so the server's
+    // `IngestRequest { events, sdk_version }` deserializer accepts the
+    // body.
+    const serialize = (b: TelemetryEvent[]): string =>
+      JSON.stringify({ events: b.map(flattenEvent), sdk_version: VERSION });
+    let bodyJson = serialize(batch);
     let bodyBytes = new TextEncoder().encode(bodyJson);
     if (bodyBytes.byteLength > URGENT_FLUSH_BODY_LIMIT_BYTES) {
       while (
@@ -518,7 +615,7 @@ export class TelemetryBatcher {
         // path runs at most once per page lifetime.
         batch.shift();
         this.droppedSendError += 1;
-        bodyJson = JSON.stringify(batch);
+        bodyJson = serialize(batch);
         bodyBytes = new TextEncoder().encode(bodyJson);
       }
       this.logger?.warn(
@@ -624,7 +721,20 @@ export class TelemetryBatcher {
 
   private async sendBatch(batch: TelemetryEvent[]): Promise<void> {
     if (batch.length === 0) return;
-    const bodyJson = JSON.stringify(batch);
+    // The ingestion endpoint deserializes the body as
+    // `IngestRequest { events: Vec<TelemetryEventInput>, sdk_version: Option<String> }`
+    // (see `crates/telemetry-ingestion/src/routes.rs`). Sending a bare
+    // array produces a `422 invalid type: map, expected a sequence`
+    // because the ingest struct is itself a map. Each event is flattened
+    // from the WASM-emitted nested `{request: {...}, response: {...}}`
+    // shape into the flat fields the API expects (`url_host`, `url_path`,
+    // `method`, `status_code`, ...), and the WASM-emitted `event_id` is
+    // renamed to `request_id` to match the server's `TelemetryEventInput`
+    // contract. Mirrors the Python batcher 1-for-1.
+    const bodyJson = JSON.stringify({
+      events: batch.map(flattenEvent),
+      sdk_version: VERSION,
+    });
     const bodyBytes = new TextEncoder().encode(bodyJson);
     const targetUri = `${this.controlPlaneUrl}/v1/telemetry`;
     const headers: Record<string, string> = {
