@@ -59,30 +59,25 @@ interface NodeUrlShim {
 /**
  * Resolve a Node built-in module synchronously without a static
  * `import "node:..."` statement (which would force the whole bundle
- * to require Node).
- *
- * Returns `null` if no available strategy succeeds, leaving the
- * caller to throw a directional error.
+ * to require Node). Returns `null` when no strategy is available;
+ * the per-module loaders below cast the result and throw a
+ * directional error.
  */
-function resolveBuiltin<T>(spec: string): T | null {
+function resolveBuiltin(spec: string): unknown {
   // Strategy 1: Node 22+ `process.getBuiltinModule`.
   try {
     const proc = (globalThis as {
       process?: { getBuiltinModule?: (spec: string) => unknown };
     }).process;
     const mod = proc?.getBuiltinModule?.(spec);
-    if (mod) return mod as T;
+    if (mod) return mod;
   } catch {
     // Fall through.
   }
   // Strategy 2: Node CJS / Bun `require`.
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- sync load on Node CJS / Bun
-    const req = require;
-    if (typeof req === "function") {
-      const mod = req(spec) as T;
-      if (mod) return mod;
-    }
+    return require(spec) as unknown;
   } catch {
     // Fall through.
   }
@@ -95,7 +90,7 @@ const ASYNC_HINT =
   "Node 20 ESM, Cloudflare Workers, Vercel Edge, Deno, and the browser.";
 
 function loadNodeFs(): NodeFsShim {
-  const mod = resolveBuiltin<NodeFsShim>("node:fs");
+  const mod = resolveBuiltin("node:fs") as NodeFsShim | null;
   if (mod) return mod;
   throw new CheckrdInitError(
     "node:fs is not available in this runtime. " +
@@ -107,7 +102,7 @@ function loadNodeFs(): NodeFsShim {
 }
 
 function loadNodeCrypto(): NodeCryptoShim {
-  const mod = resolveBuiltin<NodeCryptoShim>("node:crypto");
+  const mod = resolveBuiltin("node:crypto") as NodeCryptoShim | null;
   if (mod) return mod;
   throw new CheckrdInitError(
     "node:crypto is not available in this runtime. " + ASYNC_HINT,
@@ -115,7 +110,7 @@ function loadNodeCrypto(): NodeCryptoShim {
 }
 
 function loadNodeUrl(): NodeUrlShim {
-  const mod = resolveBuiltin<NodeUrlShim>("node:url");
+  const mod = resolveBuiltin("node:url") as NodeUrlShim | null;
   if (mod) return mod;
   throw new CheckrdInitError(
     "node:url is not available in this runtime. " + ASYNC_HINT,
