@@ -7,6 +7,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.3.3 (2026-05-13)
+
+### Fixed
+
+- Synchronous `Checkrd` / `WasmEngine` construction now works in Node
+  ESM (`.mjs` files, `"type": "module"` packages). The previous lazy
+  `require("node:fs")` pattern crashed under tsup's `__require` shim
+  because Node ESM has no `require` symbol in module scope. The fix
+  switches the three lazy loaders (`loadNodeFs`, `loadNodeCrypto`,
+  `loadNodeUrl`) to prefer `globalThis.process.getBuiltinModule(spec)`
+  (Node 22+, ESM-safe) and fall back to `require(spec)` for Node CJS
+  and Bun. Edge runtimes still throw a directional error, now updated
+  to point at `await Checkrd.create(...)` / `await WasmEngine.create(...)`.
+- Edge-runtime smoke test (`tests/edge_runtime.test.ts`) still passes
+  unchanged -- the resolver is dynamic and never pulls `node:*` into
+  the bundle for runtimes that can't load it.
+
 ## 0.3.2 (2026-05-12)
 
 ### Removed

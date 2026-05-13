@@ -31,13 +31,19 @@ import { EXPECTED_SHA256 } from "./_wasm_integrity.js";
 // make the whole SDK fail to load on those runtimes even for callers
 // who never construct an engine there.
 //
-// Instead we resolve them lazily via `require("node:fs")` at first
-// use. The synchronous constructor works on Node and Bun (both expose
-// a CommonJS-compatible require). On edge runtimes a loud, directional
-// error surfaces pointing to the async `WasmEngine.create()` path —
-// the correct answer there is `WebAssembly.instantiateStreaming` fed
-// by `fetch(new URL('./checkrd_core.wasm', import.meta.url))`, which
-// is the v1.1 work item.
+// Resolution strategy, ordered to cover every supported Node runtime
+// without pulling Node-only specifiers into the edge bundle:
+//
+//   1. `globalThis.process.getBuiltinModule(spec)` -- Node 22+ exposes
+//      this in both ESM and CJS. The spec string is read at call time
+//      so tsup never sees `node:fs` as a static import; the edge
+//      bundle stays runtime-neutral.
+//   2. `require(spec)` -- Node CJS and Bun. Covers older Node bundles
+//      that ship the SDK as CommonJS. (Node ESM has no `require`
+//      symbol; that branch falls through to strategy 3.)
+//   3. Throw a directional `CheckrdInitError` pointing at the async
+//      `Checkrd.create()` / `WasmEngine.create()` factories, which
+//      work on every runtime including Node 20 ESM and the edge.
 interface NodeFsShim {
   readFileSync(path: string): Uint8Array;
 }
@@ -50,42 +56,70 @@ interface NodeUrlShim {
   fileURLToPath(url: URL | string): string;
 }
 
-function loadNodeFs(): NodeFsShim {
+/**
+ * Resolve a Node built-in module synchronously without a static
+ * `import "node:..."` statement (which would force the whole bundle
+ * to require Node).
+ *
+ * Returns `null` if no available strategy succeeds, leaving the
+ * caller to throw a directional error.
+ */
+function resolveBuiltin<T>(spec: string): T | null {
+  // Strategy 1: Node 22+ `process.getBuiltinModule`.
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports -- sync load on Node
-    return require("node:fs") as NodeFsShim;
+    const proc = (globalThis as {
+      process?: { getBuiltinModule?: (spec: string) => unknown };
+    }).process;
+    const mod = proc?.getBuiltinModule?.(spec);
+    if (mod) return mod as T;
   } catch {
-    throw new CheckrdInitError(
-      "node:fs is not available in this runtime. The synchronous WasmEngine " +
-        "constructor runs only on Node / Bun. For Cloudflare Workers / " +
-        "Vercel Edge / Deno / browser, use `await WasmEngine.create()` " +
-        "(shipping in v1.1).",
-    );
+    // Fall through.
   }
+  // Strategy 2: Node CJS / Bun `require`.
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- sync load on Node CJS / Bun
+    const req = require;
+    if (typeof req === "function") {
+      const mod = req(spec) as T;
+      if (mod) return mod;
+    }
+  } catch {
+    // Fall through.
+  }
+  return null;
+}
+
+const ASYNC_HINT =
+  "use `await Checkrd.create(...)` / `await WasmEngine.create(...)` " +
+  "-- the async path works on every supported runtime including " +
+  "Node 20 ESM, Cloudflare Workers, Vercel Edge, Deno, and the browser.";
+
+function loadNodeFs(): NodeFsShim {
+  const mod = resolveBuiltin<NodeFsShim>("node:fs");
+  if (mod) return mod;
+  throw new CheckrdInitError(
+    "node:fs is not available in this runtime. " +
+      "The synchronous WasmEngine constructor runs on Node 22+ " +
+      "(ESM or CJS), older Node CJS, and Bun. " +
+      "For everything else, " +
+      ASYNC_HINT,
+  );
 }
 
 function loadNodeCrypto(): NodeCryptoShim {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports -- sync load on Node
-    return require("node:crypto") as NodeCryptoShim;
-  } catch {
-    throw new CheckrdInitError(
-      "node:crypto is not available in this runtime. See loadNodeFs " +
-        "note — use `await WasmEngine.create()` on edge runtimes.",
-    );
-  }
+  const mod = resolveBuiltin<NodeCryptoShim>("node:crypto");
+  if (mod) return mod;
+  throw new CheckrdInitError(
+    "node:crypto is not available in this runtime. " + ASYNC_HINT,
+  );
 }
 
 function loadNodeUrl(): NodeUrlShim {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports -- sync load on Node
-    return require("node:url") as NodeUrlShim;
-  } catch {
-    throw new CheckrdInitError(
-      "node:url is not available in this runtime. See loadNodeFs " +
-        "note — use `await WasmEngine.create()` on edge runtimes.",
-    );
-  }
+  const mod = resolveBuiltin<NodeUrlShim>("node:url");
+  if (mod) return mod;
+  throw new CheckrdInitError(
+    "node:url is not available in this runtime. " + ASYNC_HINT,
+  );
 }
 
 // ---------------------------------------------------------------------------
