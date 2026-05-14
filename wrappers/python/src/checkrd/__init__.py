@@ -748,7 +748,7 @@ def _build_runtime(
 
         bootstrap_policy(
             engine=engine,
-            control_plane_url=settings.control_plane_url,
+            control_plane_url=settings.control_plane_url or "",
             api_key=settings.api_key or "",
             agent_id=settings.agent_id,
             api_version=settings.api_version,
