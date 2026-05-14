@@ -541,12 +541,15 @@ async function verifyIntegrityAsync(bytes: Uint8Array): Promise<void> {
   // Copy into a fresh ArrayBuffer-backed Uint8Array. TypeScript's
   // strict mode now distinguishes `Uint8Array<ArrayBufferLike>` from
   // `Uint8Array<ArrayBuffer>` (SharedArrayBuffer can't be a
-  // `BufferSource`), so we narrow explicitly. Edge runtimes accept
-  // either at runtime, but the type checker won't compile the
-  // direct-pass form.
-  const buf = new ArrayBuffer(bytes.byteLength);
-  new Uint8Array(buf).set(bytes);
-  const digest = await globalThis.crypto.subtle.digest("SHA-256", buf);
+  // `BufferSource`). Allocating via `new Uint8Array(length)` produces
+  // a `Uint8Array<ArrayBuffer>` view that satisfies both the strict
+  // type check AND every runtime's BufferSource validator -- Vercel
+  // Edge's SubtleCrypto refuses a raw ArrayBuffer here ("2nd argument
+  // is not instance of ArrayBuffer, Buffer, TypedArray, or DataView"),
+  // even though Node 20+ accepts it.
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", copy);
   const actual = bytesToHex(new Uint8Array(digest));
   if (actual !== EXPECTED_SHA256) {
     if (skip) return;
