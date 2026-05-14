@@ -7,6 +7,91 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.3.5 (2026-05-13)
+
+### Changed
+
+- **Server-canonical policy distribution.** The control plane is now
+  the source of truth for the active policy. `initAsync()` (and any
+  path that flows through it — `checkrd/next`, `checkrd/hono`, etc.)
+  boots the WASM engine with a **deny-all baseline**, fetches the
+  agent's currently-published DSSE-signed bundle from
+  `GET /v1/agents/:id/control/state`, and installs it before
+  returning. Without this, the SDK ran on whatever was in the
+  caller's `policy:` argument (or an implicit allow-all fallback) and
+  the dashboard's published policy was effectively ignored until SSE
+  delivered a higher-version update. Mirrors OPA bundles, Envoy xDS
+  initial-state delivery, and LaunchDarkly's `waitForInitialization`.
+- Refuse `policy:` argument when `apiKey` is also configured. The
+  combination was almost always a mistake — operators got a local
+  policy shadowing their dashboard policy until the SSE channel
+  pushed a higher version. Set `CHECKRD_ALLOW_LOCAL_POLICY=1` to
+  silence the error for local development.
+- When no local policy is provided AND no policy file exists, the
+  fallback is now **deny-all baseline** (was: observation-mode
+  allow-all). Fail-closed matches OPA / Envoy / Stripe Radar defaults.
+- New `Checkrd.ready()` async method on the unified client class.
+  Calling `await client.ready()` blocks until the bootstrap fetch
+  completes, so the first request runs under the operator's
+  published policy. Sync `client.wrap()` continues to work and falls
+  back to SSE for the bundle delivery — `ready()` is the explicit
+  wait-for-ready primitive.
+
+### Fixed
+
+- WASM core now accepts the first signed bundle regardless of version
+  (the "bootstrap" pattern). Subsequent bundles still go through the
+  strict-greater monotonic-version check, so rollback protection is
+  preserved. Without this, a freshly-published policy with version
+  matching the engine's `last_policy_version=0` boot state was
+  silently rejected as `bundle_version_not_monotonic`.
+- Allowed events now ship with a real `status_code` and `latency_ms`.
+  The fetch transport enqueued telemetry immediately after the WASM
+  evaluation, before the upstream call completed — so every event
+  landed at the dashboard with the response columns null. The dashboard
+  rendered them as `—`. The transport now defers the enqueue until
+  after `baseFetch(request)` returns and stamps
+  `event.response = { status_code, latency_ms }` on the way out. Mirrors
+  the Python `_httpx.py::_enrich_telemetry` flow.
+- Top-level `wrap()` / `wrapAsync()` auto-boot the global runtime when
+  the caller configures a control plane (`apiKey` + `agentId`). Before
+  this, every consumer of `checkrd/next`, `checkrd/hono`, and the bare
+  `wrap()` helpers got a wrapped fetch with **no telemetry batcher** —
+  events were emitted to nothing. Now they idempotently install the
+  global context and route through its sink. Mirrors the Python
+  `Checkrd(api_key=...).wrap(client)` ergonomics.
+- `wrap()` / `wrapAsync()` now route through the **single global
+  engine** when a control plane is configured. Previously they built a
+  separate engine and the wrapped fetch evaluated against that one
+  while the SSE channel updated a different engine — so the
+  dashboard's published policy never affected the wrapped path.
+- DTS build no longer fails on `engine.ts` SHA-256 integrity check.
+  TypeScript 5.x strict mode distinguishes `Uint8Array<ArrayBufferLike>`
+  from `Uint8Array<ArrayBuffer>` (SharedArrayBuffer isn't a valid
+  `BufferSource`). The integrity verifier now copies into a fresh
+  `ArrayBuffer` before calling `crypto.subtle.digest`.
+
+- Allowed events now ship with a real `status_code` and `latency_ms`.
+  The fetch transport enqueued telemetry immediately after the WASM
+  evaluation, before the upstream call completed — so every event
+  landed at the dashboard with the response columns null. The dashboard
+  rendered them as `—`. The transport now defers the enqueue until
+  after `baseFetch(request)` returns and stamps
+  `event.response = { status_code, latency_ms }` on the way out. Mirrors
+  the Python `_httpx.py::_enrich_telemetry` flow.
+- Top-level `wrap()` / `wrapAsync()` auto-boot the global runtime when
+  the caller configures a control plane (`apiKey` + `agentId`). Before
+  this, every consumer of `checkrd/next`, `checkrd/hono`, and the bare
+  `wrap()` helpers got a wrapped fetch with **no telemetry batcher** —
+  events were emitted to nothing. Now they idempotently install the
+  global context and route through its sink. Mirrors the Python
+  `Checkrd(api_key=...).wrap(client)` ergonomics.
+- DTS build no longer fails on `engine.ts` SHA-256 integrity check.
+  TypeScript 5.x strict mode distinguishes `Uint8Array<ArrayBufferLike>`
+  from `Uint8Array<ArrayBuffer>` (SharedArrayBuffer isn't a valid
+  `BufferSource`). The integrity verifier now copies into a fresh
+  `ArrayBuffer` before calling `crypto.subtle.digest`.
+
 ## 0.3.4 (2026-05-13)
 
 ### Fixed

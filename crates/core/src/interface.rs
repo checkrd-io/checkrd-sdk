@@ -26,6 +26,14 @@ struct EngineState {
     /// before the FFI call — see `_policy_state.py` (Python) /
     /// `_policy_state.ts` (JS).
     last_policy_version: u64,
+    /// Whether any signed bundle has been installed via
+    /// `reload_policy_signed` on this engine instance. The bootstrap
+    /// install accepts any version (mirrors the OPA bundle-first-fetch
+    /// pattern); subsequent installs are gated by the strict-greater
+    /// rule against `last_policy_version`. Distinguishes "no policy
+    /// installed yet" from "policy installed at version 0", which the
+    /// version counter alone cannot.
+    signed_policy_installed: bool,
 }
 
 // WASM isolation guarantee: In wasm32-wasip1 (singlethread: true), thread_local!
@@ -226,20 +234,25 @@ pub extern "C" fn init(
         // re-initialization to prevent bypass via repeated init() calls. The
         // policy version high water mark is the rollback-attack defense — an
         // attacker who could reset it via init() would defeat the protection.
-        let (rate_limiter, kill_switch, last_policy_version) = match state.take() {
-            Some(prev) => (
-                prev.rate_limiter,
-                prev.kill_switch,
-                prev.last_policy_version,
-            ),
-            None => (RateLimiter::new(), KillSwitch::new(), 0),
-        };
+        // `signed_policy_installed` is similarly preserved so a re-init can't
+        // re-open the bootstrap acceptance window.
+        let (rate_limiter, kill_switch, last_policy_version, signed_policy_installed) =
+            match state.take() {
+                Some(prev) => (
+                    prev.rate_limiter,
+                    prev.kill_switch,
+                    prev.last_policy_version,
+                    prev.signed_policy_installed,
+                ),
+                None => (RateLimiter::new(), KillSwitch::new(), 0, false),
+            };
         *state = Some(EngineState {
             kill_switch,
             policy,
             rate_limiter,
             identity,
             last_policy_version,
+            signed_policy_installed,
         });
     });
 
@@ -689,9 +702,14 @@ pub extern "C" fn set_initial_policy_version(version: u64) -> i32 {
         let mut state = cell.borrow_mut();
         match state.as_mut() {
             None => FFI_POLICY_ENGINE_NOT_INITIALIZED,
-            Some(s) if s.last_policy_version != 0 => FFI_POLICY_VERSION_ALREADY_SET,
+            Some(s) if s.signed_policy_installed => FFI_POLICY_VERSION_ALREADY_SET,
             Some(s) => {
                 s.last_policy_version = version;
+                // Restoring a persisted version is a continuation of an
+                // earlier bootstrap, not a fresh boot. Mark the engine
+                // as already-installed so the bootstrap acceptance
+                // window stays closed.
+                s.signed_policy_installed = true;
                 FFI_OK
             }
         }
@@ -795,18 +813,30 @@ pub(crate) fn reload_policy_signed_internal(
             // The check is INSIDE the borrow_mut so it's atomic with the
             // install + version-bump that follows.
             //
+            // Server-canonical boot: the engine starts with no signed
+            // policy installed (`signed_policy_installed == false`).
+            // The first signed bundle from a trusted key is accepted
+            // as the baseline regardless of version, mirroring OPA's
+            // bundle-bootstrap pattern and Envoy xDS's initial-state
+            // delivery: the first bundle is the source of truth;
+            // rollback protection applies to every bundle after that.
+            //
+            // Once installed, the strict-greater rule kicks in for
+            // every subsequent reload (rollback / replay defense).
+            //
             // Idempotent re-installs (same content as last applied) are
             // intercepted at the SDK wrapper layer via the persisted
             // (version, hash) cache — the OPA bundle / TUF pattern of
             // "don't re-apply unchanged" — so this strict check never
             // sees a benign replay. See `_policy_state.py` and
             // `_apply_policy_update` in the wrappers.
-            if bundle.version <= state.last_policy_version {
+            if state.signed_policy_installed && bundle.version <= state.last_policy_version {
                 return FFI_POLICY_VERSION_NOT_MONOTONIC;
             }
 
             state.policy = policy;
             state.last_policy_version = bundle.version;
+            state.signed_policy_installed = true;
             // Rate limiter and kill switch are intentionally preserved to
             // prevent bypass via repeated signed reloads.
             FFI_OK
@@ -893,21 +923,24 @@ mod tests {
 
         ENGINE.with(|cell| {
             let mut state = cell.borrow_mut();
-            // Mirror production init(): preserve rate limiter, kill switch, and policy version.
-            let (rate_limiter, kill_switch, last_policy_version) = match state.take() {
-                Some(prev) => (
-                    prev.rate_limiter,
-                    prev.kill_switch,
-                    prev.last_policy_version,
-                ),
-                None => (RateLimiter::new(), KillSwitch::new(), 0),
-            };
+            // Mirror production init(): preserve rate limiter, kill switch, policy version, and install flag.
+            let (rate_limiter, kill_switch, last_policy_version, signed_policy_installed) =
+                match state.take() {
+                    Some(prev) => (
+                        prev.rate_limiter,
+                        prev.kill_switch,
+                        prev.last_policy_version,
+                        prev.signed_policy_installed,
+                    ),
+                    None => (RateLimiter::new(), KillSwitch::new(), 0, false),
+                };
             *state = Some(EngineState {
                 kill_switch,
                 policy,
                 rate_limiter,
                 identity: Identity::anonymous("test-agent", "test-agent"),
                 last_policy_version,
+                signed_policy_installed,
             });
         });
     }
@@ -2501,6 +2534,48 @@ mod tests {
             assert_eq!(rc, FFI_OK, "version {v} install should succeed");
             assert_eq!(get_active_policy_version(), v);
         }
+    }
+
+    #[test]
+    fn reload_policy_signed_accepts_bootstrap_when_last_version_is_zero() {
+        // Server-canonical boot: the SDK initializes with no policy
+        // (`last_policy_version == 0`) and the first bundle from the
+        // control plane is the baseline. We must accept it even when
+        // its version happens to be 0 (a freshly-published policy on
+        // an agent the dashboard's version counter has never bumped).
+        // Mirrors OPA's bundle-bootstrap pattern: the first bundle is
+        // the source of truth; rollback protection applies to every
+        // bundle after that.
+        reset_engine();
+        init_test_engine(default_deny_policy());
+
+        let signing_key = ed25519_dalek::SigningKey::from_bytes(&[0xa3; 32]);
+        let trusted = make_trusted_keys_json(&signing_key);
+
+        // Bundle version 0 must succeed as the bootstrap install.
+        let bootstrap =
+            make_signed_bundle_envelope(&signing_key, permissive_policy_json(), 0, TEST_NOW_SECS);
+        let rc =
+            reload_policy_signed_internal(&bootstrap, &trusted, TEST_NOW_SECS, TEST_MAX_AGE_SECS);
+        assert_eq!(rc, FFI_OK, "bootstrap from v=0 must succeed");
+        assert_eq!(get_active_policy_version(), 0);
+
+        // After the bootstrap, the strict-greater rule applies again.
+        // A second v=0 bundle must be rejected as rollback/replay.
+        let replay =
+            make_signed_bundle_envelope(&signing_key, permissive_policy_json(), 0, TEST_NOW_SECS);
+        let rc = reload_policy_signed_internal(&replay, &trusted, TEST_NOW_SECS, TEST_MAX_AGE_SECS);
+        assert_eq!(
+            rc, FFI_POLICY_VERSION_NOT_MONOTONIC,
+            "second v=0 must be rejected as rollback"
+        );
+
+        // Forward progress to v=1 succeeds.
+        let fresh =
+            make_signed_bundle_envelope(&signing_key, permissive_policy_json(), 1, TEST_NOW_SECS);
+        let rc = reload_policy_signed_internal(&fresh, &trusted, TEST_NOW_SECS, TEST_MAX_AGE_SECS);
+        assert_eq!(rc, FFI_OK, "v=1 must succeed after bootstrap at v=0");
+        assert_eq!(get_active_policy_version(), 1);
     }
 
     #[test]

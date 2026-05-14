@@ -24,7 +24,7 @@
  */
 
 import type { FetchFn } from "../transports/fetch.js";
-import { wrapAsync, wrap, type InitAsyncOptions, type InitOptions } from "../index.js";
+import { wrapAsync, type InitAsyncOptions } from "../index.js";
 import { isCheckrdPolicyDenied } from "../exceptions.js";
 
 /** Cached per-process Checkrd state so modules sharing an import get one engine. */
@@ -78,21 +78,18 @@ export function initCheckrd(
   // permanently wedged instead of retrying on the next request.
   // Pattern modelled on Sentry's `getCurrentHub()` idempotency guard.
   const attempt = (async () => {
-    if (isNodeRuntime()) {
-      // Sync path — no top-level await, nothing edge-specific.
-      // Allow the caller to pass `dangerouslyAllowBrowser` on Node
-      // too; `wrap` will pick it up and bypass its browser guard.
-      const nodeOptions: InitOptions = stripWasmKey(options);
-      const fetchFn = wrap(undefined, nodeOptions);
-      return { fetch: fetchFn, isNode: true };
-    }
-    // Edge path — uses fetch + WebAssembly + crypto.subtle only.
-    // No longer needs `dangerouslyAllowBrowser: true` as a defensive
-    // default: the browser guard was tightened to real-browser
-    // detection (requires window + document + navigator), so the
-    // Next.js edge runtime is correctly recognized as server-side.
+    // Always use the async path so the server-canonical bootstrap
+    // fetch (inside `initAsync` via `bootstrapPolicy`) runs before
+    // `initCheckrd` resolves. Skipping the fetch would leave the
+    // engine on the deny-all baseline until the SSE channel
+    // delivered the bundle — which can take hundreds of ms during
+    // which every request is denied. Industry-standard wait-for-
+    // ready (OPA bundle download, Envoy xDS warmup, LaunchDarkly
+    // `waitForInitialization`) blocks here so the first real
+    // request runs under the operator's published policy.
+    const node = isNodeRuntime();
     const fetchFn = await wrapAsync(undefined, options);
-    return { fetch: fetchFn, isNode: false };
+    return { fetch: fetchFn, isNode: node };
   })();
   // On failure, clear the cache reference so the next caller retries
   // from scratch. Callers that awaited this promise still see the
@@ -191,13 +188,5 @@ function isNodeRuntime(): boolean {
     process?: { versions?: { node?: string } };
   }).process;
   return typeof proc?.versions?.node === "string";
-}
-
-function stripWasmKey(options: InitCheckrdOptions): InitOptions {
-  // `wasm` is only meaningful for the async path; strip it when we go
-  // through the sync `wrap()`. The other fields all pass through.
-  const { wasm, ...rest } = options;
-  void wasm;
-  return rest;
 }
 

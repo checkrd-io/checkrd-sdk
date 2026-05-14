@@ -119,11 +119,23 @@ function enqueueEvalEvent(
   logger: Logger | undefined,
   telemetryJson: string,
   agentId: string,
+  response?: { statusCode: number; latencyMs: number },
 ): void {
   if (!sink || telemetryJson.length === 0) return;
   try {
     const event = JSON.parse(telemetryJson) as TelemetryEvent;
     event.agent_id = agentId;
+    // The WASM core emits the event before the upstream call returns,
+    // so it has no response status. The transport is the only layer that
+    // knows the actual HTTP outcome — stamp it here, mirroring Python's
+    // `_enrich_telemetry`. Without this, the dashboard renders allowed
+    // events with a `—` in the status column.
+    if (response !== undefined) {
+      event.response = {
+        status_code: response.statusCode,
+        latency_ms: response.latencyMs,
+      };
+    }
     // Stamp the OTel GenAI semantic conventions
     // (``gen_ai.provider.name``, ``gen_ai.operation.name``) when the
     // request URL matches a known LLM endpoint. Performed once here —
@@ -235,7 +247,11 @@ export function wrapFetch(
       timestamp_ms: now.getTime(),
     };
     const result = engine.evaluate(evalReq);
-    enqueueEvalEvent(sink, logger, result.telemetry_json, agentId);
+    // Telemetry is deferred until after the upstream call so the event
+    // carries the actual response status_code + latency_ms. The Python
+    // transport does the same: WASM emits a partial event, the transport
+    // enriches it on the way out. Without this, every allowed event on
+    // the dashboard renders with a `—` in the status column.
 
     const redacted = redactHeaders(request.headers);
     const event: CheckrdEvent = {
@@ -258,6 +274,11 @@ export function wrapFetch(
         }
       }
       const response = await baseFetch(request);
+      const latencyMs = Math.max(0, Date.now() - startMs);
+      enqueueEvalEvent(sink, logger, result.telemetry_json, agentId, {
+        statusCode: response.status,
+        latencyMs,
+      });
       // Stamp the SDK's correlation request-id on the response via
       // a Symbol-keyed property so the caller can paste it into a
       // support ticket without re-instrumenting the request path.
@@ -288,6 +309,11 @@ export function wrapFetch(
       return response;
     }
 
+    // Denied path. Enqueue the partial event now — dashboards render
+    // denied rows with a `—` status code because the upstream was never
+    // hit. Matches the dashboard's existing denied-row UX.
+    enqueueEvalEvent(sink, logger, result.telemetry_json, agentId);
+
     if (onDeny) {
       try {
         onDeny(event);
@@ -308,9 +334,16 @@ export function wrapFetch(
         dashboardUrl,
       });
     }
-    // Observe-only: forward the request anyway, but telemetry has
-    // already recorded the denial.
+    // Observe-only: forward the request, then enqueue a second event
+    // with the real status code so dry-run users see the same dashboard
+    // breakdown they'd get under enforce. Mirrors Python's
+    // `_log_telemetry(result, status_code=...)` second call.
     const response = await baseFetch(request);
+    const latencyMs = Math.max(0, Date.now() - startMs);
+    enqueueEvalEvent(sink, logger, result.telemetry_json, agentId, {
+      statusCode: response.status,
+      latencyMs,
+    });
     attachRequestId(response, result.request_id);
     return response;
   };

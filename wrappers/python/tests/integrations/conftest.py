@@ -375,7 +375,18 @@ def initialized_checkrd(monkeypatch: pytest.MonkeyPatch, tmp_path) -> Iterator[N
         monkeypatch.delenv(var, raising=False)
 
     checkrd.shutdown()  # defensive — clean any leakage from a prior test
-    checkrd.init(agent_id="test-agent")
+    # Industry-standard server-canonical boot now denies-by-default when
+    # no policy is loaded. Tests use an explicit allow-all so request
+    # paths exercise the wrapper's hot path, not the deny-by-default.
+    checkrd.init(
+        agent_id="test-agent",
+        policy={
+            "agent": "test-agent",
+            "mode": "enforce",
+            "default": "allow",
+            "rules": [],
+        },
+    )
     try:
         yield
     finally:

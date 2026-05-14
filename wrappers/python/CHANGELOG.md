@@ -5,6 +5,30 @@ All notable changes to the Checkrd Python SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.3.4 (2026-05-13)
+
+### Changed
+
+- **Server-canonical policy distribution.** The control plane is now
+  the source of truth for the active policy. `Checkrd(api_key=...)` /
+  `wrap(client, api_key=...)` boots the WASM engine with a
+  **deny-all baseline**, fetches the agent's currently-published
+  DSSE-signed bundle from `GET /v1/agents/:id/control/state`, and
+  installs it before the wrapped client is returned. Without this,
+  the SDK ran on whatever was passed via `policy=` (or an implicit
+  observation-mode allow-all fallback) and the dashboard's published
+  policy was effectively ignored until SSE delivered a higher-version
+  update. Mirrors OPA bundles, Envoy xDS initial-state delivery, and
+  LaunchDarkly's `waitForInitialization`.
+- Refuse `policy=` argument when `api_key` is also configured. The
+  combination was almost always a mistake — operators got a local
+  policy shadowing their dashboard policy until the SSE channel
+  pushed a higher version. Set `CHECKRD_ALLOW_LOCAL_POLICY=1` to
+  silence the error for local development.
+- When no local policy is provided AND no policy file exists, the
+  fallback is now **deny-all baseline** (was: observation-mode
+  allow-all). Fail-closed matches OPA / Envoy / Stripe Radar defaults.
+
 ## 0.3.3 (2026-05-06)
 
 ### Fixed

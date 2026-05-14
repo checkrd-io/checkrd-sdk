@@ -26,6 +26,7 @@
 import {
   healthy,
   init,
+  initAsync,
   instrumentAnthropic,
   instrumentOpenAI,
   shutdown,
@@ -101,9 +102,47 @@ export class Checkrd {
    * calls `.instrument*()` repeatedly.
    */
   private globalContextInstalled = false;
+  /**
+   * Memoised async-boot promise for {@link ready}. The first call
+   * dispatches `initAsync` (which fetches the published policy
+   * bundle); subsequent calls await the same promise so concurrent
+   * callers share one boot.
+   */
+  private bootPromise: Promise<void> | null = null;
 
   constructor(options: InitOptions = {}) {
     this.options = Object.freeze({ ...options });
+  }
+
+  /**
+   * Wait for the SDK's server-canonical bootstrap to complete:
+   * `initAsync` is invoked once, the published DSSE-signed policy
+   * bundle is fetched from `GET /v1/agents/:id/control/state`, and
+   * the WASM engine is replaced with it before this promise resolves.
+   *
+   * Industry-standard wait-for-ready pattern — same shape as
+   * `ldClient.waitForInitialization()` (LaunchDarkly), Sentry's
+   * `Sentry.flush()` warmup, and OPA's bundle-revision-ready check.
+   *
+   * Awaiting `ready()` is **optional** but recommended in production
+   * boot paths so the first request runs under the operator's
+   * published policy. Skipping it falls back to the synchronous boot
+   * path used by `wrap()` / `instrument*()`, which installs the
+   * deny-all baseline and relies on the SSE channel to deliver the
+   * bundle within the first few hundred milliseconds.
+   *
+   *     const client = new Checkrd({ apiKey, agentId });
+   *     await client.ready();
+   *     const fetch = client.wrap(globalThis.fetch);
+   *
+   * Idempotent — safe to call from multiple call sites; they all
+   * await the same boot. Safe to call after `wrap()`/`instrument*()`
+   * too: the global context is reused.
+   */
+  async ready(): Promise<void> {
+    this.bootPromise ??= initAsync(this.options);
+    await this.bootPromise;
+    this.globalContextInstalled = true;
   }
 
   // -------------------------------------------------------------------

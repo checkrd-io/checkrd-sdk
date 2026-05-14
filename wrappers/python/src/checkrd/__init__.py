@@ -279,9 +279,10 @@ def _no_throw(default: Any = None) -> Callable[[_F], _F]:
     return decorator
 
 
-_OBSERVATION_MODE_POLICY: dict[str, Any] = {
-    "agent": "checkrd-observation",
-    "default": "allow",
+_DENY_ALL_BASELINE_POLICY: dict[str, Any] = {
+    "agent": "",
+    "mode": "enforce",
+    "default": "deny",
     "rules": [],
 }
 
@@ -507,13 +508,50 @@ def _resolve_policy(
     try:
         return load_config(policy=None), True
     except CheckrdInitError:
-        obs = dict(_OBSERVATION_MODE_POLICY)
-        obs["agent"] = agent_id
-        logger.info(
-            "checkrd: no policy configured — running in observation mode. "
-            "Pass policy=... to wrap() or create ~/.checkrd/policy.yaml."
-        )
-        return json.dumps(obs), False
+        # No explicit policy AND no local file -- boot with the deny-all
+        # baseline so the engine fails closed until the control plane
+        # delivers the signed bundle (either via ``bootstrap_policy``
+        # at wrap() time or the SSE init event). Mirrors OPA's
+        # fail-closed default and Envoy's deny-by-default cluster
+        # config.
+        baseline = dict(_DENY_ALL_BASELINE_POLICY)
+        baseline["agent"] = agent_id
+        return json.dumps(baseline), False
+
+
+def _ensure_no_embedded_policy_in_prod(
+    policy: Union[str, Path, "Policy", None],
+    api_key: Optional[str],
+    caller: str,
+) -> None:
+    """Refuse `policy: + api_key` in production unless `CHECKRD_DEV=1`.
+
+    The control plane is the source of truth; an embedded local policy
+    would shadow the published one until the SSE channel pushes a
+    higher version. That's almost never what an operator wants in
+    production -- same collision check OPA's ``--config-file`` +
+    ``--addr`` does, Envoy's ``--config-yaml`` vs xDS does, and
+    LaunchDarkly's ``FlagValues`` provider warning. The control plane
+    is the source of truth; embedded local policy is a development-
+    only escape hatch.
+    """
+    if policy is None:
+        return
+    if not api_key:
+        return
+    import os
+
+    if os.environ.get("CHECKRD_ALLOW_LOCAL_POLICY") == "1":
+        return
+    raise CheckrdInitError(
+        f"checkrd {caller}: do not pass `policy=` when an api_key is also "
+        "configured. The control plane is the source of truth for production "
+        "deployments -- publish your policy in the dashboard and the SDK will "
+        "fetch + install it on connect (industry-standard pattern: OPA "
+        "bundles, Envoy xDS, LaunchDarkly streaming). For local development "
+        "with a hand-written policy, set CHECKRD_ALLOW_LOCAL_POLICY=1 to "
+        "silence this error."
+    )
 
 
 def _resolve_effective_enforce(settings: Settings, policy_was_explicit: bool) -> bool:
@@ -651,6 +689,11 @@ def _build_runtime(
         logger.info("checkrd: disabled via CHECKRD_DISABLED")
         return None
 
+    # Industry-standard sanity check: refuse `policy: + api_key` in prod.
+    # The control plane is the source of truth; an embedded local policy
+    # would shadow the published one. Dev override: `CHECKRD_DEV=1`.
+    _ensure_no_embedded_policy_in_prod(policy, settings.api_key, "wrap()")
+
     # Policy resolution is separate from engine construction. A bad
     # explicit policy is a user error and must raise. Engine failures
     # are gated by security_mode.
@@ -692,6 +735,25 @@ def _build_runtime(
         )
         set_degraded(True)
         return None
+
+    # Server-canonical bootstrap: when the caller configured a control
+    # plane and didn't pass an explicit local `policy=`, fetch the
+    # currently-published signed bundle and install it before the
+    # runtime returns. The engine boots on the deny-all baseline (see
+    # `_resolve_policy`) until this completes -- every request fails
+    # closed in the meantime, matching OPA / Envoy / LaunchDarkly
+    # bootstrap semantics.
+    if not policy_was_explicit and settings.has_control_plane:
+        from checkrd._policy_bootstrap import bootstrap_policy
+
+        bootstrap_policy(
+            engine=engine,
+            control_plane_url=settings.control_plane_url,
+            api_key=settings.api_key or "",
+            agent_id=settings.agent_id,
+            api_version=settings.api_version,
+            timeout_secs=connect_timeout,
+        )
 
     # One breaker per process, shared by the batcher and the
     # control-plane SSE receiver. Default thresholds (5 failures →

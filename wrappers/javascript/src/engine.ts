@@ -538,13 +538,15 @@ async function verifyIntegrityAsync(bytes: Uint8Array): Promise<void> {
         "bypass (dev only).",
     );
   }
-  // Pass the Uint8Array directly — it's a TypedArray, which is a
-  // valid BufferSource and avoids a needless copy. (Earlier code
-  // copied into a fresh ArrayBuffer to side-step a TypeScript narrowing
-  // issue with ``Uint8Array<ArrayBufferLike>``; the cleaner fix below
-  // works under strict mode and survives cross-realm checks in
-  // edge-runtime sandboxes.)
-  const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
+  // Copy into a fresh ArrayBuffer-backed Uint8Array. TypeScript's
+  // strict mode now distinguishes `Uint8Array<ArrayBufferLike>` from
+  // `Uint8Array<ArrayBuffer>` (SharedArrayBuffer can't be a
+  // `BufferSource`), so we narrow explicitly. Edge runtimes accept
+  // either at runtime, but the type checker won't compile the
+  // direct-pass form.
+  const buf = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buf).set(bytes);
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", buf);
   const actual = bytesToHex(new Uint8Array(digest));
   if (actual !== EXPECTED_SHA256) {
     if (skip) return;

@@ -112,6 +112,12 @@ def _dev_mode(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     monkeypatch.setenv("CHECKRD_ALLOW_INSECURE_HTTP", "1")
     monkeypatch.setenv("CHECKRD_SKIP_WASM_INTEGRITY", "1")
+    # Tests routinely combine `policy=` with `api_key=` to exercise
+    # behaviour against deterministic local policies — that's the
+    # dev-mode pattern the SDK's prod gate guards against. Opt in here
+    # so the dev override is implicit for the whole suite. Production
+    # never sets this; the runtime check still fires in real apps.
+    monkeypatch.setenv("CHECKRD_ALLOW_LOCAL_POLICY", "1")
 
 
 @pytest.fixture(autouse=True)

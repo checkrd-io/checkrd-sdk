@@ -66,6 +66,10 @@ import {
   type LogLevel,
 } from "./_logger.js";
 import { registerPublicKey } from "./_key_registrar.js";
+import {
+  bootstrapPolicy,
+  DENY_ALL_BASELINE_POLICY_JSON,
+} from "./_policy_bootstrap.js";
 import { registerDisposable, shutdownAll } from "./_shutdown.js";
 import type {
   BeforeRequestHook,
@@ -395,11 +399,6 @@ export interface HealthReport {
   } | null;
 }
 
-const OBSERVATION_MODE_POLICY = {
-  default: "allow",
-  rules: [],
-};
-
 function resolvePolicyJson(
   policy: PolicyInput,
 ): { json: string; explicit: boolean } {
@@ -409,11 +408,47 @@ function resolvePolicyJson(
   try {
     return { json: loadConfig(null), explicit: true };
   } catch {
+    // No explicit policy AND no local file — boot with the deny-all
+    // baseline so the engine fails closed until the control plane
+    // delivers the signed bundle (either via `bootstrapPolicy()` on
+    // `initAsync` or the SSE init event under `init`). Mirrors OPA's
+    // fail-closed default and Envoy's deny-by-default cluster config.
     return {
-      json: JSON.stringify(OBSERVATION_MODE_POLICY),
+      json: DENY_ALL_BASELINE_POLICY_JSON,
       explicit: false,
     };
   }
+}
+
+/**
+ * Industry-standard sanity check: when the caller has configured a
+ * control plane (`apiKey + agentId`) AND passed a local `policy:`, the
+ * local policy will shadow whatever the dashboard publishes for that
+ * agent until the SSE channel pushes a higher version. That's almost
+ * never what an operator wants in production. Refuse unless the
+ * `CHECKRD_DEV=1` opt-in is set.
+ *
+ * Same pattern as OPA's `--config-file` + `--addr` collision check,
+ * Envoy's `--config-yaml` vs xDS conflict, and LaunchDarkly's
+ * `FlagValues` provider warning. The control plane is the source of
+ * truth; embedded local policy is a development-only escape hatch.
+ */
+function ensureNoEmbeddedPolicyInProd(options: InitOptions, caller: string): void {
+  if (options.policy === undefined || options.policy === null) return;
+  const settings = options;
+  const hasApiKey = (settings.apiKey ?? "").length > 0;
+  if (!hasApiKey) return;
+  const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } })
+    .process;
+  if (proc?.env?.CHECKRD_ALLOW_LOCAL_POLICY === "1") return;
+  throw new CheckrdInitError(
+    `checkrd ${caller}: do not pass \`policy:\` when an apiKey is also configured. ` +
+      "The control plane is the source of truth for production deployments — " +
+      "publish your policy in the dashboard and the SDK will fetch + install " +
+      "it on connect (industry-standard pattern: OPA bundles, Envoy xDS, " +
+      "LaunchDarkly streaming). For local development with a hand-written " +
+      "policy, set CHECKRD_ALLOW_LOCAL_POLICY=1 to silence this error.",
+  );
 }
 
 /**
@@ -481,6 +516,11 @@ function initPrelude(options: InitOptions, caller: string): InitPrelude | null {
     warnDebugPiiRisk();
   }
   if (settings.disabled) return null;
+
+  // Industry-standard sanity check: refuse `policy: + apiKey` in prod.
+  // The control plane is the source of truth; an embedded local policy
+  // would shadow the published one. Dev override: `CHECKRD_DEV=1`.
+  ensureNoEmbeddedPolicyInProd(options, caller);
 
   const resolution = resolvePolicyJson(options.policy);
   const engineOpts: { privateKeyBytes?: Uint8Array } = {};
@@ -687,6 +727,30 @@ export async function initAsync(options: InitAsyncOptions = {}): Promise<void> {
     setDegraded(true);
     return;
   }
+
+  // Server-canonical bootstrap: when the caller configured a control
+  // plane and didn't pass an explicit local `policy:`, fetch the
+  // currently-published signed bundle and install it before returning.
+  // Engine boots on the deny-all baseline (see `resolvePolicyJson`)
+  // until this completes — every request fails closed in the meantime,
+  // matching OPA / Envoy / LaunchDarkly bootstrap semantics.
+  if (
+    prelude.settings.hasControlPlane &&
+    (options.policy === undefined || options.policy === null)
+  ) {
+    await bootstrapPolicy({
+      engine,
+      controlPlaneUrl: prelude.settings.controlPlaneUrl,
+      apiKey: prelude.settings.apiKey,
+      agentId: prelude.settings.agentId,
+      logger: prelude.logger,
+      ...(prelude.settings.apiVersion
+        ? { apiVersion: prelude.settings.apiVersion }
+        : {}),
+      ...(options.timeout !== undefined ? { timeoutMs: options.timeout } : {}),
+    });
+  }
+
   completeInit(engine, prelude, options);
 }
 
@@ -763,6 +827,27 @@ export function wrap(
   });
   if (settings.disabled) return base;
 
+  // Server-canonical fast path: when the caller configured a control
+  // plane, route through the global context's engine — same engine
+  // the SSE channel keeps fresh and the batcher uses for signing.
+  // Sync `init()` does NOT run the bootstrap fetch (that lives on
+  // `initAsync`), so the engine boots on the deny-all baseline and
+  // relies on the SSE channel to deliver the published bundle. Use
+  // `wrapAsync` (or `await Checkrd.ready()` + `.wrap`) when you need
+  // the policy installed before the first request.
+  if (!hasContext() && settings.hasControlPlane) {
+    init(options);
+  }
+  const ctx = maybeContext();
+  if (ctx) {
+    const effectiveOptions: InitOptions =
+      options.sink === undefined && ctx.sink !== undefined
+        ? { ...options, sink: ctx.sink }
+        : options;
+    return buildWrappedFetch(base, ctx.engine, settings, false, effectiveOptions);
+  }
+
+  // Pure-local fallback: no apiKey, build a per-call engine.
   const policyResolution = resolvePolicyJson(options.policy);
   const engineOpts: { privateKeyBytes?: Uint8Array } = {};
   if (options.privateKeyBytes !== undefined) {
@@ -808,6 +893,29 @@ export async function wrapAsync(
   });
   if (settings.disabled) return base;
 
+  // Server-canonical fast path: when the caller configured a control
+  // plane, route through the global context's engine. `initAsync`
+  // builds the engine with the deny-all baseline, fetches the
+  // published signed bundle, installs it, and registers the receiver
+  // + batcher. We reuse that engine here so the wrapped fetch
+  // evaluates against the same policy the SSE channel keeps fresh.
+  // Without this, wrapAsync would build a separate engine that never
+  // gets the bootstrap install and denies every request.
+  if (!hasContext() && settings.hasControlPlane) {
+    await initAsync(options);
+  }
+  const ctx = maybeContext();
+  if (ctx) {
+    const effectiveOptions: InitAsyncOptions =
+      options.sink === undefined && ctx.sink !== undefined
+        ? { ...options, sink: ctx.sink }
+        : options;
+    return buildWrappedFetch(base, ctx.engine, settings, false, effectiveOptions);
+  }
+
+  // Pure-local fallback: no control plane configured, so the caller
+  // must have supplied a `policy:` (or accepted the deny-all baseline
+  // resolved from the file/env defaults). Build a per-call engine.
   const policyResolution = resolvePolicyJson(options.policy);
   const createOpts: WasmEngineCreateOptions = {};
   if (options.privateKeyBytes !== undefined) {
