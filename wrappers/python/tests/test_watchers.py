@@ -79,9 +79,11 @@ class TestPolicyFileWatcher:
             watcher.start()
             time.sleep(0.2)  # Let initial state settle (4+ poll cycles at 50ms)
 
-            # Bump mtime by writing the same content (mtime now > _last_mtime)
+            # Bump mtime ONCE: write_text updates it, and that's all we
+            # need. The previous `os.utime(...)` + `write_text(...)`
+            # combo flaked on slow CI runners — the watcher polled
+            # between the two mtime bumps and triggered reload twice.
             time.sleep(0.05)  # Ensure mtime advances on filesystems with 1s resolution
-            os.utime(policy, None)  # Update mtime to now
             policy.write_text(VALID_POLICY_YAML + "\n# updated\n")
 
             wait_for(
