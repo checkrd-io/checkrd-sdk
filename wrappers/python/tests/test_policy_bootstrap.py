@@ -15,6 +15,7 @@ the industry-standard pattern:
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from typing import Any
 from unittest.mock import patch
 
@@ -24,6 +25,21 @@ import pytest
 import checkrd
 from checkrd.exceptions import CheckrdInitError
 from tests.conftest import requires_wasm
+
+
+@pytest.fixture(autouse=True)
+def _isolate_runtime() -> Iterator[None]:
+    """Tear down any global runtime + receiver threads between tests.
+
+    The control receiver runs in a background thread and keeps polling
+    /control/state — patched in some tests as a mock — long after the
+    test that started it finished. Without an explicit shutdown, the
+    mock's call list would contain entries from prior tests and break
+    cross-test assertions.
+    """
+    checkrd.shutdown()
+    yield
+    checkrd.shutdown()
 
 ALLOW_ALL_LOCAL: dict[str, Any] = {
     "agent": "t",
@@ -100,9 +116,11 @@ class TestServerCanonicalBootstrap:
                     control_plane_url="https://api.example.test",
                 )
 
-        state_calls = [u for u in calls if "/control/state" in u]
-        assert len(state_calls) >= 1
-        assert "boot-test-agent/control/state" in state_calls[0]
+        # Filter to *this test's* agent id — receiver threads from prior
+        # tests in the same xdist worker may still be polling
+        # `/control/state` for their own agents when this assertion runs.
+        agent_calls = [u for u in calls if "boot-test-agent/control/state" in u]
+        assert len(agent_calls) >= 1
 
     @requires_wasm
     def test_stays_on_deny_baseline_when_no_bundle_published(
