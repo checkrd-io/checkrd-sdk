@@ -177,5 +177,10 @@ class TestServerCanonicalBootstrap:
             with httpx.Client() as client:
                 checkrd.wrap(client, agent_id="local-only", policy=ALLOW_ALL_LOCAL)
 
-        state_calls = [u for u in calls if "/control/state" in u]
+        # Only count state calls for THIS test's agent. Stray receiver
+        # threads from prior xdist-shared-worker tests may still be
+        # polling for *their* agents; what we're asserting is that
+        # pure-local mode for our agent did NOT trigger a bootstrap
+        # fetch.
+        state_calls = [u for u in calls if "local-only/control/state" in u]
         assert len(state_calls) == 0
