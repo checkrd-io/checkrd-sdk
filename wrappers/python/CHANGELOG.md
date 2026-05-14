@@ -5,6 +5,21 @@ All notable changes to the Checkrd Python SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.3.5 (2026-05-13)
+
+### Fixed
+
+- `TelemetryBatcher._flatten_event` now drops empty-string optional
+  fields (`trace_id`, `span_id`, `parent_span_id`, `span_name`,
+  `span_kind`, `span_status_code`, `span_status_message`,
+  `matched_rule`, `matched_rule_kind`, `instance_id`, `deny_reason`).
+  The WASM core emits unset optionals as `""` (cheap FFI encoding),
+  but the server's `Option<String>` deserializer treats `""` as an
+  invalid value and rejects the entire batch with HTTP 422
+  (`invalid value for trace_id: ""`). Same wire-format fix the JS SDK
+  already had in 0.3.5; surfaced when the `checkrd/mcp` adapter
+  exercised the signed telemetry path against `api.checkrd.io`.
+
 ## 0.3.4 (2026-05-13)
 
 ### Changed

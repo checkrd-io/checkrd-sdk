@@ -716,8 +716,31 @@ class TelemetryBatcher:
 
         The WASM core produces ``{request: {url_host, ...}, response: {...}, ...}``.
         The API expects flat fields: ``{url_host, url_path, status_code, ...}``.
+
+        Empty-string optional fields are dropped: the WASM core emits
+        unset optionals as ``""`` (cheap encoding for FFI), but the
+        server's ``Option<String>`` deserializer treats ``""`` as a
+        rejection (422 ``invalid value for trace_id: ""``). Same filter
+        as the JS SDK's flatten path.
         """
         flat: dict[str, Any] = {}
+
+        # Optional string fields that the server rejects when empty.
+        _OPTIONAL_STRING_FIELDS = frozenset(
+            {
+                "instance_id",
+                "deny_reason",
+                "trace_id",
+                "span_id",
+                "parent_span_id",
+                "span_name",
+                "span_kind",
+                "span_status_code",
+                "span_status_message",
+                "matched_rule",
+                "matched_rule_kind",
+            }
+        )
 
         # Copy top-level scalars
         for key in (
@@ -739,8 +762,12 @@ class TelemetryBatcher:
             "matched_rule_kind",
             "evaluation_path",
         ):
-            if key in event:
-                flat[key] = event[key]
+            if key not in event:
+                continue
+            value = event[key]
+            if key in _OPTIONAL_STRING_FIELDS and (value == "" or value is None):
+                continue
+            flat[key] = value
 
         # Rename event_id -> request_id (WASM uses event_id, API expects request_id)
         if "event_id" in flat:
