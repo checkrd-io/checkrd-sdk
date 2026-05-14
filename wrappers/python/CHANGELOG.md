@@ -19,6 +19,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now keys off the original `policy=` argument (mirrors JS:
   `options.policy === undefined`), so the control plane wins
   regardless of disk state.
+- `PolicyFileWatcher._poll` no longer reloads twice on a single write
+  when the filesystem splits the open(O_TRUNC) → write → close
+  sequence into separate mtime ticks. The poll path used to capture
+  `current_mtime` *before* reading the file content; if a write was
+  in flight, the bytes read corresponded to a later mtime than the
+  one recorded in `_last_mtime`, so the next poll saw the post-write
+  mtime as "still newer" and triggered a redundant second reload.
+  The poll now re-stats *after* `read_text` so `_last_mtime` matches
+  the bytes installed (rsync's stat-read-stat pattern; same as OPA
+  bundle plugin). New deterministic regression test
+  (`test_poll_records_post_read_mtime_not_pre_read_mtime`) pins the
+  invariant by mocking `_safe_mtime` to return controlled values
+  across the read window. The flake had been intermittent on Linux
+  containers; macOS APFS never hit it.
 
 ## 0.3.5 (2026-05-13)
 

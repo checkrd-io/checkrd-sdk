@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 import time
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -79,10 +79,7 @@ class TestPolicyFileWatcher:
             watcher.start()
             time.sleep(0.2)  # Let initial state settle (4+ poll cycles at 50ms)
 
-            # Bump mtime ONCE: write_text updates it, and that's all we
-            # need. The previous `os.utime(...)` + `write_text(...)`
-            # combo flaked on slow CI runners — the watcher polled
-            # between the two mtime bumps and triggered reload twice.
+            # Bump mtime ONCE: write_text updates it.
             time.sleep(0.05)  # Ensure mtime advances on filesystems with 1s resolution
             policy.write_text(VALID_POLICY_YAML + "\n# updated\n")
 
@@ -106,6 +103,50 @@ class TestPolicyFileWatcher:
             time.sleep(0.3)  # Several poll cycles
             # Without touching the file, no reload should happen
             engine.reload_policy.assert_not_called()
+        finally:
+            watcher.stop()
+
+    def test_poll_records_post_read_mtime_not_pre_read_mtime(
+        self, tmp_path: Path
+    ) -> None:
+        # Regression test for the stat-then-read-then-stat race.
+        # If a write was in flight when `_poll` sampled mtime, the
+        # bytes we read may correspond to a later mtime than what we
+        # captured. Recording the older mtime in `_last_mtime` lets
+        # the NEXT poll see a "newer" mtime (the post-write value)
+        # and trigger a redundant second reload.
+        #
+        # On macOS APFS this race is essentially unreachable (single-
+        # syscall mtime update on close). On Linux containers with
+        # ext4 / overlayfs the open(O_TRUNC) → write → close sequence
+        # can split mtime advances across two distinct ticks, which
+        # was the production-CI flake we observed. We verify the fix
+        # deterministically by feeding controlled mtime values
+        # through `_safe_mtime` and asserting only one reload fires.
+        policy = tmp_path / "policy.yaml"
+        policy.write_text(VALID_POLICY_YAML)
+
+        engine = _make_mock_engine()
+        # interval is huge so the background thread never auto-polls;
+        # we drive _poll() ourselves to control the race window.
+        watcher = PolicyFileWatcher(engine, policy, interval_secs=999.0)
+        try:
+            # Simulate: mtime mid-write is 2.0; mtime post-write is 3.0.
+            # The bug: _poll captures 2.0, reads new content, stores
+            # 2.0 → next poll sees 3.0 > 2.0 → second reload.
+            watcher._last_mtime = 1.0
+            policy.write_text(VALID_POLICY_YAML + "\n# updated\n")
+
+            mtimes = iter([2.0, 3.0])  # pre-read, post-read
+            with patch.object(watcher, "_safe_mtime", side_effect=lambda: next(mtimes)):
+                watcher._poll()
+
+            # Simulate the next watcher tick: mtime is stable at the
+            # post-write value. Must NOT trigger another reload.
+            with patch.object(watcher, "_safe_mtime", return_value=3.0):
+                watcher._poll()
+
+            engine.reload_policy.assert_called_once()
         finally:
             watcher.stop()
 

@@ -322,6 +322,17 @@ class PolicyFileWatcher:
                     f"got {type(parsed).__name__}"
                 )
             policy_json = json.dumps(parsed)
+            # Re-stat AFTER reading content. If a write was in flight
+            # when we sampled mtime above, the bytes we just read may
+            # already correspond to a later mtime than `current_mtime`.
+            # Recording the pre-read value here would let the next poll
+            # see `post_mtime > _last_mtime` and trigger a redundant
+            # reload of the same content. Using the post-read mtime
+            # makes the (mtime, content) pair internally consistent:
+            # we record the mtime that matches the bytes we installed.
+            # Same rsync-style stat-read-stat pattern OPA's bundle
+            # plugin uses.
+            settled_mtime = self._safe_mtime() or current_mtime
             self._engine.reload_policy(policy_json)
         except (OSError, yaml.YAMLError, CheckrdInitError, ValueError) as exc:
             logger.warning(
@@ -334,7 +345,7 @@ class PolicyFileWatcher:
             return
 
         logger.info("checkrd: reloaded policy from %s", self._path)
-        self._last_mtime = current_mtime
+        self._last_mtime = settled_mtime
 
 
 class KillSwitchFileWatcher:
