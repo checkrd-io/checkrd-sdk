@@ -5,6 +5,21 @@ All notable changes to the Checkrd Python SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.3.6 (2026-05-13)
+
+### Fixed
+
+- Server-canonical bootstrap now fires when `policy=` is omitted, even
+  if a stale `~/.checkrd/policy.yaml` (or other default-search-path
+  file) exists on disk. Previously `_resolve_policy` loaded the file
+  and flagged the resolution as "explicit", so the bootstrap check
+  saw `policy_was_explicit=True` and skipped the server fetch -- the
+  engine ran on whatever leftover YAML was in the user's home
+  directory instead of the dashboard's published policy. The check
+  now keys off the original `policy=` argument (mirrors JS:
+  `options.policy === undefined`), so the control plane wins
+  regardless of disk state.
+
 ## 0.3.5 (2026-05-13)
 
 ### Fixed

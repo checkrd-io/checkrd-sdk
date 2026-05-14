@@ -737,13 +737,15 @@ def _build_runtime(
         return None
 
     # Server-canonical bootstrap: when the caller configured a control
-    # plane and didn't pass an explicit local `policy=`, fetch the
-    # currently-published signed bundle and install it before the
-    # runtime returns. The engine boots on the deny-all baseline (see
-    # `_resolve_policy`) until this completes -- every request fails
-    # closed in the meantime, matching OPA / Envoy / LaunchDarkly
-    # bootstrap semantics.
-    if not policy_was_explicit and settings.has_control_plane:
+    # plane and didn't pass an explicit local `policy=` *argument*,
+    # fetch the currently-published signed bundle and install it before
+    # the runtime returns. The check is on the original argument, NOT
+    # on whether `_resolve_policy` ended up loading a file from disk
+    # (~/.checkrd/policy.yaml or similar default-search paths) -- the
+    # dashboard is the source of truth, and a leftover local YAML must
+    # not shadow it. Same shape as the JS SDK's `options.policy ===
+    # undefined` check.
+    if policy is None and settings.has_control_plane:
         from checkrd._policy_bootstrap import bootstrap_policy
 
         bootstrap_policy(
