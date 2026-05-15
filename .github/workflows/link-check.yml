@@ -1,0 +1,102 @@
+# Public-facing link check — fails the build if any user-surfaced URL
+# (READMEs, error messages, package metadata, security docs) is
+# unreachable. Runs on every PR that touches text + nightly.
+#
+# Failure mode: a single broken link fails the build. To suppress a
+# false positive, add the URL pattern to `.lychee.toml` exclude list
+# with a code comment explaining why.
+#
+# This repo is the public OSS mirror of the SDK surface. Most code is
+# synced from the private monorepo (`checkrd-io/checkrd`) by the
+# `mirror-sdk` workflow; the mirror-only files (`.github/`, root
+# `README.md`, `SECURITY.md`, etc.) are maintained here directly, so
+# this check guards them against drift.
+
+name: link-check
+
+on:
+  pull_request:
+    paths:
+      - '**.md'
+      - '**.ts'
+      - '**.tsx'
+      - '**.js'
+      - '**.jsx'
+      - '**.py'
+      - '**.rs'
+      - '**.toml'
+      - '**.json'
+      - '**.yml'
+      - '**.yaml'
+      - '.lychee.toml'
+      - '.github/workflows/link-check.yml'
+  schedule:
+    # Nightly run catches link rot from upstream changes
+    # (vendor docs moves, deprecations, takedowns).
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write   # Nightly run can open an issue if a link breaks
+
+concurrency:
+  group: link-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  external-links:
+    name: External links (lychee)
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Restore lychee cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .lycheecache
+          key: lychee-${{ github.sha }}
+          restore-keys: lychee-
+
+      - name: Run lychee
+        uses: lycheeverse/lychee-action@8646ba30535128ac92d33dfc9133794bfdd9b411 # v2
+        with:
+          # Scan every text-format file. lychee's default heuristics
+          # find URLs in arbitrary file types (markdown, html, source).
+          # Mail exclusion is default in lychee v0.23+; no flag needed.
+          args: >-
+            --config .lychee.toml
+            --no-progress
+            './**/*.md'
+            './**/*.ts'
+            './**/*.tsx'
+            './**/*.js'
+            './**/*.jsx'
+            './**/*.py'
+            './**/*.rs'
+            './**/*.toml'
+            './**/*.yml'
+            './**/*.yaml'
+          fail: true
+          format: markdown
+          output: lychee-report.md
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: lychee-report
+          path: lychee-report.md
+
+      - name: Open issue on nightly failure
+        if: failure() && github.event_name == 'schedule'
+        uses: peter-evans/create-issue-from-file@e8ef132d6df98ed982188e460ebb3b5d4ef3a9cd # v5
+        with:
+          title: "Nightly link check failed (${{ github.run_number }})"
+          content-filepath: lychee-report.md
+          labels: |
+            link-rot
+            ci

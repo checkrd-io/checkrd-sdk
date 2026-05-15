@@ -1,0 +1,137 @@
+# lychee — fast async link checker. Runs on every PR and nightly via
+# `.github/workflows/link-check.yml`. Failure means a public-facing
+# link is dead and must be fixed (or excluded with reason).
+#
+# Industry standard: every link surfaced to a user — error message,
+# README, MDX page, package metadata — is asserted reachable in CI.
+
+# File extensions to scan when given a directory or glob. Beyond the
+# usual markdown/HTML, include source extensions so error-message
+# URLs and config-file URLs (.toml, .json, .yaml, etc.) get checked.
+extensions = ["md", "html", "htm", "txt", "ts", "tsx", "js", "jsx", "py", "rs", "toml", "json", "yml", "yaml"]
+
+# How long to wait per request before giving up.
+timeout = 20
+
+# Be a polite crawler.
+max_concurrency = 8
+user_agent = "Mozilla/5.0 (compatible; lychee/0.x; +https://github.com/checkrd-io/checkrd-sdk)"
+
+# Only check HTTP/HTTPS links. Local/relative paths (`./SECURITY.md`,
+# `./THREAT-MODEL.md`) refer to neighbouring files in the package
+# tarball — their existence is enforced by the publish pipeline.
+scheme = ["https", "http"]
+
+# Codes to treat as success. 401 means "endpoint reachable, you're
+# just not authed" — fine for documentation curl examples. 403 from
+# npmjs/pypi is anti-scrape. 999 is LinkedIn's bot-block. 429 is
+# "we're checking too fast", not "link is broken". 503 from Cloudflare
+# on first hit can be transient. 405 is "wrong method" — the endpoint
+# exists, it just doesn't accept GET (e.g. POST-only API endpoints).
+accept = ["200", "203", "206", "301", "302", "307", "308", "401", "403", "405", "429", "500", "503", "999"]
+# Follow redirects further before giving up (some marketing sites do
+# 4-hop redirects through CDNs).
+max_redirects = 10
+
+# Find links inside `code` blocks too — without this, URLs in YAML
+# string values, code samples, and example snippets get skipped.
+include_verbatim = true
+
+# Try to use cached results across runs.
+cache = true
+max_cache_age = "1d"
+
+# What to skip. Each pattern is a regex matched against the full URL.
+exclude = [
+  # localhost and dev URLs in test fixtures, examples, dev docs.
+  "^https?://(localhost|127\\.0\\.0\\.1|0\\.0\\.0\\.0)",
+  "^https?://[^/]*\\.local(:|/|$)",
+
+  # Synthetic URLs the framework adapters use as policy keys, not real hosts.
+  "^https?://(langchain|openai-agents|claude-agent)\\.local",
+  "^https?://[^/]+/tools/",
+  "^ai-sdk://",
+
+  # Example placeholders in code samples and policy YAML.
+  "^https?://api\\.example\\.com",
+  "^https?://example\\.com",
+  "^https?://[a-z0-9.-]*\\.example\\.com",
+  "^https?://[a-z0-9.-]*\\.example\\.org",
+
+  # Vendor APIs we reference in code samples without actually calling them.
+  # Their existence is well known; pinging them on every CI run is just noise.
+  "^https?://api\\.openai\\.com",
+  "^https?://api\\.anthropic\\.com",
+  "^https?://api\\.cohere\\.com",
+  "^https?://api\\.groq\\.com",
+  "^https?://api\\.together\\.xyz",
+  "^https?://generativelanguage\\.googleapis\\.com",
+  "^https?://api\\.mistral\\.ai",
+
+  # The status subdomain is intentionally unpublished. Internal comments
+  # explain that — see SystemHealthBadge.tsx and CLI feedback.
+  "^https?://status\\.checkrd\\.io",
+
+  # Dashboard SPA routes — JavaScript-rendered, lychee's HTTP probe
+  # can't render them.
+  "^https?://app\\.checkrd\\.io",
+
+  # SDK release-tag links during the brief window between version bump
+  # and tag push (the tag exists by the time the user hits npm/pypi).
+  "^https?://github\\.com/checkrd-io/checkrd-(sdk|cli)/releases/tag/",
+
+  # API root URLs — these are the *base* URL constants in source code
+  # (DEFAULT_BASE_URL, etc.). The API serves JSON only and 404s to a
+  # GET on `/`; that's by design.
+  "^https?://api(-staging)?\\.checkrd\\.io/?$",
+  "^https?://ingest\\.checkrd\\.io",
+
+  # Third-party telemetry receivers — OTLP / vendor APIs that don't
+  # respond to GET. Their existence is well known; we reference them
+  # in code samples and `_otlp.ts` defaults.
+  "^https?://api\\.honeycomb\\.io",
+  "^https?://otlp\\.datadoghq\\.com",
+  "^https?://otel\\.kloudfuse\\.io",
+
+  # SSRF-protection test targets — link-local AWS metadata, RFC 6598
+  # CGN, RFC 1918 private ranges. We *want* these to fail-closed in
+  # production; lychee shouldn't try to hit them.
+  "^https?://169\\.254\\.",
+  "^https?://10\\.",
+  "^https?://192\\.168\\.",
+  "^https?://172\\.(1[6-9]|2[0-9]|3[01])\\.",
+  "^https?://100\\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\\.",
+
+  # URL templates with placeholder substitutions like `{REPO}` /
+  # `{code}` (becomes `%7BREPO%7D` after url-encoding). These get
+  # filled at runtime.
+  "%7B[A-Za-z_]+%7D",
+  "\\{[A-Za-z_]+\\}",
+
+  # Test fixtures and security-test placeholders. `evil.com` is the
+  # canonical attacker hostname in CSRF/SSRF tests; `test.checkrd.io`
+  # is a deliberately-undeployed test domain.
+  "evil\\.com",
+  "^https?://test\\.checkrd\\.io",
+  "^https?://([a-z]+:[^@]*@)?host(:[0-9]+)?(/|$)",
+
+  # Private monorepo — github.com/checkrd-io/checkrd is private and
+  # 404s for unauthed visitors.
+  "^https?://github\\.com/checkrd-io/checkrd(/|$)",
+]
+
+# Paths NOT to scan. Lychee skips any path containing these substrings.
+exclude_path = [
+  "node_modules",
+  "target",
+  "dist",
+  "build",
+  ".venv",
+  "__pycache__",
+  ".git",
+  "Cargo.lock",
+  "package-lock.json",
+  "fixtures",
+  "snapshots",
+  "__snapshots__",
+]
