@@ -7,23 +7,26 @@
  * branch (success, permanent failure, transient retry, exhaustion)
  * deserves explicit coverage.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
 import { registerPublicKey } from "../src/_key_registrar.js";
 
 const PUBLIC_KEY = new Uint8Array(32).fill(0xab);
 
-function noopLogger(): {
-  debug: ReturnType<typeof vi.fn>;
-  info: ReturnType<typeof vi.fn>;
-  warn: ReturnType<typeof vi.fn>;
-  error: ReturnType<typeof vi.fn>;
-} {
+type LoggerMethod = (message: string, ...args: unknown[]) => void;
+interface LoggerMock {
+  debug: Mock<LoggerMethod>;
+  info: Mock<LoggerMethod>;
+  warn: Mock<LoggerMethod>;
+  error: Mock<LoggerMethod>;
+}
+
+function noopLogger(): LoggerMock {
   return {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
+    debug: vi.fn<LoggerMethod>(),
+    info: vi.fn<LoggerMethod>(),
+    warn: vi.fn<LoggerMethod>(),
+    error: vi.fn<LoggerMethod>(),
   };
 }
 
@@ -135,7 +138,7 @@ describe("registerPublicKey — permanent failures", () => {
     });
     expect(fetch).toHaveBeenCalledOnce();
     expect(log.warn).toHaveBeenCalled();
-    const warnArgs = log.warn.mock.calls[0]?.[0] as string;
+    const warnArgs = log.warn.mock.calls[0]![0];
     expect(warnArgs).toContain("test-agent");
     expect(warnArgs).toContain("revoke");
   });
@@ -233,7 +236,8 @@ describe("registerPublicKey — transient failures", () => {
       logger: log,
     });
     expect(fetch).toHaveBeenCalledTimes(3);
-    const final = log.warn.mock.calls.at(-1)?.[0] as string;
+    const lastCall = log.warn.mock.calls.at(-1);
+    const final = lastCall![0];
     expect(final).toContain("stuck-agent");
     expect(final).toContain("api.example.com");
   });

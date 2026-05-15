@@ -71,7 +71,7 @@ describe("WASM integrity production guard", () => {
   it("refuses the bypass when NODE_ENV=production", () => {
     process.env["CHECKRD_SKIP_WASM_INTEGRITY"] = "1";
     process.env["NODE_ENV"] = "production";
-    expect(() => __shouldSkipIntegrity()).toThrowError(
+    expect(() => __shouldSkipIntegrity()).toThrow(
       /production-looking environment/,
     );
   });
@@ -79,7 +79,7 @@ describe("WASM integrity production guard", () => {
   it("refuses the bypass with the specific error type", () => {
     process.env["CHECKRD_SKIP_WASM_INTEGRITY"] = "1";
     process.env["NODE_ENV"] = "production";
-    expect(() => __shouldSkipIntegrity()).toThrowError(CheckrdInitError);
+    expect(() => __shouldSkipIntegrity()).toThrow(CheckrdInitError);
   });
 
   it.each(PRODUCTION_ENV_VARS)(
@@ -87,7 +87,7 @@ describe("WASM integrity production guard", () => {
     (envName) => {
       process.env["CHECKRD_SKIP_WASM_INTEGRITY"] = "1";
       process.env[envName] = "production";
-      expect(() => __shouldSkipIntegrity()).toThrowError(
+      expect(() => __shouldSkipIntegrity()).toThrow(
         /production-looking environment/,
       );
     },
@@ -98,7 +98,7 @@ describe("WASM integrity production guard", () => {
     (value) => {
       process.env["CHECKRD_SKIP_WASM_INTEGRITY"] = "1";
       process.env["NODE_ENV"] = value;
-      expect(() => __shouldSkipIntegrity()).toThrowError(
+      expect(() => __shouldSkipIntegrity()).toThrow(
         /production-looking environment/,
       );
     },
@@ -109,7 +109,7 @@ describe("WASM integrity production guard", () => {
     // must still trip the guard.
     process.env["CHECKRD_SKIP_WASM_INTEGRITY"] = "1";
     process.env["NODE_ENV"] = "PRODUCTION";
-    expect(() => __shouldSkipIntegrity()).toThrowError(
+    expect(() => __shouldSkipIntegrity()).toThrow(
       /production-looking environment/,
     );
   });
@@ -119,7 +119,7 @@ describe("WASM integrity production guard", () => {
     // tripped the guard, not a generic "something in your env".
     process.env["CHECKRD_SKIP_WASM_INTEGRITY"] = "1";
     process.env["RAILS_ENV"] = "production";
-    expect(() => __shouldSkipIntegrity()).toThrowError(
+    expect(() => __shouldSkipIntegrity()).toThrow(
       /RAILS_ENV="production"/,
     );
   });
@@ -127,7 +127,7 @@ describe("WASM integrity production guard", () => {
   it("includes a docs link for the error code", () => {
     process.env["CHECKRD_SKIP_WASM_INTEGRITY"] = "1";
     process.env["NODE_ENV"] = "production";
-    expect(() => __shouldSkipIntegrity()).toThrowError(
+    expect(() => __shouldSkipIntegrity()).toThrow(
       /checkrd\.io\/errors\/wasm_integrity_skip_in_prod/,
     );
   });
@@ -158,7 +158,7 @@ describe("WASM integrity production guard", () => {
       process.env["CHECKRD_SKIP_WASM_INTEGRITY"] = "1";
       process.env["NODE_ENV"] = "production";
       process.env["CHECKRD_I_UNDERSTAND_WASM_INTEGRITY_RISK"] = phrase;
-      expect(() => __shouldSkipIntegrity()).toThrowError(
+      expect(() => __shouldSkipIntegrity()).toThrow(
         /production-looking environment/,
       );
     },

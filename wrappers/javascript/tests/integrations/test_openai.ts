@@ -391,7 +391,7 @@ describe("OpenAI: 4xx / 5xx errors", () => {
           model: "gpt-4o-mini",
           messages: [{ role: "user", content: "x" }],
         }),
-      ).rejects.toThrowError(/rate limit/i);
+      ).rejects.toThrow(/rate limit/i);
     } finally {
       uninstrument();
     }
@@ -408,7 +408,7 @@ describe("OpenAI: 4xx / 5xx errors", () => {
           model: "gpt-4o-mini",
           messages: [{ role: "user", content: "x" }],
         }),
-      ).rejects.toThrowError(/internal server error/i);
+      ).rejects.toThrow(/internal server error/i);
     } finally {
       uninstrument();
     }
@@ -422,7 +422,7 @@ describe("OpenAI: 4xx / 5xx errors", () => {
           model: "gpt-4o-mini",
           messages: [{ role: "user", content: "x" }],
         }),
-      ).rejects.toThrowError();
+      ).rejects.toThrow();
     } finally {
       uninstrument();
     }

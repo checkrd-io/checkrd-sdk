@@ -31,7 +31,7 @@
  *     dashboard's Storybook tests use it).
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { attachBrowserUnloadFlush } from "../src/_browser_flush.js";
 import {
   TelemetryBatcher,
@@ -188,7 +188,7 @@ describe("TelemetryBatcher.urgentFlush", () => {
 
 describe("attachBrowserUnloadFlush", () => {
   let target: EventTarget;
-  let urgentFlushSpy: ReturnType<typeof vi.spyOn>;
+  let urgentFlushSpy: MockInstance<TelemetryBatcher["urgentFlush"]>;
   let batcher: TelemetryBatcher;
 
   beforeEach(() => {

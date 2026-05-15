@@ -75,7 +75,7 @@ describe("StreamingAPIResponse — consumed guard", () => {
       for await (const _ of s.iterBytes()) {
         // unreachable
       }
-    }).rejects.toThrowError(/can only be consumed once/);
+    }).rejects.toThrow(/can only be consumed once/);
   });
 
   it("throws on iterText after iterBytes", async () => {
@@ -87,7 +87,7 @@ describe("StreamingAPIResponse — consumed guard", () => {
       for await (const _ of s.iterText()) {
         // unreachable
       }
-    }).rejects.toThrowError(/can only be consumed once/);
+    }).rejects.toThrow(/can only be consumed once/);
   });
 });
 

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, type Mock } from "vitest";
 
 import {
   DEFAULT_DENY_POLICY_JSON,
@@ -12,23 +12,27 @@ import { CheckrdInitError } from "../src/exceptions.js";
 // `wrappers/python/src/checkrd/control.py::ControlReceiver._handle_event`.
 // If you change behavior here, update the Python wrapper and its tests too.
 
+type AnyFn = (...args: never[]) => unknown;
+
 function makeEngine(): ControlEngine & {
-  setKillSwitch: ReturnType<typeof vi.fn>;
-  reloadPolicy: ReturnType<typeof vi.fn>;
+  setKillSwitch: Mock<AnyFn>;
+  reloadPolicy: Mock<AnyFn>;
 } {
   return {
-    setKillSwitch: vi.fn(),
-    reloadPolicy: vi.fn(),
+    setKillSwitch: vi.fn<AnyFn>(),
+    reloadPolicy: vi.fn<AnyFn>(),
   };
 }
 
+type LogMethod = (message: string, ...args: unknown[]) => void;
+
 function makeLogger(): ControlLogger & {
-  warn: ReturnType<typeof vi.fn>;
-  error: ReturnType<typeof vi.fn>;
+  warn: Mock<LogMethod>;
+  error: Mock<LogMethod>;
 } {
   return {
-    warn: vi.fn(),
-    error: vi.fn(),
+    warn: vi.fn<LogMethod>(),
+    error: vi.fn<LogMethod>(),
   };
 }
 

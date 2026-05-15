@@ -1,11 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 
 import {
   deprecationWarning,
   _resetDeprecationsForTests,
 } from "../src/_deprecation.js";
 
-let warnSpy: ReturnType<typeof vi.spyOn>;
+let warnSpy: MockInstance<typeof console.warn>;
 
 beforeEach(() => {
   _resetDeprecationsForTests();
