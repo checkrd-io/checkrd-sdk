@@ -60,7 +60,7 @@ pip install checkrd
 from checkrd import Checkrd
 import httpx
 
-checkrd = Checkrd(api_key="ck_live_xyz", agent_id="sales-agent")
+checkrd = Checkrd(api_key="ck_live_xyz", agent_id="01234567-89ab-cdef-0123-456789abcdef")
 
 http = checkrd.wrap(httpx.Client())
 response = http.get("https://api.stripe.com/v1/charges")
@@ -105,7 +105,7 @@ import httpx
 
 client = wrap(
     httpx.Client(),
-    agent_id="sales-agent",
+    agent_id="01234567-89ab-cdef-0123-456789abcdef",
     policy="policy.yaml",
 )
 ```
@@ -230,7 +230,7 @@ from checkrd import wrap, LocalIdentity
 
 client = wrap(
     httpx.Client(),
-    agent_id="sales-agent",
+    agent_id="01234567-89ab-cdef-0123-456789abcdef",
     identity=LocalIdentity.from_env(),  # reads CHECKRD_AGENT_KEY
     api_key=os.environ["CHECKRD_API_KEY"],
     control_plane_url="https://api.checkrd.io",
@@ -249,7 +249,7 @@ raw = boto3.client("secretsmanager").get_secret_value(
     SecretId="checkrd/sales-agent"
 )["SecretBinary"]
 identity = LocalIdentity.from_bytes(raw)
-client = wrap(httpx.Client(), agent_id="sales-agent", identity=identity)  # plus your usual args
+client = wrap(httpx.Client(), agent_id="01234567-89ab-cdef-0123-456789abcdef", identity=identity)  # plus your usual args
 ```
 
 ## Offline / Air-Gapped Setup
@@ -263,7 +263,7 @@ from checkrd.sinks import JsonFileSink
 
 client = wrap(
     httpx.Client(),
-    agent_id="sales-agent",
+    agent_id="01234567-89ab-cdef-0123-456789abcdef",
     policy="/etc/checkrd/sales-agent.yaml",
     policy_watch=True,                                # hot-reload on file change
     killswitch_file="/var/lib/checkrd/killswitch",   # touch to disable
@@ -542,7 +542,7 @@ import httpx
 
 client = wrap(
     httpx.Client(),
-    agent_id="sales-agent",
+    agent_id="01234567-89ab-cdef-0123-456789abcdef",
     policy="policy.yaml",
     control_plane_url="https://api.checkrd.io",
     api_key="ck_live_...",
