@@ -132,8 +132,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Republished from the public `checkrd-io/checkrd-sdk` mirror. The
-  Sigstore certificate identity in the PEP 740 attestation now points
-  at `https://github.com/checkrd-io/checkrd-sdk/.github/workflows/publish-python.yml`
+  Sigstore certificate identity (OIDC subject, not a browsable URL)
+  in the PEP 740 attestation is now
+  `github.com/checkrd-io/checkrd-sdk/.github/workflows/publish-python.yml@refs/heads/main`
   — a repo end users can browse — instead of the private monorepo.
   No SDK behaviour changes vs 0.3.0; verification recipes in
   `WASM-CORE.md § Integrity Verification` now use this repo URL.

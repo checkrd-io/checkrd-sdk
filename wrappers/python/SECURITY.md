@@ -125,7 +125,7 @@ The deprecated `CHECKRD_DEV=1` flag toggled both at once. It emits a
   tokens are not used.
 - Wheels carry [PEP 740 attestations](https://peps.python.org/pep-0740/)
   signed with Sigstore via the publishing OIDC flow. Available at
-  `https://pypi.org/integrity/checkrd/<version>/<file>/provenance` and
+  `https://pypi.org/integrity/checkrd/{version}/{file}/provenance` and
   surfaced on the PyPI release page under "Sigstore signatures".
 - The WASM core binary shipped inside the wheel is verified at import
   time against a SHA-256 recorded at build time

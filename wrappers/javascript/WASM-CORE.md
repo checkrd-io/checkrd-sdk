@@ -369,7 +369,8 @@ without trusting the package's self-declared digest:
 npm audit signatures
 
 # Or fetch the raw provenance bundle for inspection
-curl -sS https://registry.npmjs.org/-/npm/v1/attestations/checkrd@$(npm view checkrd version) \
+VERSION=$(npm view checkrd version)
+curl -sS "https://registry.npmjs.org/-/npm/v1/attestations/checkrd@${VERSION}" \
   | jq '.attestations[] | select(.predicateType == "https://slsa.dev/provenance/v1")'
 ```
 

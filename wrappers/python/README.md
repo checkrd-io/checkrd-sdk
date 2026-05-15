@@ -466,7 +466,7 @@ Vendor instrumentation works at the HTTP layer. For framework-native integration
 | Anthropic Claude Agent SDK         | `from checkrd.integrations.claude_agent_sdk import attach_to_options` | `pip install 'checkrd[claude-agent-sdk]'` |
 | Model Context Protocol (MCP)       | `from checkrd.integrations.mcp import wrap_call_tool_handler, CheckrdClientSession` | `pip install 'checkrd[mcp]'`              |
 
-Each adapter is documented at <https://checkrd.io/docs/integrations>. Operators write one policy YAML and the same rules fire across vendor instrumentors and framework adapters using framework-prefixed synthetic URLs (`langchain.local/...`, `openai-agents.local/...`, `claude-agent.local/...`, `<server-name>/tools/...`).
+Each adapter is documented at <https://checkrd.io/docs/integrations/overview>. Operators write one policy YAML and the same rules fire across vendor instrumentors and framework adapters using framework-prefixed synthetic URLs (`langchain.local/...`, `openai-agents.local/...`, `claude-agent.local/...`, `<server-name>/tools/...`).
 
 ## File Watchers
 
