@@ -5,6 +5,31 @@ All notable changes to the Checkrd Python SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.3.8 (2026-05-15)
+
+### Fixed (docs only — zero runtime/source changes)
+
+- `README.md`: replaced misleading `agent_id="sales-agent"` / `"my-agent"`
+  placeholders with a UUID-shaped placeholder
+  `01234567-89ab-cdef-0123-456789abcdef`. Server-side `agent_id` is a
+  `uuid v4`; the previous string-name placeholder made the SDK appear
+  to accept human-readable names and produced a confusing
+  "agent not found" at the first request.
+- `README.md`: replaced two `wrap(..., ...)` Python snippets where
+  `...` was used as a "more args" hint. Python's parser reads `...`
+  as `Ellipsis`, which is invalid after keyword arguments — the
+  snippet did not parse. Now written as
+  `wrap(..., key=value)  # plus your usual args`.
+- `SECURITY.md`: PEP 740 attestation URL switched from
+  `https://pypi.org/integrity/checkrd/<version>/<file>/provenance`
+  to `{version}/{file}` placeholder form. `<…>` are invalid URL
+  characters and link-checkers truncated the URL at the first `<`.
+- `CHANGELOG.md` (this file): Sigstore certificate identity for the
+  0.3.1 republish is an OIDC subject, not a clickable URL. Removed
+  the `https://` scheme + added the `@refs/heads/main` ref suffix
+  so it reads as an identity string and stops 404ing under
+  link-check.
+
 ## 0.3.7 (2026-05-14)
 
 ### Fixed
