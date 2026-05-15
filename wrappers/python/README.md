@@ -249,7 +249,7 @@ raw = boto3.client("secretsmanager").get_secret_value(
     SecretId="checkrd/sales-agent"
 )["SecretBinary"]
 identity = LocalIdentity.from_bytes(raw)
-client = wrap(httpx.Client(), agent_id="sales-agent", identity=identity, ...)
+client = wrap(httpx.Client(), agent_id="sales-agent", identity=identity)  # plus your usual args
 ```
 
 ## Offline / Air-Gapped Setup
@@ -297,7 +297,7 @@ class MyOtlpSink:
     def enqueue(self, event: dict[str, Any]) -> None: ...
     def stop(self) -> None: ...
 
-client = wrap(httpx.Client(), agent_id="X", telemetry_sink=MyOtlpSink(), ...)
+client = wrap(httpx.Client(), agent_id="X", telemetry_sink=MyOtlpSink())  # plus your usual args
 ```
 
 Sinks must be thread-safe and non-blocking. Buffer internally and flush asynchronously — the SDK calls `enqueue()` from the request thread.
