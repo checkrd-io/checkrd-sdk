@@ -4,7 +4,7 @@ Different channels for different needs:
 
 | You want to… | Go here |
 |---|---|
-| Read the API reference / integration guides | [docs.checkrd.io](https://docs.checkrd.io) |
+| Read the API reference / integration guides | [checkrd.io/docs](https://checkrd.io/docs) |
 | Report a defect in the Python or JavaScript SDK | [Open an issue](https://github.com/checkrd-io/checkrd-sdk/issues/new/choose) using the **Bug report** template |
 | Propose a new feature, integration, or behaviour change | [Open an issue](https://github.com/checkrd-io/checkrd-sdk/issues/new/choose) using the **Feature request** template |
 | Ask a question or share a use case | [Discussions](https://github.com/checkrd-io/checkrd-sdk/discussions) — best for "how do I…" questions where the answer might help others |

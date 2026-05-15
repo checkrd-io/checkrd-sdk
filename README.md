@@ -22,7 +22,7 @@ them in air-gapped mode with a local policy file and no network egress.
 
 ## Documentation
 
-- API reference: [docs.checkrd.io](https://docs.checkrd.io)
+- API reference: [checkrd.io/docs](https://checkrd.io/docs)
 - Python SDK: [`wrappers/python/`](wrappers/python/README.md)
 - JavaScript SDK: [`wrappers/javascript/`](wrappers/javascript/README.md)
 - Threat model: [Python](wrappers/python/THREAT-MODEL.md) · [JavaScript](wrappers/javascript/THREAT-MODEL.md)
