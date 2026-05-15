@@ -118,8 +118,54 @@ def _make_anthropic_module() -> types.ModuleType:
 
 
 def _make_cohere_module() -> types.ModuleType:
-    """Build a minimal stand-in for ``cohere``."""
+    """Build a minimal stand-in for ``cohere``.
+
+    Mirrors the cohere>=5 layout:
+        client._client_wrapper             -> SyncClientWrapper / AsyncClientWrapper
+        client._client_wrapper.httpx_client -> Cohere's HttpClient
+        client._client_wrapper.httpx_client.httpx_client -> real httpx.Client / httpx.AsyncClient
+
+    Older fixtures stored the httpx client at ``client._client`` —
+    that was right for cohere<5 but silently broke instrumentation
+    against current releases.
+    """
     module = types.ModuleType("cohere")
+
+    class _HttpClient:
+        """Cohere's internal HTTP-client wrapper class."""
+
+        def __init__(self, httpx_client: Any) -> None:
+            self.httpx_client = httpx_client
+
+    class _SyncClientWrapper:
+        def __init__(self, http_client: Optional[httpx.Client]) -> None:
+            self.httpx_client = _HttpClient(http_client or httpx.Client())
+
+    class _AsyncClientWrapper:
+        def __init__(self, http_client: Optional[httpx.AsyncClient]) -> None:
+            self.httpx_client = _HttpClient(http_client or httpx.AsyncClient())
+
+    class Client:
+        def __init__(
+            self,
+            *,
+            api_key: Optional[str] = None,
+            http_client: Optional[httpx.Client] = None,
+            **_kwargs: Any,
+        ) -> None:
+            self.api_key = api_key
+            self._client_wrapper = _SyncClientWrapper(http_client)
+
+    class AsyncClient:
+        def __init__(
+            self,
+            *,
+            api_key: Optional[str] = None,
+            http_client: Optional[httpx.AsyncClient] = None,
+            **_kwargs: Any,
+        ) -> None:
+            self.api_key = api_key
+            self._client_wrapper = _AsyncClientWrapper(http_client)
 
     class ClientV2:
         def __init__(
@@ -130,7 +176,7 @@ def _make_cohere_module() -> types.ModuleType:
             **_kwargs: Any,
         ) -> None:
             self.api_key = api_key
-            self._client: httpx.Client = http_client or httpx.Client()
+            self._client_wrapper = _SyncClientWrapper(http_client)
 
     class AsyncClientV2:
         def __init__(
@@ -141,8 +187,10 @@ def _make_cohere_module() -> types.ModuleType:
             **_kwargs: Any,
         ) -> None:
             self.api_key = api_key
-            self._client: httpx.AsyncClient = http_client or httpx.AsyncClient()
+            self._client_wrapper = _AsyncClientWrapper(http_client)
 
+    module.Client = Client  # type: ignore[attr-defined]
+    module.AsyncClient = AsyncClient  # type: ignore[attr-defined]
     module.ClientV2 = ClientV2  # type: ignore[attr-defined]
     module.AsyncClientV2 = AsyncClientV2  # type: ignore[attr-defined]
     return module
@@ -222,18 +270,41 @@ def _make_google_genai_module() -> types.ModuleType:
 
     genai_module = types.ModuleType("google.genai")
 
+    # Mirror the post-1.0 google-genai SDK layout: the public ``Client``
+    # holds a private ``BaseApiClient`` at ``_api_client``, which in
+    # turn owns separate ``_httpx_client`` (sync) and
+    # ``_async_httpx_client`` (async) members. Older fixtures stored
+    # the httpx client at ``_client`` directly — that worked against
+    # google-genai <1.0 but silently failed against the current SDK.
+    class _BaseApiClient:
+        def __init__(
+            self,
+            *,
+            http_client: Optional[httpx.Client] = None,
+            async_http_client: Optional[httpx.AsyncClient] = None,
+        ) -> None:
+            self._httpx_client: httpx.Client = http_client or httpx.Client()
+            self._async_httpx_client: httpx.AsyncClient = (
+                async_http_client or httpx.AsyncClient()
+            )
+
     class Client:
         def __init__(
             self,
             *,
             api_key: Optional[str] = None,
             http_client: Optional[httpx.Client] = None,
+            async_http_client: Optional[httpx.AsyncClient] = None,
             **_kwargs: Any,
         ) -> None:
             self.api_key = api_key
-            self._client: httpx.Client = http_client or httpx.Client()
+            self._api_client = _BaseApiClient(
+                http_client=http_client,
+                async_http_client=async_http_client,
+            )
 
     genai_module.Client = Client  # type: ignore[attr-defined]
+    genai_module._BaseApiClient = _BaseApiClient  # type: ignore[attr-defined]
 
     # Wire the sub-module onto the parent so attribute access works.
     google_pkg.genai = genai_module  # type: ignore[attr-defined]

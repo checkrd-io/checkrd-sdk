@@ -55,6 +55,19 @@ function flattenEvent(event: TelemetryEvent): Record<string, unknown> {
     "agent_id",
     "instance_id",
     "timestamp",
+    // Flat fields: framework adapters (Vercel AI SDK middleware,
+    // LangChain handler, OpenAI Agents processor) emit events that
+    // already match the wire schema. Without these here the
+    // pass-through silently drops them, and the ingest endpoint
+    // 422s with ``missing field `url_host``` / ``missing field
+    // `method``` / etc., dropping the whole batch.
+    "url_host",
+    "url_path",
+    "method",
+    "body_hash",
+    "status_code",
+    "latency_ms",
+    "policy_mode",
     "policy_result",
     "deny_reason",
     "trace_id",
@@ -64,6 +77,12 @@ function flattenEvent(event: TelemetryEvent): Record<string, unknown> {
     "span_kind",
     "span_status_code",
     "span_status_message",
+    // GenAI semconv fields populated by the AI SDK middleware /
+    // LangChain LLM events / OpenAI Agents GenerationSpan.
+    "gen_ai_system",
+    "gen_ai_model",
+    "gen_ai_input_tokens",
+    "gen_ai_output_tokens",
     "matched_rule",
     "matched_rule_kind",
     "evaluation_path",
@@ -94,26 +113,42 @@ function flattenEvent(event: TelemetryEvent): Record<string, unknown> {
     if (optionalStringFields.has(key) && (v === "" || v == null)) continue;
     flat[key] = v;
   }
-  // event_id -> request_id (WASM uses event_id, API expects request_id).
-  if (flat.event_id !== undefined) {
+  // event_id -> request_id (WASM uses event_id, API expects
+  // request_id). Adapter-supplied request_id takes precedence
+  // because the adapter already had domain context the WASM core
+  // doesn't (e.g. LangChain run_id is more useful than a derived
+  // event_id).
+  if (flat.event_id !== undefined && flat.request_id === undefined) {
     flat.request_id = flat.event_id;
+    delete flat.event_id;
+  } else if (flat.event_id !== undefined) {
     delete flat.event_id;
   }
   // mode -> policy_mode (WASM uses mode, API uses policy_mode).
-  if ("mode" in src) flat.policy_mode = src.mode;
-  // Flatten request sub-object.
+  // Adapter-set policy_mode wins.
+  if ("mode" in src && flat.policy_mode === undefined) {
+    flat.policy_mode = src.mode;
+  }
+  // Flatten WASM request sub-object onto the wire fields only when
+  // the adapter didn't already provide them flat.
   const req = src.request as Record<string, unknown> | undefined;
   if (req && typeof req === "object") {
-    flat.url_host = req.url_host ?? "";
-    flat.url_path = req.url_path ?? "";
-    flat.method = req.method ?? "";
-    if (req.body_hash !== undefined) flat.body_hash = req.body_hash;
+    if (flat.url_host === undefined) flat.url_host = req.url_host ?? "";
+    if (flat.url_path === undefined) flat.url_path = req.url_path ?? "";
+    if (flat.method === undefined) flat.method = req.method ?? "";
+    if (req.body_hash !== undefined && flat.body_hash === undefined) {
+      flat.body_hash = req.body_hash;
+    }
   }
-  // Flatten response sub-object.
+  // Same for WASM response sub-object.
   const resp = src.response as Record<string, unknown> | undefined;
   if (resp && typeof resp === "object") {
-    if (resp.status_code !== undefined) flat.status_code = resp.status_code;
-    if (resp.latency_ms !== undefined) flat.latency_ms = resp.latency_ms;
+    if (resp.status_code !== undefined && flat.status_code === undefined) {
+      flat.status_code = resp.status_code;
+    }
+    if (resp.latency_ms !== undefined && flat.latency_ms === undefined) {
+      flat.latency_ms = resp.latency_ms;
+    }
   }
   return flat;
 }
@@ -854,6 +889,12 @@ export class TelemetryBatcher {
       const timer = setTimeout(() => {
         reject(new Error(`timeout after ${ms.toString()}ms`));
       }, ms);
+      // Don't keep the Node event loop alive on this watchdog timer;
+      // callers ``await`` the promise so they hold their own
+      // reference to it. Without ``unref``, a 30s request-timeout
+      // timer leaks into post-``close()`` and looks like a hang.
+      const nodeTimer = timer as unknown as { unref?: () => void };
+      if (typeof nodeTimer.unref === "function") nodeTimer.unref();
       promise.then(
         (v) => {
           clearTimeout(timer);

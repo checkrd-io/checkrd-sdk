@@ -86,7 +86,9 @@ class TestLangChain:
 
         run_id = uuid4()
         # When allowed, on_llm_start does NOT raise. on_llm_end then
-        # emits a telemetry event with outcome=ok and matching latency.
+        # emits a telemetry event matching the ``TelemetryEventInput``
+        # wire schema (this is what `/v1/telemetry` accepts — any
+        # unknown field would be rejected with HTTP 422).
         handler.on_llm_start(
             serialized={"kwargs": {"model": "gpt-4o"}},
             prompts=["hello"],
@@ -104,13 +106,28 @@ class TestLangChain:
 
         assert len(sink.events) == 1
         event = sink.events[0]
-        assert event["event_type"] == "langchain_llm"
+        # Required wire fields — all present and well-formed.
+        assert event["request_id"] == str(run_id)
         assert event["agent_id"] == "test-agent"
-        assert event["target"] == "gpt-4o"
-        assert event["outcome"] == "ok"
-        assert event["input_tokens"] == 5
-        assert event["output_tokens"] == 2
+        assert event["url_host"] == "langchain.local"
+        assert event["url_path"] == "/llm/gpt-4o"
+        assert event["method"] == "POST"
+        assert event["status_code"] == 200
+        assert event["span_status_code"] == "OK"
         assert event["latency_ms"] >= 0
+        assert event["policy_result"] == "allowed"
+        # GenAI semconv fields populated for LLM steps so the same
+        # ClickHouse query that sums tokens across vendor SDKs also
+        # rolls up LangChain chain steps.
+        assert event["gen_ai_input_tokens"] == 5
+        assert event["gen_ai_output_tokens"] == 2
+        assert event["gen_ai_model"] == "gpt-4o"
+        # No legacy / unknown keys — those would trigger 422 on the
+        # ingestion endpoint.
+        assert "event_type" not in event
+        assert "kind" not in event
+        assert "target" not in event
+        assert "outcome" not in event
 
     def test_on_llm_start_deny_raises_when_enforce(self) -> None:
         handler, _, _ = self._make_handler(default="deny", enforce=True)
@@ -146,8 +163,11 @@ class TestLangChain:
         handler.on_tool_end("42", run_id=run_id)
 
         assert len(sink.events) == 1
-        assert sink.events[0]["event_type"] == "langchain_tool"
-        assert sink.events[0]["target"] == "search_database"
+        # Tool name lives in the URL path so policy YAML can match it
+        # ("deny: url: '*/tool/search_database'"). No legacy
+        # ``target`` field — that would 422 server-side.
+        assert sink.events[0]["url_path"] == "/tool/search_database"
+        assert sink.events[0]["url_host"] == "langchain.local"
 
     def test_on_chain_error_emits_error_outcome(self) -> None:
         handler, sink, _ = self._make_handler(default="allow")
@@ -161,8 +181,12 @@ class TestLangChain:
         handler.on_chain_error(ValueError("boom"), run_id=run_id)
 
         assert len(sink.events) == 1
-        assert sink.events[0]["outcome"] == "error"
-        assert sink.events[0]["error"] == "ValueError"
+        # Errors map to the OpenTelemetry span-status + an HTTP-style
+        # 500 status code so existing alert rules (``error_rate >
+        # 1%``) catch chain failures the same way they catch vendor
+        # 5xxs.
+        assert sink.events[0]["status_code"] == 500
+        assert sink.events[0]["span_status_code"] == "ERROR"
 
 
 # ======================================================================
@@ -199,8 +223,24 @@ class TestOpenAIAgents:
         )
         assert out.tripwire_triggered is True
         assert out.output_info["deny_reason"]
-        # Sink received the deny event.
-        assert any(e["event_type"] == "openai_agents_input_denied" for e in sink.events)
+        # Sink received a wire-schema-compliant deny event — no
+        # ``event_type`` (that would 422 the ingest). The synthetic
+        # URL path ``/input/researcher`` lets policy YAML target
+        # this specific agent + guardrail kind.
+        deny = next(
+            (
+                e
+                for e in sink.events
+                if e["policy_result"] == "denied"
+                and e["url_path"] == "/input/researcher"
+            ),
+            None,
+        )
+        assert deny is not None
+        assert deny["url_host"] == "openai-agents.local"
+        assert deny["status_code"] == 403
+        assert deny["span_status_code"] == "ERROR"
+        assert "event_type" not in deny
 
     def test_input_guardrail_allows_when_allowed(self) -> None:
         from checkrd.integrations.openai_agents import CheckrdInputGuardrail
@@ -273,12 +313,21 @@ class TestOpenAIAgents:
         proc.on_span_start(_FakeSpan())
         proc.on_span_end(_FakeSpan())
 
-        starts = [e for e in sink.events if e["event_type"].endswith("_start")]
-        ends = [e for e in sink.events if e["event_type"].endswith("_end")]
-        assert starts and ends
-        assert ends[0]["target"] == "gpt-4o"
-        assert ends[0]["input_tokens"] == 10
-        assert ends[0]["latency_ms"] is not None
+        # ``on_span_start`` no longer emits — OpenTelemetry's contract
+        # is end-of-span only. ``on_span_end`` emits exactly one
+        # ``TelemetryEventInput``-shaped event with the generation's
+        # model + token usage rolled up under the GenAI semconv
+        # field names. No ``event_type`` / ``kind`` / ``target`` —
+        # those would 422 at the ingest endpoint.
+        assert len(sink.events) == 1
+        event = sink.events[0]
+        assert event["url_host"] == "openai-agents.local"
+        assert event["url_path"] == "/generation/gpt-4o"
+        assert event["gen_ai_model"] == "gpt-4o"
+        assert event["gen_ai_input_tokens"] == 10
+        assert event["gen_ai_output_tokens"] == 20
+        assert event["latency_ms"] is not None
+        assert "event_type" not in event
 
 
 # ======================================================================

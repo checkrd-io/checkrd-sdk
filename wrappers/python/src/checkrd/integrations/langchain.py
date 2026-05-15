@@ -100,6 +100,41 @@ logger = logging.getLogger("checkrd.integrations.langchain")
 _LANGCHAIN_AUTHORITY = "langchain.local"
 
 
+def _make_agent_event(
+    *,
+    run_id: UUID,
+    agent_id: str,
+    kind: str,
+    target: str,
+    parent_run_id: Optional[UUID],
+) -> dict[str, Any]:
+    """Build a wire-schema-compliant TelemetryEventInput for the
+    agent-action / agent-finish callbacks.
+
+    Those callbacks don't go through ``_gate`` (they piggyback on the
+    parent chain's evaluation), so we synthesize a minimal event by
+    hand. Every field here is in the ingestion-side
+    ``TelemetryEventInput`` schema. An event with unknown keys gets
+    rejected with HTTP 422 and dropped by the batcher.
+    """
+    now = datetime.now(timezone.utc)
+    return {
+        "request_id": str(run_id),
+        "agent_id": agent_id,
+        "timestamp": now.isoformat(),
+        "url_host": _LANGCHAIN_AUTHORITY,
+        "url_path": f"/{kind}/{target}",
+        "method": "POST",
+        "status_code": 200,
+        "policy_result": "allowed",
+        "trace_id": str(parent_run_id) if parent_run_id else str(run_id),
+        "span_id": str(run_id),
+        "parent_span_id": str(parent_run_id) if parent_run_id else None,
+        "span_name": f"langchain.{kind} {target}",
+        "span_status_code": "OK",
+    }
+
+
 class CheckrdCallbackHandler(BaseCallbackHandler):
     """LangChain callback handler that enforces Checkrd policy.
 
@@ -168,10 +203,16 @@ class CheckrdCallbackHandler(BaseCallbackHandler):
         self._dashboard_url = dashboard_url or ""
         self._logger = logger_ or logger
 
-        # In-flight map: run_id -> (start_time_ns, kind, target).
-        # Used to compute latency and emit the post-call telemetry event
-        # without re-deriving the synthetic URL.
-        self._in_flight: dict[UUID, tuple[int, str, str]] = {}
+        # In-flight map: run_id -> (start_time_ns, kind, target,
+        # telemetry_json_from_engine). The engine produces a
+        # telemetry payload that already matches the wire schema
+        # required by the ingestion endpoint — we stash it here
+        # and enrich it (latency, response, gen-ai fields) in
+        # ``_emit``. Previously we built a custom event from
+        # scratch with fields like ``event_type`` / ``kind`` /
+        # ``target``, which the ingestion endpoint rejected with
+        # HTTP 422 (the wire schema is ``TelemetryEventInput``).
+        self._in_flight: dict[UUID, tuple[int, str, str, str]] = {}
         self._lock = threading.Lock()
 
     # ------------------------------------------------------------------
@@ -244,6 +285,17 @@ class CheckrdCallbackHandler(BaseCallbackHandler):
         body_json = _json_default(body)
         now = datetime.now(timezone.utc)
 
+        # Normalize LangChain run IDs to W3C Trace Context format.
+        # LangChain's run_id is a UUID; the wire schema expects
+        # ``trace_id`` to be exactly 32 lowercase hex chars and
+        # ``span_id`` to be exactly 16. Without stripping the
+        # dashes, the ingest endpoint 422s every event with
+        # ``invalid value for trace_id: 019e295a-...``.
+        trace_uuid = parent_run_id if parent_run_id else run_id
+        trace_id_hex = trace_uuid.hex  # 32 lowercase hex, no dashes
+        span_id_hex = run_id.hex[:16]
+        parent_span_id_hex = parent_run_id.hex[:16] if parent_run_id else None
+
         result = self._engine.evaluate(
             request_id=request_id,
             method="POST",
@@ -260,13 +312,18 @@ class CheckrdCallbackHandler(BaseCallbackHandler):
             body=body_json,
             timestamp=now.isoformat(),
             timestamp_ms=int(now.timestamp() * 1000),
-            trace_id=str(parent_run_id) if parent_run_id else str(run_id),
-            span_id=str(run_id),
-            parent_span_id=str(parent_run_id) if parent_run_id else None,
+            trace_id=trace_id_hex,
+            span_id=span_id_hex,
+            parent_span_id=parent_span_id_hex,
         )
 
         with self._lock:
-            self._in_flight[run_id] = (time.perf_counter_ns(), kind, target)
+            self._in_flight[run_id] = (
+                time.perf_counter_ns(),
+                kind,
+                target,
+                result.telemetry_json,
+            )
 
         if not result.allowed and self._enforce:
             raise CheckrdPolicyDenied(
@@ -294,8 +351,25 @@ class CheckrdCallbackHandler(BaseCallbackHandler):
     ) -> None:
         """Emit a post-call telemetry event to the sink.
 
-        ``outcome`` is ``"ok"`` or ``"error"``. Latency is computed from
-        the in-flight map; the entry is removed after emit.
+        Starts from the engine-produced ``TelemetryEventInput`` JSON
+        (captured in ``_gate``) and enriches it with the
+        post-evaluation fields the ingestion endpoint needs:
+
+        - ``latency_ms``: real wall-clock latency for this LangChain
+          step
+        - ``status_code``: 200 on ``ok``, 500 on ``error`` — synthetic
+          but lets dashboards page on tool-error rates
+        - ``span_status_code``: ``"OK"`` or ``"ERROR"`` per the
+          OpenTelemetry span-status enum
+        - ``gen_ai_*``: token counts and model name for LLM steps,
+          mirroring the GenAI semconv fields the httpx transport
+          emits
+
+        ``outcome`` is ``"ok"`` or ``"error"``. ``extra`` is integration-
+        specific context (token usage, error type, etc.) — those that
+        map to ``TelemetryEventInput`` fields are merged in, the rest
+        are dropped because the ingestion endpoint will 422 on
+        unknown fields.
         """
         if self._sink is None:
             return
@@ -307,18 +381,67 @@ class CheckrdCallbackHandler(BaseCallbackHandler):
             # _start handler raised). Nothing we can compute latency
             # against — drop.
             return
-        start_ns, kind, target = entry
-        latency_ms = (time.perf_counter_ns() - start_ns) / 1_000_000
-        event: dict[str, Any] = {
-            "event_type": f"langchain_{kind}",
-            "request_id": str(run_id),
-            "agent_id": self._agent_id,
-            "latency_ms": latency_ms,
-            "kind": kind,
-            "target": target,
-            "outcome": outcome,
-        }
-        event.update(extra)
+        start_ns, kind, target, telemetry_json = entry
+        latency_ms = int((time.perf_counter_ns() - start_ns) / 1_000_000)
+
+        # Start from the engine's wire-schema-correct event and
+        # enrich. A malformed JSON here should never crash the chain
+        # — fall back to a minimal valid event so the sink still
+        # gets *something* it can correlate against the deny / allow
+        # decision.
+        try:
+            event: dict[str, Any] = json.loads(telemetry_json)
+        except (ValueError, TypeError):
+            event = {}
+        # Required fields the engine fills in, defensively backfilled
+        # in case a future engine drops one. ``request_id`` and
+        # ``agent_id`` are not optional in ``TelemetryEventInput``.
+        event.setdefault("request_id", str(run_id))
+        event.setdefault("agent_id", self._agent_id)
+        # Re-derive the synthetic URL fields the same way ``_gate``
+        # did so the row in ClickHouse matches what we tested against
+        # in policy YAML.
+        event.setdefault("url_host", _LANGCHAIN_AUTHORITY)
+        event.setdefault("url_path", f"/{kind}/{target}")
+        event.setdefault("method", "POST")
+        event.setdefault("span_name", f"langchain.{kind} {target}")
+
+        event["latency_ms"] = latency_ms
+        # Outcome is authoritative — overwrite whatever the engine
+        # put in ``span_status_code`` (it leaves it ``UNSET`` because
+        # at evaluate-time the upstream call hasn't happened yet).
+        # ``policy_result`` stays whatever the engine set so a denied
+        # call that proceeded under observation mode still shows
+        # ``policy_result="denied"`` on the row.
+        if outcome == "error":
+            event["status_code"] = 500
+            event["span_status_code"] = "ERROR"
+        else:
+            event["status_code"] = 200
+            event["span_status_code"] = "OK"
+
+        # Carry across the GenAI semconv fields when present. The
+        # httpx transport emits these for vendor SDK requests; the
+        # LangChain adapter is the only path that sees them for chain
+        # / tool steps, so we mirror the shape here so a single
+        # ClickHouse query can roll up tokens across vendor + chain.
+        for key in (
+            "gen_ai_system",
+            "gen_ai_model",
+            "gen_ai_input_tokens",
+            "gen_ai_output_tokens",
+        ):
+            if key in extra and extra[key] is not None:
+                event[key] = extra[key]
+        # Per-LLM convenience: callers pass `input_tokens` / `output_tokens`
+        # (LangChain's nomenclature); map to GenAI semconv names.
+        if extra.get("input_tokens") is not None:
+            event["gen_ai_input_tokens"] = extra["input_tokens"]
+        if extra.get("output_tokens") is not None:
+            event["gen_ai_output_tokens"] = extra["output_tokens"]
+        if kind in ("llm", "chat_model"):
+            event.setdefault("gen_ai_model", target)
+
         try:
             self._sink.enqueue(event)
         except Exception:
@@ -598,16 +721,16 @@ class CheckrdCallbackHandler(BaseCallbackHandler):
     ) -> None:
         if self._sink is None:
             return
+        tool = getattr(action, "tool", "unknown") or "unknown"
         try:
             self._sink.enqueue(
-                {
-                    "event_type": "langchain_agent_action",
-                    "request_id": str(run_id),
-                    "agent_id": self._agent_id,
-                    "tool": getattr(action, "tool", None),
-                    "tool_input": _preview(getattr(action, "tool_input", None)),
-                    "log": _preview(getattr(action, "log", None)),
-                }
+                _make_agent_event(
+                    run_id=run_id,
+                    agent_id=self._agent_id,
+                    kind="agent_action",
+                    target=tool,
+                    parent_run_id=parent_run_id,
+                )
             )
         except Exception:
             self._logger.warning(
@@ -626,16 +749,14 @@ class CheckrdCallbackHandler(BaseCallbackHandler):
         if self._sink is None:
             return
         try:
-            return_values = getattr(finish, "return_values", None)
             self._sink.enqueue(
-                {
-                    "event_type": "langchain_agent_finish",
-                    "request_id": str(run_id),
-                    "agent_id": self._agent_id,
-                    "return_values_keys": sorted(return_values.keys())
-                    if isinstance(return_values, dict)
-                    else [],
-                }
+                _make_agent_event(
+                    run_id=run_id,
+                    agent_id=self._agent_id,
+                    kind="agent_finish",
+                    target="finish",
+                    parent_run_id=parent_run_id,
+                )
             )
         except Exception:
             self._logger.warning(

@@ -161,10 +161,16 @@ export function checkrdMastraTelemetry(
     onEvent: (event) => {
       if (!sink) return;
       try {
+        // The wire schema (``TelemetryEventInput``) accepts only
+        // the fields enumerated in ``crates/shared/src/telemetry.rs``.
+        // The previous ``telemetry_source: "mastra"`` enrichment
+        // was ignored by the deserializer in lenient mode and
+        // 422'd in strict — drop it. Mastra-specific provenance
+        // lives in ``span_name`` (e.g. ``mastra.agent xyz``)
+        // emitted by the engine path.
         const enriched: TelemetryEvent = {
           ...event,
           agent_id: options.agentId,
-          telemetry_source: "mastra",
         };
         sink.enqueue(enriched);
       } catch (err) {

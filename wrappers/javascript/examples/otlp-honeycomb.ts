@@ -12,10 +12,11 @@
  * Run:
  *   export OPENAI_API_KEY=sk-...
  *   export CHECKRD_API_KEY=ck_live_...
+ *   export CHECKRD_AGENT_ID=...    # UUID from your dashboard
  *   export HONEYCOMB_API_KEY=...
  *   npx tsx otlp-honeycomb.ts
  */
-import { CompositeSink, init, instrument, OtlpSink, shutdown } from "checkrd";
+import { CompositeSink, initAsync, instrument, OtlpSink, shutdown } from "checkrd";
 import OpenAI from "openai";
 
 async function main(): Promise<void> {
@@ -29,10 +30,10 @@ async function main(): Promise<void> {
   });
 
   // `sink` overrides the default ControlPlaneSink. Use CompositeSink to
-  // emit to multiple destinations at once.
-  init({
-    policy: "policy.yaml",
-    apiKey: process.env["CHECKRD_API_KEY"],
+  // emit to multiple destinations at once. The dashboard is still
+  // the source of truth for policy — ``initAsync()`` fetches it
+  // before resolving.
+  await initAsync({
     sink: new CompositeSink([otlp]),
   });
   instrument();

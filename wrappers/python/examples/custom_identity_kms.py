@@ -16,6 +16,9 @@ Install::
 
 Run::
 
+    export OPENAI_API_KEY=sk-...
+    export CHECKRD_API_KEY=ck_live_...
+    export CHECKRD_AGENT_ID=...        # UUID from your dashboard
     python custom_identity_kms.py
 """
 from __future__ import annotations
@@ -40,8 +43,11 @@ def main() -> None:
     )
 
     # The SDK signs telemetry batches out-of-band via the external
-    # signer; pass `identity=` to override the default LocalIdentity.
-    checkrd.init(policy="policy.yaml", identity=identity)
+    # signer; pass ``identity=`` to override the default
+    # LocalIdentity. ``init()`` still reads CHECKRD_API_KEY /
+    # CHECKRD_AGENT_ID from env and fetches your dashboard's
+    # published policy before returning.
+    checkrd.init(identity=identity)
     checkrd.instrument()
 
     client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])

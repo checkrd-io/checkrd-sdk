@@ -5,6 +5,23 @@ All notable changes to the Checkrd Python SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.3.7 (2026-05-14)
+
+### Fixed
+
+- Integration adapters (`langchain`, `openai_agents`, `claude_agent_sdk`)
+  now emit telemetry events conforming to the wire schema -
+  `request_id`, `agent_id`, `timestamp`, `url_host`, `url_path`,
+  `method` populated at the flat level instead of nested under a
+  framework-specific envelope. Events from these adapters now show
+  up on the dashboard alongside vendor-instrumented events.
+- LangChain adapter normalizes UUID-shaped run IDs to W3C-compatible
+  32-hex `trace_id` + 16-hex `span_id` so traces stitch through the
+  pipeline end-to-end.
+- `TelemetryBatcher._flatten_event` passes through events that are
+  already wire-schema-flat (no double-wrapping when an adapter has
+  already constructed the canonical shape).
+
 ## 0.3.6 (2026-05-13)
 
 ### Fixed
@@ -120,26 +137,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   — a repo end users can browse — instead of the private monorepo.
   No SDK behaviour changes vs 0.3.0; verification recipes in
   `WASM-CORE.md § Integrity Verification` now use this repo URL.
-
-## 0.1.0 (2026-04-27)
-
-
-### Features
-
-* dedicated migration RunTask, rate limits 2500/s, deploy pipeline fix ([7848093](https://github.com/checkrd-io/checkrd/commit/7848093b2e5f42a9eaa72f867a8162548e6805de))
-* industry-standard alignment across full stack ([95d7358](https://github.com/checkrd-io/checkrd/commit/95d7358b1f68631f42cfa6eaca9a4e164276aee4))
-* org-wide alert history + bundled WIP cleanup ([a0b349a](https://github.com/checkrd-io/checkrd/commit/a0b349a5d33045364ad4ee1db3689b7011a23afc))
-* **python-sdk:** Phase 0 fail-closed hardening (security_mode + body-size deny) ([514a33e](https://github.com/checkrd-io/checkrd/commit/514a33eb4e818fcb274ca140c2dcd10b4f5bc407))
-* **telemetry:** persist evaluation_path + matched_rule + policy_mode ([9c67a1b](https://github.com/checkrd-io/checkrd/commit/9c67a1bc1f2a91ccf623b4dff6cc7b9eb3cc5d0d))
-
-
-### Bug Fixes
-
-* **ci:** unblock deploy pipeline — python lint/types + dashboard lint/test ([f144bce](https://github.com/checkrd-io/checkrd/commit/f144bcea4734d6d6cdf3d717460c7da63ee9633a))
-* flaky pk registration test + revert telemetry rate limit exemption ([5cbd702](https://github.com/checkrd-io/checkrd/commit/5cbd7026c6728a08a72239c1bc703201f1731aac))
-* remove unused OtlpSink import + had_wasmtime variable (ruff F401) ([e9386d4](https://github.com/checkrd-io/checkrd/commit/e9386d4c0c3e24b9402042cb28c46ea20470d407))
-* remove unused sys import (cascading from had_wasmtime removal) ([9d1f060](https://github.com/checkrd-io/checkrd/commit/9d1f0607d1d12de3693c1c2239fd599979ffa2d1))
-* residual CI failures on PR [#8](https://github.com/checkrd-io/checkrd/issues/8) ([b10b890](https://github.com/checkrd-io/checkrd/commit/b10b890c3a6f93122d0176f28ccb6210f0ed2ed8))
 
 ## [Unreleased]
 

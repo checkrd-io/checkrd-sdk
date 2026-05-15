@@ -9,6 +9,14 @@
  * Bundle the WASM alongside your worker and pass it explicitly; this
  * avoids import-resolution quirks in some edge bundlers.
  *
+ * The control plane is canonical: ``initAsync()`` fetches your
+ * dashboard's published policy bundle and installs it before
+ * resolving. No ``policy:`` argument here — the dashboard is the
+ * source of truth, and mixing local + remote policies in app code
+ * is intentionally refused by the SDK (same posture as OPA, where
+ * a service binary never inlines its own policy alongside an active
+ * bundle agent).
+ *
  * Cloudflare Workers example (wrangler.toml:
  *   [build]
  *   command = "..."
@@ -18,12 +26,12 @@
  * ):
  */
 import wasm from "./checkrd_core.wasm";
-import { initAsync, instrumentOpenAI, wrapAsync } from "checkrd";
+import { initAsync, instrumentOpenAI } from "checkrd";
 import OpenAI from "openai";
 
 export interface Env {
   CHECKRD_API_KEY: string;
-  CHECKRD_POLICY: string; // inline YAML/JSON policy
+  CHECKRD_AGENT_ID: string; // UUID from your dashboard
   OPENAI_API_KEY: string;
 }
 
@@ -31,7 +39,7 @@ export default {
   async fetch(_req: Request, env: Env): Promise<Response> {
     await initAsync({
       apiKey: env.CHECKRD_API_KEY,
-      policy: env.CHECKRD_POLICY,
+      agentId: env.CHECKRD_AGENT_ID,
       wasm, // pre-compiled module bound at build time
       dangerouslyAllowBrowser: true, // edge workers look browser-like
     });
@@ -51,14 +59,14 @@ export default {
  * Vercel Edge / Next.js variant — same primitives, different wiring.
  *
  *   import wasmUrl from "./checkrd_core.wasm?url";
- *   import { initAsync, wrapAsync } from "checkrd";
+ *   import { initAsync } from "checkrd";
  *
  *   export const runtime = "edge";
  *
  *   export async function GET() {
  *     await initAsync({
  *       apiKey: process.env.CHECKRD_API_KEY,
- *       policy: { default: "allow", rules: [] },
+ *       agentId: process.env.CHECKRD_AGENT_ID,
  *       wasm: wasmUrl,
  *       dangerouslyAllowBrowser: true,
  *     });
@@ -68,8 +76,8 @@ export default {
  * For per-request (non-global) enforcement, use `wrapAsync`:
  *
  *   const checkrdFetch = await wrapAsync(undefined, {
- *     agentId: "edge-agent",
- *     policy: inlineYaml,
+ *     apiKey: env.CHECKRD_API_KEY,
+ *     agentId: env.CHECKRD_AGENT_ID,
  *     wasm,
  *     dangerouslyAllowBrowser: true,
  *   });

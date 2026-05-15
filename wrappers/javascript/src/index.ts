@@ -66,6 +66,7 @@ import {
   type LogLevel,
 } from "./_logger.js";
 import { registerPublicKey } from "./_key_registrar.js";
+import { readEnv } from "./_env.js";
 import {
   bootstrapPolicy,
   DENY_ALL_BASELINE_POLICY_JSON,
@@ -524,8 +525,19 @@ function initPrelude(options: InitOptions, caller: string): InitPrelude | null {
 
   const resolution = resolvePolicyJson(options.policy);
   const engineOpts: { privateKeyBytes?: Uint8Array } = {};
+  // Identity resolution: explicit > CHECKRD_AGENT_KEY env > anonymous.
+  // The Python SDK auto-loads `~/.checkrd/identity.key`; the JS SDK
+  // does NOT touch the filesystem (works in edge / browser / Worker
+  // runtimes), but the `CHECKRD_AGENT_KEY` env-var path is exactly
+  // the same shape on both sides. Without this fallback the batcher
+  // would either silently send unsigned (when no engine key set) or
+  // hard-drop every batch (when the engine HAS a key configured but
+  // signing fails) — the latter is what bit JS smoke runs.
   if (options.privateKeyBytes !== undefined) {
     engineOpts.privateKeyBytes = options.privateKeyBytes;
+  } else {
+    const envKey = loadAgentKeyFromEnv(logger);
+    if (envKey !== undefined) engineOpts.privateKeyBytes = envKey;
   }
   return {
     settings,
@@ -534,6 +546,56 @@ function initPrelude(options: InitOptions, caller: string): InitPrelude | null {
     engineOpts,
     logger,
   };
+}
+
+/**
+ * Best-effort fallback for the Ed25519 signing key when the caller
+ * didn't pass `privateKeyBytes` explicitly. Reads `CHECKRD_AGENT_KEY`
+ * (base64-encoded 32 bytes — same shape the Python SDK uses), decodes
+ * it, and returns the raw bytes. Any decode failure logs a warning
+ * and returns `undefined` so the SDK falls back to anonymous mode
+ * rather than crashing the host application.
+ */
+function loadAgentKeyFromEnv(logger: Logger): Uint8Array | undefined {
+  const b64 = readEnv("CHECKRD_AGENT_KEY");
+  if (b64 === undefined) return undefined;
+  try {
+    const bytes = decodeAgentKeyBase64(b64);
+    if (bytes.byteLength !== 32) {
+      logger.warn("CHECKRD_AGENT_KEY decoded to wrong length", {
+        expected: 32,
+        actual: bytes.byteLength,
+      });
+      return undefined;
+    }
+    return bytes;
+  } catch (err) {
+    logger.warn(
+      "CHECKRD_AGENT_KEY could not be decoded; continuing without signing",
+      { err: (err as Error).message },
+    );
+    return undefined;
+  }
+}
+
+/**
+ * Decode a base64 string into bytes. Matches the SDK's existing
+ * `base64ToBytes` in `identity.ts` byte-for-byte but lives here so
+ * `initPrelude` doesn't pull in the whole identity module (which
+ * imports `WasmEngine.derivePublicKey` and other heavier code).
+ */
+function decodeAgentKeyBase64(b64: string): Uint8Array {
+  const trimmed = b64.trim();
+  const buf = (
+    globalThis as { Buffer?: { from(s: string, enc: string): Uint8Array } }
+  ).Buffer;
+  if (buf !== undefined) {
+    return new Uint8Array(buf.from(trimmed, "base64"));
+  }
+  const bin = atob(trimmed);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i += 1) out[i] = bin.charCodeAt(i);
+  return out;
 }
 
 /**

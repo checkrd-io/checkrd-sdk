@@ -7,9 +7,9 @@ work.
 
 Related documents:
 
-- [`crates/core/SECURITY.md`](../../crates/core/SECURITY.md) — the
-  embedded WASM core's threat model and integrity-verification recipe
-  (shipped with both wrappers; same binary).
+- [`WASM-CORE.md`](./WASM-CORE.md) — the embedded WASM core's threat
+  model and integrity-verification recipe (shipped with both wrappers;
+  same binary).
 - [`SECURITY.md` for the JavaScript SDK](../javascript/SECURITY.md) —
   the sibling wrapper. Both SDKs use identical Ed25519 / RFC 9421 /
   DSSE primitives via the shared WASM core; their security postures
@@ -21,10 +21,10 @@ Related documents:
 
 Email: **security@checkrd.io**
 
-For encrypted reports, fetch our PGP key at
-`https://checkrd.io/.well-known/security.asc`. A machine-readable
-`security.txt` ([RFC 9116](https://www.rfc-editor.org/rfc/rfc9116.html))
-is published at `https://checkrd.io/.well-known/security.txt`.
+A machine-readable `security.txt`
+([RFC 9116](https://www.rfc-editor.org/rfc/rfc9116.html)) is published
+at `https://checkrd.io/.well-known/security.txt`. Reach out by email if
+you need an encrypted channel and we will arrange one.
 
 Include in the report:
 

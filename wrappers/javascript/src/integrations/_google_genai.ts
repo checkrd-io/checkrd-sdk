@@ -5,7 +5,7 @@
  * The Google SDK accepts a `httpOptions.fetch` override. When the user
  * does not provide one we inject the Checkrd-wrapped fetch.
  */
-import { lazyRequireOptional } from "./_require.js";
+import { lazyRequireOptional, patchModuleExport } from "./_require.js";
 
 import {
   assertVendorShape,
@@ -38,6 +38,10 @@ export class GoogleGenAIInstrumentor extends Instrumentor {
     super();
   }
 
+  protected override getOptions(): GoogleGenAIInstrumentorOptions {
+    return this.options;
+  }
+
   protected override applyPatch(): void {
     const requireOptional = lazyRequireOptional(import.meta.url);
     let mod: GoogleGenAIModule;
@@ -52,9 +56,9 @@ export class GoogleGenAIInstrumentor extends Instrumentor {
       // a half-recognised module.
       return;
     }
-    const OriginalCtor = mod.GoogleGenAI;
+    const modRec = mod as Record<string, unknown>;
+    const OriginalCtor = modRec.GoogleGenAI;
     if (typeof OriginalCtor !== "function") return;
-    this.originalCtor = OriginalCtor;
     const wrappedFetch = createWrappedFetch(this.options);
 
     const Patched = new Proxy(OriginalCtor as new (opts?: Record<string, unknown>) => unknown, {
@@ -70,7 +74,8 @@ export class GoogleGenAIInstrumentor extends Instrumentor {
         return Reflect.construct(target, [merged], newTarget) as object;
       },
     });
-    mod.GoogleGenAI = Patched;
+    if (!patchModuleExport(modRec, "GoogleGenAI", Patched)) return;
+    this.originalCtor = OriginalCtor;
   }
 
   protected override revertPatch(): void {
@@ -82,7 +87,7 @@ export class GoogleGenAIInstrumentor extends Instrumentor {
     } catch {
       return;
     }
-    mod.GoogleGenAI = this.originalCtor;
+    patchModuleExport(mod as Record<string, unknown>, "GoogleGenAI", this.originalCtor);
     this.originalCtor = null;
   }
 }

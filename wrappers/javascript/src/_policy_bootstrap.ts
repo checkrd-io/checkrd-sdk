@@ -80,6 +80,10 @@ export async function bootstrapPolicy(
   const timer = setTimeout(() => {
     controller.abort();
   }, timeoutMs);
+  // Watchdog timer for the bootstrap fetch — unref'd so the
+  // Node event loop can exit cleanly once the response resolves.
+  const nodeTimer = timer as unknown as { unref?: () => void };
+  if (typeof nodeTimer.unref === "function") nodeTimer.unref();
 
   let response: Response;
   try {

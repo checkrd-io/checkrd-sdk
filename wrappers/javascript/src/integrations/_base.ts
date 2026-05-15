@@ -47,6 +47,29 @@ import { wrapFetch, type FetchFn, type WrapFetchOptions } from "../transports/fe
  * Common base class. Subclasses supply a way to install / uninstall the
  * wrapped `fetch` into a vendor SDK; the base handles idempotency and
  * an ergonomic instance factory.
+ *
+ * In addition to the vendor-module patch, the base class installs a
+ * process-wide ``globalThis.fetch`` wrapper. This catches three cases
+ * the module patch alone cannot:
+ *
+ * 1. **Modern ESM vendor packages** — ``openai >= 5``, ``@google/genai``,
+ *    and others ship separate CJS + ESM bundles. The CJS namespace we
+ *    reach via ``createRequire`` is a *different* module instance from
+ *    the ESM namespace the user's ``await import("...")`` resolves to,
+ *    so mutating the CJS exports never propagates. But every modern
+ *    vendor SDK falls back to ``globalThis.fetch`` — wrapping the
+ *    global picks it up reliably regardless of CJS/ESM resolution.
+ * 2. **Late instrumentation** — users who construct a vendor client
+ *    BEFORE calling ``instrument*()`` still benefit because the client
+ *    reads ``globalThis.fetch`` at request time, not at construction
+ *    time, in current major versions.
+ * 3. **Direct ``fetch`` users** — code that hits the vendor REST API
+ *    with raw ``fetch`` (no SDK) is now covered too.
+ *
+ * The global patch is ref-counted: the first instrumentor's
+ * ``instrument()`` installs it, subsequent instrumentors share the
+ * existing wrapper, and the LAST ``uninstrument()`` restores the
+ * original ``globalThis.fetch``.
  */
 export abstract class Instrumentor {
   private installed = false;
@@ -55,6 +78,7 @@ export abstract class Instrumentor {
   instrument(): void {
     if (this.installed) return;
     this.applyPatch();
+    installGlobalFetchPatch(this.getOptions());
     this.installed = true;
   }
 
@@ -62,6 +86,7 @@ export abstract class Instrumentor {
   uninstrument(): void {
     if (!this.installed) return;
     this.revertPatch();
+    uninstallGlobalFetchPatch();
     this.installed = false;
   }
 
@@ -70,8 +95,51 @@ export abstract class Instrumentor {
     return this.installed;
   }
 
+  /**
+   * Subclass hook: return the options bag the base class uses to
+   * wrap ``globalThis.fetch``. Concrete subclasses already accept
+   * ``InstrumentorOptions`` via their constructor — they just need
+   * to expose it through this method so the base can read it
+   * without each subclass plumbing it down explicitly.
+   */
+  protected abstract getOptions(): InstrumentorOptions;
   protected abstract applyPatch(): void;
   protected abstract revertPatch(): void;
+}
+
+// ---------------------------------------------------------------------
+// Process-wide globalThis.fetch wrapper (ref-counted).
+//
+// `instrument()` invocations stack: each call increments the ref
+// count; the matching `uninstrument()` decrements it. The wrapper is
+// installed when the count goes 0→1 and the original is restored
+// when the count goes 1→0. This matches how shimmer / OpenTelemetry's
+// `wrap` helper handle their own globals.
+// ---------------------------------------------------------------------
+
+let _globalFetchRefcount = 0;
+let _originalGlobalFetch: typeof fetch | undefined;
+
+function installGlobalFetchPatch(options: InstrumentorOptions): void {
+  if (_globalFetchRefcount === 0) {
+    const original = globalThis.fetch?.bind(globalThis);
+    if (typeof original !== "function") return; // no fetch on this runtime
+    _originalGlobalFetch = original as typeof fetch;
+    // Wrap with a Checkrd-aware fetch. Non-vendor URLs typically
+    // match an ``allow: *`` rule and pass through with negligible
+    // overhead, so it's safe to wrap the whole global.
+    globalThis.fetch = wrapFetch(original as FetchFn, options) as typeof fetch;
+  }
+  _globalFetchRefcount += 1;
+}
+
+function uninstallGlobalFetchPatch(): void {
+  if (_globalFetchRefcount === 0) return;
+  _globalFetchRefcount -= 1;
+  if (_globalFetchRefcount === 0 && _originalGlobalFetch !== undefined) {
+    globalThis.fetch = _originalGlobalFetch;
+    _originalGlobalFetch = undefined;
+  }
 }
 
 /** Options stored by {@link Instrumentor} subclasses for runtime patching. */

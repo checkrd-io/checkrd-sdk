@@ -155,64 +155,40 @@ class CheckrdTracingProcessor(TracingProcessor):
     # ------------------------------------------------------------------
 
     def on_trace_start(self, trace: Trace) -> None:
-        if self._sink is None:
-            return
-        self._enqueue_safe(
-            {
-                "event_type": "openai_agents_trace_start",
-                "request_id": getattr(trace, "trace_id", "") or "",
-                "agent_id": self._agent_id,
-                "trace_name": getattr(trace, "name", None),
-            }
-        )
+        # Trace start/end have no clean mapping to the
+        # ``TelemetryEventInput`` wire schema (no URL, no method,
+        # no per-span latency) and would 422 the ingest endpoint.
+        # The per-span events below carry the same trace_id, so the
+        # dashboard reconstructs the trace from spans alone — the
+        # OpenTelemetry contract every observability vendor follows.
+        # Trace events are intentionally not emitted to the sink;
+        # add them when the ingest schema gains a trace-only shape.
+        return None
 
     def on_trace_end(self, trace: Trace) -> None:
-        if self._sink is None:
-            return
-        self._enqueue_safe(
-            {
-                "event_type": "openai_agents_trace_end",
-                "request_id": getattr(trace, "trace_id", "") or "",
-                "agent_id": self._agent_id,
-                "trace_name": getattr(trace, "name", None),
-            }
-        )
+        return None
 
     def on_span_start(self, span: Span[Any]) -> None:
-        if self._sink is None:
-            return
-        kind, target, extra = _classify_span(span)
-        self._enqueue_safe(
-            {
-                "event_type": f"openai_agents_{kind}_start",
-                "request_id": getattr(span, "trace_id", "") or "",
-                "span_id": getattr(span, "span_id", None),
-                "parent_span_id": getattr(span, "parent_id", None),
-                "agent_id": self._agent_id,
-                "kind": kind,
-                "target": target,
-                **extra,
-            }
-        )
+        # We only emit on span END. Start events have no latency or
+        # final span_status_code, and the ingest schema doesn't
+        # accept partial events — emitting one would generate a
+        # duplicate row that confuses dashboards and burns batch
+        # capacity. OpenTelemetry's contract is end-of-span only.
+        return None
 
     def on_span_end(self, span: Span[Any]) -> None:
         if self._sink is None:
             return
         kind, target, extra = _classify_span(span)
-        latency_ms = _span_latency_ms(span)
-        self._enqueue_safe(
-            {
-                "event_type": f"openai_agents_{kind}_end",
-                "request_id": getattr(span, "trace_id", "") or "",
-                "span_id": getattr(span, "span_id", None),
-                "parent_span_id": getattr(span, "parent_id", None),
-                "agent_id": self._agent_id,
-                "kind": kind,
-                "target": target,
-                "latency_ms": latency_ms,
-                **extra,
-            }
+        event = _build_span_event(
+            span=span,
+            agent_id=self._agent_id,
+            kind=kind,
+            target=target,
+            extra=extra,
+            latency_ms=_span_latency_ms(span),
         )
+        self._enqueue_safe(event)
 
     def shutdown(self) -> None:
         # The sink owns its own shutdown via the global context teardown
@@ -321,19 +297,29 @@ class _CheckrdGuardrailBase:
                 tripwire_triggered=False,
             )
         # Denied. Emit telemetry and either tripwire (enforce mode) or
-        # log + allow (observation mode).
+        # log + allow (observation mode). The event must match
+        # ``TelemetryEventInput`` exactly — earlier shapes used
+        # ``event_type`` / ``kind`` / ``target`` and got 422'd at
+        # ingest, silently dropping the deny signal that operators
+        # rely on for alerts. Use the same synthetic URL the gate
+        # built so the deny row joins to the parent guardrail span
+        # by trace_id.
         if self._sink is not None:
             try:
-                self._sink.enqueue(
-                    {
-                        "event_type": f"openai_agents_{kind}_denied",
-                        "request_id": result.request_id,
-                        "agent_id": self._agent_id,
-                        "kind": kind,
-                        "target": target,
-                        "deny_reason": result.deny_reason,
-                    }
-                )
+                now = datetime.now(timezone.utc)
+                self._sink.enqueue({
+                    "request_id": result.request_id,
+                    "agent_id": self._agent_id,
+                    "timestamp": now.isoformat(),
+                    "url_host": _AUTHORITY,
+                    "url_path": f"/{kind}/{target}",
+                    "method": "POST",
+                    "status_code": 403,
+                    "policy_result": "denied",
+                    "deny_reason": result.deny_reason,
+                    "span_name": f"openai-agents.{kind} {target}",
+                    "span_status_code": "ERROR",
+                })
             except Exception:
                 self._logger.warning(
                     "checkrd: openai-agents deny telemetry enqueue failed",
@@ -558,6 +544,95 @@ def _safe_json(obj: Any) -> str:
         )
     except (TypeError, ValueError):
         return json.dumps({"_repr": str(obj)})
+
+
+def _hex_id_or_none(raw: Any, expected_len: int) -> Optional[str]:
+    """Return ``raw`` if it's a string of exactly ``expected_len``
+    lowercase-hex characters, otherwise ``None``.
+
+    The ingest endpoint validates ``trace_id`` / ``span_id`` /
+    ``parent_span_id`` against the W3C Trace Context format (32 hex
+    chars for trace, 16 hex chars for span). The OpenAI Agents SDK
+    uses ``trace_xxxxx`` / ``span_xxxxx`` opaque strings instead —
+    feeding those straight through gives the server a 422 and the
+    batcher drops the whole batch. Normalise here so the trace
+    correlation that DOES work (matching trace_id within the SDK
+    process) keeps working while the wire payload stays valid.
+    """
+    if not isinstance(raw, str) or len(raw) != expected_len:
+        return None
+    if not all(c in "0123456789abcdef" for c in raw):
+        return None
+    return raw
+
+
+def _build_span_event(
+    *,
+    span: "Span[Any]",
+    agent_id: str,
+    kind: str,
+    target: str,
+    extra: dict[str, Any],
+    latency_ms: Optional[float],
+) -> dict[str, Any]:
+    """Build a wire-schema-compliant TelemetryEventInput for one
+    finished OpenAI Agents span.
+
+    Every field here is in ``checkrd_shared::TelemetryEventInput``.
+    Earlier versions emitted ``event_type`` / ``kind`` / ``target`` /
+    ``input_tokens`` etc., which the ingest endpoint rejects with
+    HTTP 422 — silently dropping the batch and burning the
+    batcher's retry budget on the next send.
+
+    Span kind drives the synthetic URL so policy YAML can match on
+    `url: openai-agents.local/generation/*` etc. — same convention
+    the input/output guardrails use, so a single policy file covers
+    both observability spans and enforcement gates.
+    """
+    now = datetime.now(timezone.utc)
+    # The Agents SDK uses opaque ``trace_xxx`` / ``span_xxx`` IDs.
+    # Wire-validate them against the W3C hex constraint before
+    # emission — drop in-the-wire-incompatible values, but keep the
+    # opaque trace_id on ``request_id`` so dashboard correlation
+    # within the SDK process still works.
+    raw_trace_id = getattr(span, "trace_id", None) or ""
+    trace_id = _hex_id_or_none(raw_trace_id, 32)
+    span_id = _hex_id_or_none(getattr(span, "span_id", None), 16)
+    parent_span_id = _hex_id_or_none(getattr(span, "parent_id", None), 16)
+
+    event: dict[str, Any] = {
+        "request_id": raw_trace_id or f"openai-agents-{now.timestamp()}",
+        "agent_id": agent_id,
+        "timestamp": now.isoformat(),
+        "url_host": _AUTHORITY,
+        "url_path": f"/{kind}/{target or 'unknown'}",
+        "method": "POST",
+        "status_code": 200,
+        "policy_result": "allowed",
+        "span_name": f"openai-agents.{kind} {target or 'unknown'}",
+        "span_status_code": "OK",
+    }
+    if trace_id is not None:
+        event["trace_id"] = trace_id
+    if span_id is not None:
+        event["span_id"] = span_id
+    if parent_span_id is not None:
+        event["parent_span_id"] = parent_span_id
+    if latency_ms is not None:
+        event["latency_ms"] = int(latency_ms)
+
+    # Map GenAI semconv fields when the span is an LLM generation.
+    # The classifier already split out ``input_tokens`` /
+    # ``output_tokens``; preserve them under the canonical GenAI
+    # names so a single dashboard query rolls up tokens across
+    # vendor SDKs + AI SDK + Agents SDK.
+    if extra.get("input_tokens") is not None:
+        event["gen_ai_input_tokens"] = extra["input_tokens"]
+    if extra.get("output_tokens") is not None:
+        event["gen_ai_output_tokens"] = extra["output_tokens"]
+    if kind == "generation":
+        event["gen_ai_model"] = target
+    return event
 
 
 __all__ = [

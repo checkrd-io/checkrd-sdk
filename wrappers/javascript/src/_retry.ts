@@ -104,6 +104,10 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
       signal?.removeEventListener("abort", onAbort);
       resolve();
     }, ms);
+    // Backoff sleep should never block process exit. Mirrors the
+    // ``unref`` pattern in receiver.ts:sleep.
+    const nodeTimer = timer as unknown as { unref?: () => void };
+    if (typeof nodeTimer.unref === "function") nodeTimer.unref();
     const onAbort = (): void => {
       clearTimeout(timer);
       reject(new APIUserAbortError());
@@ -317,6 +321,11 @@ export async function fetchWithRetry(
 
     const attemptController = new AbortController();
     const timer = setTimeout(() => { attemptController.abort(); }, timeoutMs);
+    // Don't pin the Node event loop on the watchdog timer — the
+    // attempt promise has its own AbortController + signal, so we
+    // never reach the timer fire path after a normal resolution.
+    const nodeTimer1 = timer as unknown as { unref?: () => void };
+    if (typeof nodeTimer1.unref === "function") nodeTimer1.unref();
     const onOuterAbort = (): void => { attemptController.abort(); };
     signal?.addEventListener("abort", onOuterAbort, { once: true });
 

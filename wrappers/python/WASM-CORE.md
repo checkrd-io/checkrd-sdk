@@ -396,9 +396,9 @@ deserialization boundaries:
   construction
 
 Fuzzing runs on a scheduled GitHub Actions job and on every PR that
-touches `crates/core`. Cumulative CPU-hours and corpus coverage are
-reported in the quarterly security summary published at
-`https://checkrd.io/security/fuzz-report`.
+touches `crates/core`. Cumulative CPU-hours and corpus coverage will
+be reported in a quarterly security summary once the 1.0 release
+ships; current results are visible in the public CI logs.
 
 ## Known Limitations
 

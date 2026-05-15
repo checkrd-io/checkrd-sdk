@@ -82,7 +82,7 @@ Deprecated symbols emit a `DeprecationWarning` via Python's standard
 - The symbol that was deprecated.
 - The version it was deprecated in.
 - The replacement (if any).
-- A link to the [deprecation guide](https://checkrd.io/docs/python/deprecations).
+- A link to the [CHANGELOG entry](https://github.com/checkrd-io/checkrd-sdk/blob/main/wrappers/python/CHANGELOG.md) describing the deprecation and its replacement.
 
 To suppress all deprecation warnings, set `CHECKRD_SUPPRESS_DEPRECATIONS=1`.
 Standard `python -W` filters work too.

@@ -38,9 +38,10 @@
     "access": "public"
   },
   "homepage": "https://checkrd.io",
+  "bugs": "https://github.com/checkrd-io/checkrd-sdk/issues",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/checkrd/checkrd.git",
+    "url": "git+https://github.com/checkrd-io/checkrd-sdk.git",
     "directory": "wrappers/api-clients/javascript"
   }
 }

@@ -12,6 +12,8 @@ Install::
 Run::
 
     export OPENAI_API_KEY=sk-...
+    export CHECKRD_API_KEY=ck_live_...
+    export CHECKRD_AGENT_ID=...    # UUID from your dashboard
     python langchain_transparent.py
 """
 from __future__ import annotations
@@ -22,7 +24,10 @@ from langchain_openai import ChatOpenAI
 
 
 def main() -> None:
-    checkrd.init(policy="policy.yaml")
+    # ``init()`` reads CHECKRD_API_KEY + CHECKRD_AGENT_ID from the
+    # environment, fetches your dashboard's published policy, and
+    # installs it before the vendor SDK ever ships its first byte.
+    checkrd.init()
     checkrd.instrument()
 
     llm = ChatOpenAI(model="gpt-4o", temperature=0)

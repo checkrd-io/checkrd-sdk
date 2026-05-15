@@ -18,10 +18,9 @@ Related documents:
 
 Email: `security@checkrd.io`
 
-For encrypted reports, fetch our PGP key at
-`https://checkrd.io/.well-known/security.asc`. A machine-readable
-`security.txt` (RFC 9116) is published at
-`https://checkrd.io/.well-known/security.txt`.
+A machine-readable `security.txt` (RFC 9116) is published at
+`https://checkrd.io/.well-known/security.txt`. Reach out by email if
+you need an encrypted channel and we will arrange one.
 
 Include in the report:
 

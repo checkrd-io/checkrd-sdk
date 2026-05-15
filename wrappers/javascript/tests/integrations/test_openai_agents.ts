@@ -65,20 +65,22 @@ describe("CheckrdTracingProcessor", () => {
     proc.onSpanEnd(span);
     proc.onTraceEnd(trace);
 
-    const types = sink.events.map((e) => e.event_type);
-    expect(types).toEqual([
-      "openai_agents_trace_start",
-      "openai_agents_generation_start",
-      "openai_agents_generation_end",
-      "openai_agents_trace_end",
-    ]);
-
-    const endEvent = sink.events.find(
-      (e) => e.event_type === "openai_agents_generation_end",
-    );
-    expect(endEvent?.target).toBe("gpt-4o");
-    expect(endEvent?.input_tokens).toBe(10);
-    expect(endEvent?.latency_ms).toBe(1000);
+    // OpenTelemetry-style: only END events emit. Trace start/end
+    // and span_start are no-ops because they would 422 the ingest
+    // endpoint (no clean wire schema for partial events).
+    expect(sink.events).toHaveLength(1);
+    const endEvent = sink.events[0]!;
+    expect(endEvent.url_host).toBe("openai-agents.local");
+    expect(endEvent.url_path).toBe("/generation/gpt-4o");
+    expect(endEvent.gen_ai_model).toBe("gpt-4o");
+    expect(endEvent.gen_ai_input_tokens).toBe(10);
+    expect(endEvent.gen_ai_output_tokens).toBe(20);
+    expect(endEvent.latency_ms).toBe(1000);
+    expect(endEvent.span_status_code).toBe("OK");
+    // No legacy fields — those would trigger 422 server-side.
+    expect(endEvent.event_type).toBeUndefined();
+    expect(endEvent.kind).toBeUndefined();
+    expect(endEvent.target).toBeUndefined();
   });
 
   it("is a no-op when no sink is configured", () => {
@@ -116,9 +118,18 @@ describe("checkrdInputGuardrail", () => {
     );
     expect(result.tripwireTriggered).toBe(true);
     expect(result.outputInfo.deny_reason).toBeDefined();
-    expect(
-      sink.events.some((e) => e.event_type === "openai_agents_input_denied"),
-    ).toBe(true);
+    // Schema-compliant deny event lands on the sink. The
+    // synthetic URL path lets policy YAML target the specific
+    // guardrail (``url: openai-agents.local/input/researcher``).
+    const deny = sink.events.find(
+      (e) =>
+        e.policy_result === "denied" && e.url_path === "/input/researcher",
+    );
+    expect(deny).toBeDefined();
+    expect(deny?.url_host).toBe("openai-agents.local");
+    expect(deny?.status_code).toBe(403);
+    expect(deny?.span_status_code).toBe("ERROR");
+    expect(deny?.event_type).toBeUndefined();
   });
 
   it("returns tripwireTriggered=false on allow", async () => {

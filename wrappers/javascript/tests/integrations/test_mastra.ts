@@ -90,7 +90,7 @@ describe("wrapMastraAgent — proxy transparency", () => {
 });
 
 describe("checkrdMastraTelemetry", () => {
-  it("enriches events with agent_id + telemetry_source before fanning to sink", () => {
+  it("enriches events with agent_id and passes them through", () => {
     const engine = new WasmEngine(ALLOW_ALL, "test");
     const sink = {
       enqueue: vi.fn(),
@@ -106,7 +106,10 @@ describe("checkrdMastraTelemetry", () => {
     expect(sink.enqueue).toHaveBeenCalledOnce();
     const enriched = sink.enqueue.mock.calls[0]![0] as Record<string, unknown>;
     expect(enriched["agent_id"]).toBe("mastra-app");
-    expect(enriched["telemetry_source"]).toBe("mastra");
+    // No ``telemetry_source`` — that field is not in the ingest
+    // schema and would 422 the batch. Mastra-specific provenance
+    // surfaces via ``span_name`` (e.g. ``mastra.agent xyz``).
+    expect(enriched["telemetry_source"]).toBeUndefined();
     expect(enriched["foo"]).toBe("bar");
   });
 

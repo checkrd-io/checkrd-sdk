@@ -66,7 +66,7 @@ If you'd like to use the repository from source, you can either install from git
 To install via git:
 
 ```sh
-pip install git+ssh://git@github.com/checkrd/checkrd.git#subdirectory=wrappers/api-clients/python
+pip install git+ssh://git@github.com/checkrd-io/checkrd-sdk.git#subdirectory=wrappers/api-clients/python
 ```
 
 Alternatively, you can build from source and install the wheel via `pip install path/to/wheel`. Building this package will create two files in the `dist/` folder, a `.tar.gz` and a `.whl`. You can install either one.

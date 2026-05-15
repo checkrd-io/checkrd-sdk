@@ -4,13 +4,13 @@
 
 The Checkrd Python library provides convenient access to the Checkrd Control Plane REST API from any Python 3.9+ application. The library includes type definitions for all request params and response fields, and offers both synchronous and asynchronous clients powered by [httpx](https://github.com/encode/httpx).
 
-It is generated from the [OpenAPI specification](https://github.com/checkrd/checkrd/blob/main/schemas/api/openapi.json) which itself is derived from the Rust handler signatures in [`crates/api`](https://github.com/checkrd/checkrd/tree/main/crates/api). The hand-written facade layer (`Checkrd`, `AsyncCheckrd`, resource classes) lives alongside the generated low-level engine.
+It is generated from the [OpenAPI specification](https://github.com/checkrd-io/checkrd-sdk/blob/main/schemas/api/openapi.json), which is derived from the Rust handler signatures of the Checkrd Control Plane API. The hand-written facade layer (`Checkrd`, `AsyncCheckrd`, resource classes) lives alongside the generated low-level engine.
 
 This library is **separate** from the runtime SDK [`checkrd`](https://pypi.org/project/checkrd/), which lives in the customer's agent process and instruments outbound HTTP. Use `checkrd-api` for admin scripts, CI tooling, and server-to-server automation.
 
 ## Documentation
 
-The REST API documentation can be found at [checkrd.io/docs/api](https://checkrd.io/docs/api). The full Python API reference is at [checkrd.io/docs/python](https://checkrd.io/docs/python).
+REST API documentation lives at [checkrd.io/docs/api/overview](https://checkrd.io/docs/api/overview). For per-method usage, see [`api.md`](api.md) in this package.
 
 ## Installation
 
@@ -20,7 +20,10 @@ pip install checkrd-api
 
 ## Usage
 
-The full API of this library can be found in [api.md](api.md).
+The full REST API reference lives at
+[checkrd.io/docs/api/overview](https://checkrd.io/docs/api/overview).
+For per-method type signatures, see the inline docstrings on each
+resource class (e.g. `client.agents.create.__doc__`).
 
 ```python
 import os
@@ -181,7 +184,7 @@ This package generally follows [SemVer](https://semver.org/spec/v2.0.0.html) con
 
 We take backwards-compatibility seriously and work hard to ensure you can rely on a smooth upgrade experience.
 
-We are keen for your feedback; please open an [issue](https://github.com/checkrd/checkrd/issues) with questions, bugs, or suggestions.
+We are keen for your feedback; please open an [issue](https://github.com/checkrd-io/checkrd-sdk/issues) with questions, bugs, or suggestions.
 
 ## Requirements
 

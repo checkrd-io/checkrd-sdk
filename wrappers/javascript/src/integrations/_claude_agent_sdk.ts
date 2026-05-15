@@ -130,16 +130,14 @@ export function makePreToolUseHook(
       ],
     });
 
-    enqueueSafe(options, {
-      event_type: "claude_agent_pre_tool_use",
-      request_id: result.request_id,
-      agent_id: options.agentId,
-      tool_name: toolName,
-      tool_use_id: toolUseId,
-      session_id: sessionId,
+    enqueueSafe(options, buildHookEvent({
+      requestId: result.request_id,
+      agentId: options.agentId,
+      kind: "tools",
+      target: toolName,
       allowed: result.allowed,
-      deny_reason: !result.allowed ? result.deny_reason : null,
-    });
+      denyReason: result.deny_reason,
+    }));
 
     if (result.allowed) return {};
     if (!enforce) {
@@ -171,15 +169,15 @@ export function makePostToolUseHook(
     const toolResponse = input.tool_response;
     const sessionId = asString(input.session_id) ?? "";
 
-    enqueueSafe(options, {
-      event_type: "claude_agent_post_tool_use",
-      request_id: toolUseId ?? sessionId,
-      agent_id: options.agentId,
-      tool_name: toolName,
-      tool_use_id: toolUseId,
-      session_id: sessionId,
-      response_preview: preview(toolResponse),
-    });
+    void toolResponse;
+    enqueueSafe(options, buildHookEvent({
+      requestId: toolUseId ?? sessionId,
+      agentId: options.agentId,
+      kind: "post-tool",
+      target: toolName,
+      allowed: true,
+      denyReason: null,
+    }));
     return {};
   };
 
@@ -211,15 +209,15 @@ export function makeUserPromptSubmitHook(
       extraHeaders: [["x-claude-agent-session-id", sessionId]],
     });
 
-    enqueueSafe(options, {
-      event_type: "claude_agent_user_prompt_submit",
-      request_id: result.request_id,
-      agent_id: options.agentId,
-      session_id: sessionId,
-      prompt_preview: preview(prompt),
+    void prompt;
+    enqueueSafe(options, buildHookEvent({
+      requestId: result.request_id,
+      agentId: options.agentId,
+      kind: "prompts",
+      target: "user-prompt",
       allowed: result.allowed,
-      deny_reason: !result.allowed ? result.deny_reason : null,
-    });
+      denyReason: result.deny_reason,
+    }));
 
     if (result.allowed) return {};
     if (!enforce) {
@@ -245,12 +243,14 @@ export function makeStopHook(
 ): HookCallback {
   const hook: HookCallback = async (input) => {
     const sessionId = asString(input.session_id) ?? "";
-    enqueueSafe(options, {
-      event_type: "claude_agent_stop",
-      request_id: sessionId,
-      agent_id: options.agentId,
-      session_id: sessionId,
-    });
+    enqueueSafe(options, buildHookEvent({
+      requestId: sessionId || `claude-agent-stop-${Date.now().toString()}`,
+      agentId: options.agentId,
+      kind: "stop",
+      target: "agent",
+      allowed: true,
+      denyReason: null,
+    }));
     return {};
   };
 
@@ -366,6 +366,44 @@ function enqueueSafe(
   }
 }
 
+/**
+ * Build a wire-schema-compliant TelemetryEventInput for one
+ * Claude Agent SDK hook callback. Mirrors the Python adapter so
+ * a single dashboard query covers both runtimes. Older shapes
+ * emitted ``event_type`` / ``tool_name`` / ``allowed`` and
+ * 422'd the batch at the ingest endpoint.
+ */
+function buildHookEvent(args: {
+  requestId: string;
+  agentId: string;
+  kind: string;
+  target: string;
+  allowed: boolean;
+  denyReason: string | null | undefined;
+}): Record<string, unknown> {
+  const now = new Date();
+  const event: Record<string, unknown> = {
+    request_id: args.requestId || `claude-agent-${now.getTime().toString()}`,
+    agent_id: args.agentId,
+    timestamp: now.toISOString(),
+    url_host: AUTHORITY,
+    url_path: `/${args.kind}/${args.target}`,
+    method: "POST",
+    span_name: `claude-agent.${args.kind} ${args.target}`,
+  };
+  if (args.allowed) {
+    event.status_code = 200;
+    event.policy_result = "allowed";
+    event.span_status_code = "OK";
+  } else {
+    event.status_code = 403;
+    event.policy_result = "denied";
+    event.span_status_code = "ERROR";
+    if (args.denyReason) event.deny_reason = args.denyReason;
+  }
+  return event;
+}
+
 function markInstalled(fn: HookCallback): void {
   (fn as unknown as Record<symbol, unknown>)[CHECKRD_INSTALLED] = true;
 }
@@ -385,7 +423,8 @@ function safeJson(value: unknown): string {
   }
 }
 
-function preview(value: unknown, maxLen = 256): string {
-  const s = typeof value === "string" ? value : safeJson(value);
-  return s.length <= maxLen ? s : `${s.slice(0, maxLen)}...`;
-}
+// `preview` removed alongside the legacy ``event_type``-shaped
+// telemetry events that referenced it — the wire-schema-compliant
+// builds in ``buildHookEvent`` no longer carry free-form
+// previews. Re-add when the schema gains a structured ``body``
+// or ``preview`` slot.

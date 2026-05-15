@@ -317,7 +317,15 @@ export class ControlReceiver {
         this.circuitBreaker?.recordSuccess();
         backoff = this.initialBackoffMs;
       } catch (err) {
-        if (err instanceof APIUserAbortError) return;
+        // Self-initiated shutdown — `stop()` aborts the controller,
+        // which surfaces here as either `APIUserAbortError` (the
+        // SDK-internal wrapper our HTTP layer raises) or a native
+        // ``DOMException { name: "AbortError" }`` from
+        // ``AbortController.abort()`` further down the stack.
+        // Treat both as clean exits; warning about either makes a
+        // routine ``Checkrd.close()`` look like a crash in the
+        // logs.
+        if (isSelfAbort(err) || !this.isRunning()) return;
         this.circuitBreaker?.recordFailure();
         this.logger?.warn("control SSE disconnected, backing off", {
           delay: backoff,
@@ -450,6 +458,15 @@ export class ControlReceiver {
         signal?.removeEventListener("abort", onAbort);
         resolve();
       }, ms);
+      // ``unref`` the reconnect-backoff timer so it doesn't keep
+      // the Node event loop alive past ``close()``. Without this,
+      // a process that completes its main work in <60s and calls
+      // ``checkrd.close()`` still hangs until the backoff timer
+      // (default 60s ceiling) elapses, which makes every CI smoke
+      // test look like it timed out. Edge runtimes don't expose
+      // ``unref``; the optional-chained call is a no-op there.
+      const nodeTimer = timer as unknown as { unref?: () => void };
+      if (typeof nodeTimer.unref === "function") nodeTimer.unref();
       const onAbort = (): void => {
         clearTimeout(timer);
         reject(new APIUserAbortError());
@@ -466,7 +483,11 @@ export class ControlReceiver {
     while (this.isRunning() && Date.now() < deadline) {
       const step = Math.min(this.pollIntervalMs, deadline - Date.now());
       if (step <= 0) return;
-      await new Promise<void>((r) => setTimeout(r, step));
+      await new Promise<void>((r) => {
+        const timer = setTimeout(r, step);
+        const nodeTimer = timer as unknown as { unref?: () => void };
+        if (typeof nodeTimer.unref === "function") nodeTimer.unref();
+      });
       try {
         await this.pollStateOnce();
       } catch (err) {
@@ -519,7 +540,11 @@ export async function* parseSSE(
       return Promise.race([
         reader.read(),
         new Promise<ReadableStreamReadResult<Uint8Array>>((_, reject) => {
-          setTimeout(() => { reject(new Error("sse read timeout")); }, opts.readTimeoutMs);
+          const t = setTimeout(() => {
+            reject(new Error("sse read timeout"));
+          }, opts.readTimeoutMs);
+          const nodeTimer = t as unknown as { unref?: () => void };
+          if (typeof nodeTimer.unref === "function") nodeTimer.unref();
         }),
       ]);
     }
@@ -566,4 +591,33 @@ export async function* parseSSE(
       // releaseLock can throw if cancel was called; we don't care.
     }
   }
+}
+
+/**
+ * True when `err` is the result of self-initiated shutdown — the
+ * caller flipped `running = false` and aborted the controller.
+ * Accepts both the SDK-internal `APIUserAbortError` wrapper (raised
+ * by our fetch helpers) and the native `DOMException { name:
+ * "AbortError" }` that `AbortController.abort()` surfaces from
+ * lower-level network APIs (node:http, undici, browser fetch).
+ *
+ * Without this check, a clean `Checkrd.close()` logs a `WARN
+ * control SSE disconnected, backing off` line that scrapes as a
+ * crash in production dashboards. See bug report from the
+ * 2026-05-14 SDK smoke run.
+ */
+function isSelfAbort(err: unknown): boolean {
+  if (err instanceof APIUserAbortError) return true;
+  // Native DOMException — name is "AbortError" on both Node and
+  // browser. Use a structural check rather than `instanceof
+  // DOMException` because the DOMException global is not guaranteed
+  // in every runtime (older Node).
+  if (
+    typeof err === "object" &&
+    err !== null &&
+    (err as { name?: unknown }).name === "AbortError"
+  ) {
+    return true;
+  }
+  return false;
 }

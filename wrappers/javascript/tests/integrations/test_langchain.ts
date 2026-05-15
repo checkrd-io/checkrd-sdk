@@ -68,12 +68,24 @@ describe("CheckrdCallbackHandler — allow path", () => {
 
     expect(sink.events).toHaveLength(1);
     const event = sink.events[0]!;
-    expect(event.event_type).toBe("langchain_llm");
+    // Wire-schema-compliant ``TelemetryEventInput``. No
+    // ``event_type`` / ``kind`` / ``target`` / ``outcome`` /
+    // ``input_tokens`` — those triggered HTTP 422 at the ingest
+    // endpoint. Same shape as the Python adapter so a single
+    // dashboard query covers both runtimes.
+    expect(event.request_id).toBe(runId);
     expect(event.agent_id).toBe("test-agent");
-    expect(event.target).toBe("gpt-4o");
-    expect(event.outcome).toBe("ok");
-    expect(event.input_tokens).toBe(5);
-    expect(event.output_tokens).toBe(2);
+    expect(event.url_host).toBe("langchain.local");
+    expect(event.url_path).toBe("/llm/gpt-4o");
+    expect(event.method).toBe("POST");
+    expect(event.status_code).toBe(200);
+    expect(event.span_status_code).toBe("OK");
+    expect(event.gen_ai_model).toBe("gpt-4o");
+    expect(event.gen_ai_input_tokens).toBe(5);
+    expect(event.gen_ai_output_tokens).toBe(2);
+    expect(event.event_type).toBeUndefined();
+    expect(event.kind).toBeUndefined();
+    expect(event.target).toBeUndefined();
   });
 
   it("uses the tool name as target on tool events", async () => {
@@ -95,8 +107,10 @@ describe("CheckrdCallbackHandler — allow path", () => {
     await handler.handleToolEnd("42", runId);
 
     expect(sink.events).toHaveLength(1);
-    expect(sink.events[0]!.event_type).toBe("langchain_tool");
-    expect(sink.events[0]!.target).toBe("search_database");
+    // Tool name lives in the URL path so policy YAML can match
+    // (``deny: { url: "*/tool/search_database" }``).
+    expect(sink.events[0]!.url_path).toBe("/tool/search_database");
+    expect(sink.events[0]!.url_host).toBe("langchain.local");
   });
 
   it("handles chat_model_start with structured messages", async () => {
@@ -120,8 +134,8 @@ describe("CheckrdCallbackHandler — allow path", () => {
       runId,
     );
     expect(sink.events).toHaveLength(1);
-    expect(sink.events[0]!.event_type).toBe("langchain_chat_model");
-    expect(sink.events[0]!.target).toBe("gpt-4o");
+    expect(sink.events[0]!.url_path).toBe("/chat_model/gpt-4o");
+    expect(sink.events[0]!.gen_ai_model).toBe("gpt-4o");
   });
 });
 
@@ -180,7 +194,10 @@ describe("CheckrdCallbackHandler — error events", () => {
     await handler.handleChainError(new Error("boom"), runId);
 
     expect(sink.events).toHaveLength(1);
-    expect(sink.events[0]!.outcome).toBe("error");
-    expect(sink.events[0]!.error).toBe("Error");
+    // Errors map to HTTP-style 500 + OpenTelemetry ERROR span
+    // status, mirroring the Python adapter and the existing
+    // ``error_rate`` alert rules in the dashboard.
+    expect(sink.events[0]!.status_code).toBe(500);
+    expect(sink.events[0]!.span_status_code).toBe("ERROR");
   });
 });

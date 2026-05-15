@@ -14,6 +14,7 @@ Run::
 
     export OPENAI_API_KEY=sk-...
     export CHECKRD_API_KEY=ck_live_...
+    export CHECKRD_AGENT_ID=...        # UUID from your dashboard
     export DD_API_KEY=...
     python otlp_datadog.py
 """
@@ -36,12 +37,13 @@ def main() -> None:
         service_name="checkrd-example",
     )
 
-    # CompositeSink fans events out to both the control plane and OTLP.
-    # Pass `telemetry_sink=` to override the default single-destination
-    # sink.
+    # CompositeSink fans events out to both the control plane and
+    # OTLP. ``init()`` reads CHECKRD_API_KEY / CHECKRD_AGENT_ID
+    # from the env, fetches your dashboard's published policy, and
+    # installs it before returning — the dashboard is the source
+    # of truth and ``policy=`` in app code is intentionally
+    # refused alongside a control-plane API key.
     checkrd.init(
-        policy="policy.yaml",
-        api_key=os.environ["CHECKRD_API_KEY"],
         telemetry_sink=CompositeSink([ControlPlaneSink(), otlp]),
     )
     checkrd.instrument()

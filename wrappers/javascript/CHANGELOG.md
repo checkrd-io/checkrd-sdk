@@ -7,6 +7,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.3.7 (2026-05-14)
+
+### Fixed
+
+- All `setTimeout()` calls in long-lived components (`receiver`,
+  `batcher`, `_retry`, `_key_registrar`, `_policy_bootstrap`) now
+  `.unref()` their timer handles so a clean `close()` actually lets
+  the Node event loop drain - previously processes hung up to a few
+  seconds after shutdown waiting on timers that no longer mattered.
+- Integration adapters (`langchain`, `openai_agents`,
+  `claude_agent_sdk`, `mastra`, `ai_sdk`) now emit telemetry events
+  in the wire schema (flat `request_id`/`agent_id`/`timestamp`/
+  `url_host`/`url_path`/`method`), matching the Python SDK and the
+  vendor instrumentors. Adapter-sourced events now show up on the
+  dashboard.
+- Edge-runtime entry point (`checkrd/advanced`) no longer pulls in
+  any `node:*` imports - `WasmEngine.create()` uses
+  `WebAssembly.compile` + `crypto.subtle` exclusively, verified by
+  `tests/edge_runtime.test.ts` in `@edge-runtime/vm`.
+
 ## 0.3.5 (2026-05-13)
 
 ### Changed

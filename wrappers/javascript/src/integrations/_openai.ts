@@ -6,7 +6,7 @@
  *
  * Zero runtime dep — we only touch `openai` types via `import type`.
  */
-import { lazyRequireOptional } from "./_require.js";
+import { lazyRequireOptional, patchModuleExport } from "./_require.js";
 
 import {
   assertVendorShape,
@@ -48,6 +48,10 @@ export class OpenAIInstrumentor extends Instrumentor {
     super();
   }
 
+  protected override getOptions(): OpenAIInstrumentorOptions {
+    return this.options;
+  }
+
   protected override applyPatch(): void {
     const requireOptional = lazyRequireOptional(import.meta.url);
     let mod: OpenAIModule;
@@ -69,12 +73,12 @@ export class OpenAIInstrumentor extends Instrumentor {
     const wrappedFetch = createWrappedFetch(this.options);
 
     const patchCtor = (name: "OpenAI" | "AzureOpenAI"): void => {
-      const OriginalCtor = (mod as unknown as Record<string, unknown>)[name];
+      const modAsRecord = mod as unknown as Record<string, unknown>;
+      const OriginalCtor = modAsRecord[name];
       // `OpenAI` is checked by assertVendorShape; `AzureOpenAI` is
       // optional and may not exist on all openai majors, so we
       // tolerate its absence silently here.
       if (typeof OriginalCtor !== "function") return;
-      this.originalConstructors.push({ name, ctor: OriginalCtor });
 
       // Proxy the constructor so we inject `fetch` only when the caller
       // did not provide one. This preserves ergonomics for users who
@@ -88,7 +92,16 @@ export class OpenAIInstrumentor extends Instrumentor {
           return Reflect.construct(target, [merged], newTarget) as object;
         },
       });
-      (mod as unknown as Record<string, unknown>)[name] = Patched;
+      // openai v5+ ships TypeScript-compiled CJS where exports are
+      // defined as getter-backed properties — plain assignment is
+      // a silent no-op. patchModuleExport handles both shapes.
+      if (!patchModuleExport(modAsRecord, name, Patched)) {
+        // Couldn't replace the export — instrumentation would no-op
+        // on every `new OpenAI(...)`. Don't push the original onto
+        // the rollback stack; revertPatch must be a no-op too.
+        return;
+      }
+      this.originalConstructors.push({ name, ctor: OriginalCtor });
     };
 
     patchCtor("OpenAI");
@@ -103,8 +116,9 @@ export class OpenAIInstrumentor extends Instrumentor {
     } catch {
       return;
     }
+    const modAsRecord = mod as unknown as Record<string, unknown>;
     for (const { name, ctor } of this.originalConstructors) {
-      (mod as unknown as Record<string, unknown>)[name] = ctor;
+      patchModuleExport(modAsRecord, name, ctor);
     }
     this.originalConstructors = [];
   }

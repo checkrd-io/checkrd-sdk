@@ -34,8 +34,10 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://checkrd.io"
-Documentation = "https://checkrd.io/docs/python"
-Source = "https://github.com/checkrd/checkrd/tree/main/wrappers/api-clients/python"
+Documentation = "https://checkrd.io/docs/api/overview"
+Source = "https://github.com/checkrd-io/checkrd-sdk/tree/main/wrappers/api-clients/python"
+Issues = "https://github.com/checkrd-io/checkrd-sdk/issues"
+Changelog = "https://github.com/checkrd-io/checkrd-sdk/blob/main/wrappers/api-clients/python/CHANGELOG.md"
 
 [project.optional-dependencies]
 dev = [

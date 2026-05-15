@@ -176,6 +176,36 @@ class ControlReceiver:
             # last write was version-only). Nothing to seed; the next
             # SSE/poll bundle installs into a clean engine.
             return
+
+        # Skip the restore when the engine already holds a bundle at
+        # or above the persisted version. ``init()`` runs
+        # ``bootstrap_policy`` before ``ControlReceiver.start()``, so
+        # by the time we get here a fresher bundle is usually already
+        # installed. Re-applying the older persisted bundle would
+        # trip the WASM core's strict-greater monotonic check
+        # (``bundle_version_not_monotonic``) and surface as a
+        # spurious WARNING on every SDK boot — exactly the behaviour
+        # operators reported as a "false crash" log.
+        try:
+            current_version = int(self._engine.get_active_policy_version())
+        except Exception:
+            # Engine FFI not ready or the test seam returned a non-int
+            # (mock engines do this) — fall back to "attempt the
+            # restore". `reload_policy_signed` is the authoritative
+            # gate and rejects if it must.
+            current_version = -1
+        if current_version >= version:
+            logger.debug(
+                "checkrd: skipping persisted policy restore "
+                "(engine already at version %d, persisted version=%d)",
+                current_version,
+                version,
+            )
+            # Still seed the hash cache so a same-bundle SSE init
+            # short-circuits the FFI call.
+            self._last_installed_hash = bundle_hash
+            return
+
         try:
             self._engine.reload_policy_signed(
                 envelope_json,

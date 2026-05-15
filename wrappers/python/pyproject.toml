@@ -37,7 +37,7 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://checkrd.io"
-Documentation = "https://docs.checkrd.io"
+Documentation = "https://checkrd.io/docs"
 Changelog = "https://github.com/checkrd-io/checkrd-sdk/blob/main/wrappers/python/CHANGELOG.md"
 Issues = "https://github.com/checkrd-io/checkrd-sdk/issues"
 Source = "https://github.com/checkrd-io/checkrd-sdk"

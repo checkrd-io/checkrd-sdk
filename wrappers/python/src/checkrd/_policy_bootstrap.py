@@ -21,6 +21,7 @@ from typing import Any, Optional
 
 import httpx
 
+from checkrd._policy_state import persist_state
 from checkrd._trust import trusted_policy_keys
 from checkrd._version import __version__ as VERSION
 from checkrd.exceptions import PolicySignatureError
@@ -120,7 +121,6 @@ def bootstrap_policy(
             "checkrd: signed policy installed via bootstrap (version=%s)",
             state.get("active_policy_version"),
         )
-        return True
     except PolicySignatureError as exc:
         logger.warning(
             "checkrd: bootstrap policy install rejected "
@@ -129,6 +129,56 @@ def bootstrap_policy(
             exc.code,
         )
         return False
+
+    # Persist the freshly-installed bundle so the next process boot
+    # restores it from disk via ``_restore_persisted_policy_version``
+    # — OPA bundle / TUF client pattern. Without this, the persisted
+    # state on disk goes stale and every subsequent boot logs a
+    # spurious ``persisted policy bundle rejected on restore
+    # (reason=bundle_too_old)`` warning, followed by a
+    # ``signed policy update rejected via SSE init`` warning when the
+    # server re-delivers the bundle it just installed. The
+    # ``SSE / poll`` install paths already persist on success; the
+    # bootstrap path was the missing link.
+    #
+    # Best-effort: a failed persist still leaves the engine in a
+    # working state (the in-process WASM core has the bundle); only
+    # the cross-restart short-circuit degrades.
+    try:
+        # Hash + version sources of truth:
+        #   * ``active_policy_hash`` — set on every response that
+        #     carries an envelope; this is the SHA-256 the server
+        #     and SSE receivers all agree on.
+        #   * ``active_policy_version`` — currently optional on the
+        #     control-state shape (the server may return ``None``).
+        #     When it's missing we fall back to the engine's
+        #     post-install version high-water-mark, which the WASM
+        #     core just bumped to the bundle's inner ``version``
+        #     field. Either path produces the same on-disk record
+        #     a real ``policy_updated`` SSE install would write.
+        bundle_hash = state.get("active_policy_hash")
+        if not isinstance(bundle_hash, str):
+            bundle_hash = None
+        bundle_version = state.get("active_policy_version")
+        if not isinstance(bundle_version, int):
+            try:
+                bundle_version = int(engine.get_active_policy_version())
+            except Exception:
+                bundle_version = None
+        if bundle_hash is not None and isinstance(bundle_version, int):
+            persist_state(
+                bundle_version,
+                bundle_hash=bundle_hash,
+                bundle_envelope_json=envelope_json,
+            )
+    except Exception as exc:
+        logger.warning(
+            "checkrd: failed to persist bootstrap policy bundle (%s); "
+            "next process boot will re-fetch from the control plane",
+            exc,
+        )
+
+    return True
 
 
 # Deny-all baseline policy installed at WASM boot when no local policy

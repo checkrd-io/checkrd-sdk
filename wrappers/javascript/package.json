@@ -1,6 +1,6 @@
 {
   "name": "checkrd",
-  "version": "0.3.5",
+  "version": "0.3.7",
   "description": "Policy enforcement, kill switch, and telemetry for AI agent API calls. Intercepts fetch(), evaluates against a signed policy in a WASM sandbox, and emits signed telemetry.",
   "keywords": [
     "ai",

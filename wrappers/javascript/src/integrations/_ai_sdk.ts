@@ -22,6 +22,7 @@ import { CheckrdPolicyDenied } from "../exceptions.js";
 import type { WasmEngine, EvaluateRequest } from "../engine.js";
 import type { TelemetrySink } from "../sinks.js";
 import type { Logger } from "../_logger.js";
+import { getSink } from "../index.js";
 
 /** Options for {@link checkrdMiddleware}. */
 export interface CheckrdMiddlewareOptions {
@@ -118,7 +119,20 @@ export interface LanguageModelMiddleware {
  *     });
  */
 export function checkrdMiddleware(opts: CheckrdMiddlewareOptions): LanguageModelMiddleware {
-  const { engine, enforce, agentId, sink, logger, dashboardUrl } = opts;
+  const { engine, enforce, agentId, logger, dashboardUrl } = opts;
+  // Sink resolution: explicit > global (from `init()` /
+  // `initAsync()`). Without this fallback, calling
+  // ``checkrdMiddleware({ engine, agentId })`` against a global
+  // `init()` setup silently dropped every event — the engine
+  // produced telemetry, but `enqueueEvent` short-circuited on
+  // `!sink` and nothing reached `/v1/telemetry`. Mirrors the way
+  // `wrap()` defaults to the global sink. Resolved lazily inside
+  // the helpers below so a sink installed AFTER `checkrdMiddleware`
+  // (e.g. test fixtures that build the middleware before calling
+  // `init`) still works.
+  function resolveSink(): TelemetrySink | undefined {
+    return opts.sink ?? getSink();
+  }
 
   function gate(
     params: LanguageModelCallOptions,
@@ -178,15 +192,19 @@ export function checkrdMiddleware(opts: CheckrdMiddlewareOptions): LanguageModel
     telemetryJson: string,
     extra: { agentId: string; operation: string; provider: string; model: string },
   ): void {
+    const sink = resolveSink();
     if (!sink || telemetryJson.length === 0) return;
     try {
       const event = JSON.parse(telemetryJson) as Record<string, unknown>;
+      // Required wire fields. The engine fills these from the
+      // synthetic ``ai-sdk://provider/model`` URL we passed into
+      // evaluate(); we just need to make sure agent_id is set and
+      // the GenAI semconv fields surface the provider + model. No
+      // ``ai_sdk`` blob — the ingestion endpoint rejects unknown
+      // keys with HTTP 422.
       event.agent_id = extra.agentId;
-      event.ai_sdk = {
-        operation: extra.operation,
-        provider: extra.provider,
-        model: extra.model,
-      };
+      if (!event.gen_ai_system) event.gen_ai_system = extra.provider;
+      if (!event.gen_ai_model) event.gen_ai_model = extra.model;
       sink.enqueue(event);
     } catch (err) {
       logger?.debug("failed to parse telemetry_json from engine", { err });
@@ -205,19 +223,34 @@ export function checkrdMiddleware(opts: CheckrdMiddlewareOptions): LanguageModel
       finishReason: string | null;
     },
   ): void {
+    const sink = resolveSink();
     if (!sink) return;
     const latencyMs = Math.max(0, Date.now() - startMs);
+    // Schema-compliant ``TelemetryEventInput`` event. Earlier
+    // versions emitted fields like ``event_type``, ``operation``,
+    // ``input_tokens`` that the ingestion endpoint rejects with
+    // HTTP 422 — those drops were invisible because the batcher
+    // logged once-per-minute. Every key here is in the
+    // ``TelemetryEventInput`` schema; provider / model / token
+    // counts use the GenAI semconv field names so dashboard
+    // queries can roll up across vendor SDKs + AI SDK calls.
+    const now = new Date();
     sink.enqueue({
-      event_type: "ai_sdk_completion",
       request_id: requestId,
       agent_id: agentId,
+      timestamp: now.toISOString(),
+      url_host: `${extra.provider}.ai-sdk`,
+      url_path: `/${extra.operation}/${extra.model}`,
+      method: "POST",
+      status_code: 200,
       latency_ms: latencyMs,
-      operation: extra.operation,
-      provider: extra.provider,
-      model: extra.model,
-      input_tokens: extra.inputTokens,
-      output_tokens: extra.outputTokens,
-      finish_reason: extra.finishReason,
+      policy_result: "allowed",
+      span_name: `ai-sdk.${extra.operation} ${extra.provider}/${extra.model}`,
+      span_status_code: "OK",
+      gen_ai_system: extra.provider,
+      gen_ai_model: extra.model,
+      gen_ai_input_tokens: extra.inputTokens,
+      gen_ai_output_tokens: extra.outputTokens,
     });
   }
 

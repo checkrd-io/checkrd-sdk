@@ -1,11 +1,19 @@
 # Reporting Security Issues
 
-This SDK is part of a larger project. To report a security issue, please follow the directions at [https://github.com/checkrd/checkrd/blob/main/SECURITY.md](https://github.com/checkrd/checkrd/blob/main/SECURITY.md).
+**Do not open a public GitHub issue for a security vulnerability.**
 
-## Reporting Non-SDK Related Security Issues
+Email `security@checkrd.io`. A machine-readable `security.txt` (RFC
+9116) is published at `https://checkrd.io/.well-known/security.txt`.
+Reach out by email if you need an encrypted channel and we will
+arrange one.
 
-If you find a security vulnerability in the Checkrd Control Plane API or any other Checkrd service, please email `security@checkrd.io`. We follow a 90-day disclosure window, after which we publish a CVE.
+We acknowledge within 2 business days, triage within 5, and follow a
+90-day disclosure window after which we publish a CVE and GitHub
+Security Advisory. Reporter credit is included unless you ask
+otherwise.
 
-For cryptographic issues (Ed25519 signing, DSSE envelope verification, webhook HMAC), please CC `security@checkrd.io` and reference the relevant section of [`KEY-CUSTODY.md`](https://github.com/checkrd/checkrd/blob/main/KEY-CUSTODY.md). We treat key-custody and signature-verification regressions as P0 incidents.
+For cryptographic issues (Ed25519 signing, DSSE envelope verification,
+webhook HMAC), please mention "crypto" in the subject — we treat
+key-custody and signature-verification regressions as P0.
 
 Thanks for helping make Checkrd safer for everyone.

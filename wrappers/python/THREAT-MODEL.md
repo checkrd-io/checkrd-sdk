@@ -135,8 +135,9 @@ SDK and must be addressed by the host environment:
 The following risks remain accepted in the current release:
 
 1. **No external cryptographic audit has been commissioned.** The
-   first independent review is scheduled after the 1.0 release and
-   will be published at `https://checkrd.io/security/audits`.
+   first independent review is scheduled after the 1.0 release.
+   Subscribe to GitHub release notes for the publication
+   announcement.
 2. **No FIPS 140-3 validation.** Customers with FIPS requirements
    should contact `security@checkrd.io` for the validated-module
    roadmap.

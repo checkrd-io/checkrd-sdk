@@ -137,6 +137,19 @@ export class CheckrdCallbackHandler extends BaseCallbackHandler {
   }): EvalResult {
     const url = `https://${LANGCHAIN_AUTHORITY}/${args.kind}/${args.target}`;
     const now = new Date();
+    // Normalize LangChain.js run IDs to W3C Trace Context format.
+    // The wire schema requires ``trace_id`` to be 32 lowercase hex
+    // chars and ``span_id`` to be 16. LangChain.js IDs are UUIDs
+    // (36 chars with dashes); stripping dashes gives a valid
+    // 32-hex trace_id and the first 16 chars are a valid span_id.
+    const stripUuid = (u: string): string => u.replace(/-/g, "").toLowerCase();
+    const traceUuid = args.parentRunId ?? args.runId;
+    const traceIdHex = stripUuid(traceUuid);
+    const spanIdHex = stripUuid(args.runId).slice(0, 16);
+    const parentSpanIdHex = args.parentRunId
+      ? stripUuid(args.parentRunId).slice(0, 16)
+      : undefined;
+
     // ``EvaluateRequest`` declares ``parent_span_id`` as ``string`` under
     // ``exactOptionalPropertyTypes``, so the field must either carry a
     // string or be absent. Build the request object conditionally rather
@@ -154,10 +167,10 @@ export class CheckrdCallbackHandler extends BaseCallbackHandler {
       body: safeJson(args.body),
       timestamp: now.toISOString(),
       timestamp_ms: now.valueOf(),
-      trace_id: args.parentRunId ?? args.runId,
-      span_id: args.runId,
-      ...(args.parentRunId !== undefined
-        ? { parent_span_id: args.parentRunId }
+      trace_id: traceIdHex,
+      span_id: spanIdHex,
+      ...(parentSpanIdHex !== undefined
+        ? { parent_span_id: parentSpanIdHex }
         : {}),
     };
 
@@ -194,18 +207,45 @@ export class CheckrdCallbackHandler extends BaseCallbackHandler {
     const entry = this.inFlight.get(args.runId);
     this.inFlight.delete(args.runId);
     if (!entry) return;
-    const latencyMs = performance.now() - entry.startMs;
+    const latencyMs = Math.max(0, Math.round(performance.now() - entry.startMs));
+    const now = new Date();
+    // ``TelemetryEventInput``-shaped event. Older shapes used
+    // ``event_type`` / ``kind`` / ``target`` / ``outcome`` and got
+    // 422'd at the ingest endpoint — silently dropping the batch
+    // and burning the batcher's retry budget on the next send.
+    const event: Record<string, unknown> = {
+      request_id: args.runId,
+      agent_id: this.agentId,
+      timestamp: now.toISOString(),
+      url_host: LANGCHAIN_AUTHORITY,
+      url_path: `/${entry.kind}/${entry.target}`,
+      method: "POST",
+      latency_ms: latencyMs,
+      policy_result: "allowed",
+      span_name: `langchain.${entry.kind} ${entry.target}`,
+    };
+    if (args.outcome === "error") {
+      event.status_code = 500;
+      event.span_status_code = "ERROR";
+    } else {
+      event.status_code = 200;
+      event.span_status_code = "OK";
+    }
+
+    // GenAI semconv mapping: LangChain.js callbacks expose
+    // ``input_tokens`` / ``output_tokens`` for LLM events; map them
+    // onto the canonical ``gen_ai_*`` field names so the same
+    // dashboard query rolls up tokens across vendor SDKs +
+    // LangChain steps.
+    const e = args.extra;
+    if (e.input_tokens != null) event.gen_ai_input_tokens = e.input_tokens;
+    if (e.output_tokens != null) event.gen_ai_output_tokens = e.output_tokens;
+    if (entry.kind === "llm" || entry.kind === "chat_model") {
+      event.gen_ai_model = entry.target;
+    }
+
     try {
-      this.sink.enqueue({
-        event_type: `langchain_${entry.kind}`,
-        request_id: args.runId,
-        agent_id: this.agentId,
-        latency_ms: latencyMs,
-        kind: entry.kind,
-        target: entry.target,
-        outcome: args.outcome,
-        ...args.extra,
-      });
+      this.sink.enqueue(event);
     } catch (err) {
       this.logger?.warn(
         `checkrd: telemetry enqueue failed for langchain ${entry.kind}`,
@@ -422,15 +462,14 @@ export class CheckrdCallbackHandler extends BaseCallbackHandler {
     runId: string,
   ): Promise<void> {
     if (!this.sink) return;
+    const tool = action.tool || "unknown";
     try {
-      this.sink.enqueue({
-        event_type: "langchain_agent_action",
-        request_id: runId,
-        agent_id: this.agentId,
-        tool: action.tool,
-        tool_input: preview(action.toolInput),
-        log: preview(action.log),
-      });
+      this.sink.enqueue(makeAgentEvent({
+        runId,
+        agentId: this.agentId,
+        kind: "agent_action",
+        target: tool,
+      }));
     } catch (err) {
       this.logger?.warn("checkrd: telemetry enqueue failed for agent_action", err);
     }
@@ -441,20 +480,51 @@ export class CheckrdCallbackHandler extends BaseCallbackHandler {
     runId: string,
   ): Promise<void> {
     if (!this.sink) return;
+    // ``finish`` is unused for the wire payload — it only carries
+    // ``return_values`` shape, which was previously logged as a
+    // sorted-key list under a ``return_values_keys`` field that
+    // the ingest schema rejects. We still log it at debug for
+    // local correlation when DEBUG=1.
+    void finish;
     try {
-      this.sink.enqueue({
-        event_type: "langchain_agent_finish",
-        request_id: runId,
-        agent_id: this.agentId,
-        return_values_keys:
-          typeof finish.returnValues === "object"
-            ? Object.keys(finish.returnValues).sort()
-            : [],
-      });
+      this.sink.enqueue(makeAgentEvent({
+        runId,
+        agentId: this.agentId,
+        kind: "agent_finish",
+        target: "finish",
+      }));
     } catch (err) {
       this.logger?.warn("checkrd: telemetry enqueue failed for agent_finish", err);
     }
   }
+}
+
+/**
+ * Build a wire-schema-compliant TelemetryEventInput for the agent-
+ * action / agent-finish callbacks. Those don't go through ``gate``
+ * (they piggyback on the parent chain's evaluation), so we
+ * synthesize a minimal event here. No ``event_type`` / ``tool`` /
+ * ``return_values_keys`` — those would trigger HTTP 422 at the
+ * ingest endpoint.
+ */
+function makeAgentEvent(args: {
+  runId: string;
+  agentId: string;
+  kind: string;
+  target: string;
+}): Record<string, unknown> {
+  return {
+    request_id: args.runId,
+    agent_id: args.agentId,
+    timestamp: new Date().toISOString(),
+    url_host: LANGCHAIN_AUTHORITY,
+    url_path: `/${args.kind}/${args.target}`,
+    method: "POST",
+    status_code: 200,
+    policy_result: "allowed",
+    span_name: `langchain.${args.kind} ${args.target}`,
+    span_status_code: "OK",
+  };
 }
 
 // ---------------------------------------------------------------------

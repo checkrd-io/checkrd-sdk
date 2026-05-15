@@ -4,13 +4,13 @@
 
 This library provides convenient access to the Checkrd Control Plane REST API from server-side TypeScript or JavaScript. The library includes type definitions for all request params and response fields, and offers strong typing, async/await usage, and works on Node.js (18+), Bun, Deno, Cloudflare Workers, and Vercel Edge runtime.
 
-It is generated from the [OpenAPI specification](https://github.com/checkrd/checkrd/blob/main/schemas/api/openapi.json) which itself is derived from the Rust handler signatures in [`crates/api`](https://github.com/checkrd/checkrd/tree/main/crates/api). The hand-written facade layer (`Checkrd` class, resource classes) lives alongside the generated low-level engine.
+It is generated from the [OpenAPI specification](https://github.com/checkrd-io/checkrd-sdk/blob/main/schemas/api/openapi.json), which is derived from the Rust handler signatures of the Checkrd Control Plane API. The hand-written facade layer (`Checkrd` class, resource classes) lives alongside the generated low-level engine.
 
 This library is **separate** from the runtime SDK [`checkrd`](https://npmjs.org/package/checkrd), which lives in the customer's agent process and instruments outbound HTTP. Use `@checkrd/api` for admin scripts, CI tooling, and server-to-server automation.
 
 ## Documentation
 
-The REST API documentation can be found at [checkrd.io/docs/api](https://checkrd.io/docs/api). The full TypeScript API reference is at [checkrd.io/docs/javascript](https://checkrd.io/docs/javascript).
+REST API documentation lives at [checkrd.io/docs/api/overview](https://checkrd.io/docs/api/overview). For per-method usage, see the inline TypeScript types and JSDoc shipped with the package.
 
 ## Installation
 
@@ -149,7 +149,7 @@ This package generally follows [SemVer](https://semver.org/spec/v2.0.0.html) con
 
 We take backwards-compatibility seriously and work hard to ensure you can rely on a smooth upgrade experience.
 
-We are keen for your feedback; please open an [issue](https://github.com/checkrd/checkrd/issues) with questions, bugs, or suggestions.
+We are keen for your feedback; please open an [issue](https://github.com/checkrd-io/checkrd-sdk/issues) with questions, bugs, or suggestions.
 
 ## Requirements
 

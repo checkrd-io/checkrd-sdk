@@ -140,6 +140,27 @@ class AsyncControlReceiver:
         version, bundle_hash, envelope_json = load_persisted_state()
         if envelope_json is None:
             return
+
+        # Skip the restore when the engine already holds a bundle at
+        # or above the persisted version. See the sync receiver's
+        # comment for the full rationale — short version: ``init()``
+        # runs ``bootstrap_policy`` before ``start()``, so the engine
+        # usually already has a fresher bundle and re-applying the
+        # older persisted one trips the WASM core's monotonic check.
+        try:
+            current_version = int(self._engine.get_active_policy_version())
+        except Exception:
+            current_version = -1
+        if current_version >= version:
+            logger.debug(
+                "checkrd: skipping persisted policy restore "
+                "(engine already at version %d, persisted version=%d)",
+                current_version,
+                version,
+            )
+            self._last_installed_hash = bundle_hash
+            return
+
         try:
             self._engine.reload_policy_signed(
                 envelope_json,

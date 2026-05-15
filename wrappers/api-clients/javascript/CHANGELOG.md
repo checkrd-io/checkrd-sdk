@@ -1,18 +1,31 @@
 # Changelog
 
-## [0.1.1](https://github.com/checkrd-io/checkrd/compare/api-v0.1.0...api-v0.1.1) (2026-04-27)
+All notable changes to the `@checkrd/api` JavaScript / TypeScript
+client will be documented in this file.
 
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-### Features
+## 0.1.1 (2026-04-27)
 
-* industry-standard alignment across full stack ([95d7358](https://github.com/checkrd-io/checkrd/commit/95d7358b1f68631f42cfa6eaca9a4e164276aee4))
+### Added
 
+- Industry-standard alignment across the full stack: shared error
+  envelope, Stripe-pattern idempotency keys, date-pinned
+  `Checkrd-Version` header, and `X-Checkrd-SDK-*` platform headers.
 
-### Bug Fixes
+### Fixed
 
-* address every CI failure on PR [#8](https://github.com/checkrd-io/checkrd/issues/8) ([147baea](https://github.com/checkrd-io/checkrd/commit/147baeac740d1344de61f46e8b8cd1dd4a6c167d))
-* residual CI failures on PR [#8](https://github.com/checkrd-io/checkrd/issues/8) ([b10b890](https://github.com/checkrd-io/checkrd/commit/b10b890c3a6f93122d0176f28ccb6210f0ed2ed8))
+- Resolved residual CI failures from the initial publish workflow.
 
-## Changelog
+## 0.1.0 (2026-04-25)
 
-This changelog is maintained by hand. There is currently no automated publish pipeline.
+### Added
+
+- Initial release. Generated `Checkrd` client covering the full
+  `/v1/*` Control Plane REST API surface.
+- Type-checked request and response models for every endpoint.
+- Async/await usage, auto-retry with exponential backoff, and
+  cursor-based async iterators for paginated endpoints.
+- Edge-runtime support: Node 18+, Bun, Deno, Cloudflare Workers,
+  Vercel Edge — uses the platform `fetch`, no `node:*` imports.

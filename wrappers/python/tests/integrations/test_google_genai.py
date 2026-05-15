@@ -1,14 +1,15 @@
 """Tests for :class:`checkrd.integrations.GoogleGenAIInstrumentor`.
 
-``GoogleGenAIInstrumentor`` is a thin subclass of
-``HttpxClientInstrumentor`` -- the core contract is already covered by
-``test_base.py``. This file verifies the Google GenAI-specific
-declarations (module name, target classes) wire up correctly against a
-fake ``google.genai`` module.
+The Google GenAI SDK does not expose its httpx client directly --
+it holds an internal ``BaseApiClient`` at ``_api_client``, which
+owns both ``_httpx_client`` (sync) and ``_async_httpx_client``
+(async). The instrumentor walks that two-level path and wraps
+both transports, so a single ``Client`` instance is fully covered
+for both sync and async APIs.
 
-Google GenAI exposes only a sync client (``Client``), so there are no
-async tests. The dotted module name (``google.genai``) requires
-injecting both ``google`` and ``google.genai`` into ``sys.modules``.
+The dotted module name (``google.genai``) requires injecting both
+``google`` and ``google.genai`` into ``sys.modules`` for the fake
+fixture.
 """
 
 from __future__ import annotations
@@ -19,7 +20,7 @@ import httpx
 import pytest
 
 from checkrd.integrations import GoogleGenAIInstrumentor
-from checkrd.transports._httpx import CheckrdTransport
+from checkrd.transports._httpx import CheckrdAsyncTransport, CheckrdTransport
 from tests.conftest import requires_wasm
 
 try:
@@ -39,7 +40,14 @@ class TestGoogleGenAIInstrumentation:
         inst.instrument()
 
         client = fake_google_genai_module.Client(api_key="goog-test")
-        assert isinstance(client._client._transport, CheckrdTransport)
+        # Both sync and async transports must be wrapped — the
+        # patched ``Client`` owns one BaseApiClient that exposes
+        # both, and we wrap both so the user can switch APIs freely
+        # without re-instrumenting.
+        assert isinstance(client._api_client._httpx_client._transport, CheckrdTransport)
+        assert isinstance(
+            client._api_client._async_httpx_client._transport, CheckrdAsyncTransport
+        )
 
     def test_user_transport_preserved(
         self,
@@ -53,7 +61,7 @@ class TestGoogleGenAIInstrumentation:
         with httpx.Client(transport=user_transport) as user_client:
             client = fake_google_genai_module.Client(api_key="goog-test", http_client=user_client)
 
-            wrapper = client._client._transport
+            wrapper = client._api_client._httpx_client._transport
             assert isinstance(wrapper, CheckrdTransport)
             assert wrapper._transport is user_transport
 
@@ -79,7 +87,7 @@ class TestGoogleGenAIInstrumentation:
         inst.instrument()
 
         client = fake_google_genai_module.Client(api_key="goog-test")
-        wrapper = client._client._transport
+        wrapper = client._api_client._httpx_client._transport
         assert isinstance(wrapper, CheckrdTransport)
         # Inner transport is the raw httpx default, not another layer.
         assert not isinstance(wrapper._transport, CheckrdTransport)
@@ -89,10 +97,6 @@ class TestGoogleGenAIInstrumentation:
         assert set(GoogleGenAIInstrumentor._target_classes) == {"Client"}
 
 
-@pytest.mark.xfail(
-    reason="google-genai >=1.0 changed internal client structure; instrumentor needs update",
-    strict=False,
-)
 @pytest.mark.skipif(
     not _HAS_REAL_GOOGLE_GENAI,
     reason="google-genai package not installed; skipping real-library smoke test",
@@ -109,7 +113,9 @@ class TestRealGoogleGenAISmoke:
         try:
             inst.instrument()
             client = genai.Client(api_key="goog-test-fake-key")
-            transport = client._client._transport
-            assert isinstance(transport, CheckrdTransport)
+            sync_transport = client._api_client._httpx_client._transport
+            async_transport = client._api_client._async_httpx_client._transport
+            assert isinstance(sync_transport, CheckrdTransport)
+            assert isinstance(async_transport, CheckrdAsyncTransport)
         finally:
             inst.uninstrument()

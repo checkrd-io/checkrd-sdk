@@ -7,7 +7,7 @@
  * a `fetch` option in its config bag, so no deeper monkey-patching is
  * required.
  */
-import { lazyRequireOptional } from "./_require.js";
+import { lazyRequireOptional, patchModuleExport } from "./_require.js";
 
 import {
   assertVendorShapeAny,
@@ -39,6 +39,10 @@ export class CohereInstrumentor extends Instrumentor {
     super();
   }
 
+  protected override getOptions(): CohereInstrumentorOptions {
+    return this.options;
+  }
+
   protected override applyPatch(): void {
     const requireOptional = lazyRequireOptional(import.meta.url);
     let mod: CohereModule;
@@ -58,7 +62,6 @@ export class CohereInstrumentor extends Instrumentor {
     const patchCtor = (name: string): void => {
       const OriginalCtor = mod[name];
       if (typeof OriginalCtor !== "function") return;
-      this.originalConstructors.push({ name, ctor: OriginalCtor });
       const Patched = new Proxy(OriginalCtor as new (opts?: Record<string, unknown>) => unknown, {
         construct(target, args: unknown[], newTarget) {
           const first = args[0] as Record<string, unknown> | undefined;
@@ -70,7 +73,12 @@ export class CohereInstrumentor extends Instrumentor {
           return Reflect.construct(target, [merged], newTarget) as object;
         },
       });
-      mod[name] = Patched;
+      // patchModuleExport handles both plain CJS and TS-compiled CJS
+      // with sealed (getter-backed) exports — the latter silently
+      // ignores `mod[name] = Patched`, which was bug #7 in the
+      // 2026-05-14 smoke run.
+      if (!patchModuleExport(mod, name, Patched)) return;
+      this.originalConstructors.push({ name, ctor: OriginalCtor });
     };
 
     patchCtor("CohereClient");
@@ -86,7 +94,7 @@ export class CohereInstrumentor extends Instrumentor {
       return;
     }
     for (const { name, ctor } of this.originalConstructors) {
-      mod[name] = ctor;
+      patchModuleExport(mod, name, ctor);
     }
     this.originalConstructors = [];
   }

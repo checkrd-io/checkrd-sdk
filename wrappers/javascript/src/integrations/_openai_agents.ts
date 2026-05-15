@@ -118,55 +118,38 @@ export class CheckrdTracingProcessor implements CheckrdTracingProcessorLike {
     this.logger = options.logger;
   }
 
-  onTraceStart(trace: TraceLike): void {
-    if (!this.sink) return;
-    this.enqueue({
-      event_type: "openai_agents_trace_start",
-      request_id: trace.traceId ?? "",
-      agent_id: this.agentId,
-      trace_name: trace.name,
-    });
+  onTraceStart(_trace: TraceLike): void {
+    // Trace start/end events have no clean mapping to the
+    // ``TelemetryEventInput`` wire schema and would 422 at the
+    // ingest endpoint. The per-span events below carry the same
+    // ``trace_id`` so the dashboard reconstructs the trace from
+    // spans alone — OpenTelemetry's contract every observability
+    // vendor follows.
   }
 
-  onTraceEnd(trace: TraceLike): void {
-    if (!this.sink) return;
-    this.enqueue({
-      event_type: "openai_agents_trace_end",
-      request_id: trace.traceId ?? "",
-      agent_id: this.agentId,
-      trace_name: trace.name,
-    });
+  onTraceEnd(_trace: TraceLike): void {
+    // See onTraceStart.
   }
 
-  onSpanStart(span: SpanLike): void {
-    if (!this.sink) return;
-    const { kind, target, extra } = classifySpan(span);
-    this.enqueue({
-      event_type: `openai_agents_${kind}_start`,
-      request_id: span.traceId ?? "",
-      span_id: span.spanId,
-      parent_span_id: span.parentId,
-      agent_id: this.agentId,
-      kind,
-      target,
-      ...extra,
-    });
+  onSpanStart(_span: SpanLike): void {
+    // We only emit on span END. Start events have no latency or
+    // final span_status_code, and the ingest schema doesn't
+    // accept partial events — emitting one would generate a
+    // duplicate row that confuses dashboards and burns batch
+    // capacity. OpenTelemetry's contract is end-of-span only.
   }
 
   onSpanEnd(span: SpanLike): void {
     if (!this.sink) return;
     const { kind, target, extra } = classifySpan(span);
-    this.enqueue({
-      event_type: `openai_agents_${kind}_end`,
-      request_id: span.traceId ?? "",
-      span_id: span.spanId,
-      parent_span_id: span.parentId,
-      agent_id: this.agentId,
+    this.enqueue(buildSpanEvent({
+      span,
+      agentId: this.agentId,
       kind,
       target,
-      latency_ms: spanLatencyMs(span),
-      ...extra,
-    });
+      extra,
+      latencyMs: spanLatencyMs(span),
+    }));
   }
 
   shutdown(): void {
@@ -266,17 +249,25 @@ function evaluateGuardrail(args: GuardrailEvalArgs): GuardrailFunctionOutputLike
     };
   }
 
-  // Denied. Emit telemetry first so observation-mode operators see
-  // what would have been blocked.
+  // Denied. Emit a wire-schema-compliant deny event so
+  // observation-mode operators see what would have been blocked.
+  // No ``event_type`` / ``kind`` / ``target`` — those would 422
+  // at the ingest endpoint.
   if (options.sink) {
     try {
+      const now = new Date();
       options.sink.enqueue({
-        event_type: `openai_agents_${kind}_denied`,
         request_id: result.request_id,
         agent_id: options.agentId,
-        kind,
-        target,
+        timestamp: now.toISOString(),
+        url_host: AUTHORITY,
+        url_path: `/${kind}/${target}`,
+        method: "POST",
+        status_code: 403,
+        policy_result: "denied",
         deny_reason: result.deny_reason,
+        span_name: `openai-agents.${kind} ${target}`,
+        span_status_code: "ERROR",
       });
     } catch (err) {
       options.logger?.warn(
@@ -418,6 +409,74 @@ function spanLatencyMs(span: SpanLike): number | null {
   const end = Date.parse(span.endedAt);
   if (Number.isNaN(start) || Number.isNaN(end)) return null;
   return end - start;
+}
+
+/**
+ * True when ``raw`` is a string of exactly ``expectedLen`` lowercase-
+ * hex characters. The ingest endpoint validates trace_id (32 hex)
+ * and span_id (16 hex) against the W3C Trace Context format —
+ * OpenAI Agents uses opaque ``trace_xxx`` / ``span_xxx`` strings
+ * instead, which 422 the batch. Drop non-conforming values from
+ * the wire payload.
+ */
+function hexIdOrUndefined(raw: unknown, expectedLen: number): string | undefined {
+  if (typeof raw !== "string" || raw.length !== expectedLen) return undefined;
+  for (let i = 0; i < raw.length; i += 1) {
+    const c = raw.charCodeAt(i);
+    const isHex =
+      (c >= 48 && c <= 57) || (c >= 97 && c <= 102); // 0-9, a-f
+    if (!isHex) return undefined;
+  }
+  return raw;
+}
+
+/**
+ * Wire-schema-compliant TelemetryEventInput for one finished
+ * OpenAI Agents span. Mirrors the Python adapter's
+ * `_build_span_event` so a single dashboard query covers both
+ * runtimes.
+ */
+function buildSpanEvent(args: {
+  span: SpanLike;
+  agentId: string;
+  kind: string;
+  target: string;
+  extra: Record<string, unknown>;
+  latencyMs: number | null;
+}): Record<string, unknown> {
+  const now = new Date();
+  const rawTraceId = args.span.traceId ?? "";
+  const event: Record<string, unknown> = {
+    request_id: rawTraceId || `openai-agents-${now.getTime().toString()}`,
+    agent_id: args.agentId,
+    timestamp: now.toISOString(),
+    url_host: AUTHORITY,
+    url_path: `/${args.kind}/${args.target || "unknown"}`,
+    method: "POST",
+    status_code: 200,
+    policy_result: "allowed",
+    span_name: `openai-agents.${args.kind} ${args.target || "unknown"}`,
+    span_status_code: "OK",
+  };
+  const traceId = hexIdOrUndefined(rawTraceId, 32);
+  const spanId = hexIdOrUndefined(args.span.spanId, 16);
+  const parentSpanId = hexIdOrUndefined(args.span.parentId, 16);
+  if (traceId !== undefined) event.trace_id = traceId;
+  if (spanId !== undefined) event.span_id = spanId;
+  if (parentSpanId !== undefined) event.parent_span_id = parentSpanId;
+  if (args.latencyMs !== null) event.latency_ms = args.latencyMs;
+
+  // GenAI semconv mapping for ``generation`` spans.
+  if (args.extra.input_tokens != null) {
+    event.gen_ai_input_tokens = args.extra.input_tokens;
+  }
+  if (args.extra.output_tokens != null) {
+    event.gen_ai_output_tokens = args.extra.output_tokens;
+  }
+  if (args.kind === "generation") {
+    event.gen_ai_model = args.target;
+  }
+  return event;
 }
 
 function buildDashboardUrl(

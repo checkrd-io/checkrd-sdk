@@ -51,9 +51,17 @@ describe("makePreToolUseHook", () => {
     );
     expect(out.decision).toBe("block");
     expect(typeof out.systemMessage).toBe("string");
-    expect(events.some((e) => e.event_type === "claude_agent_pre_tool_use")).toBe(true);
-    const e = events.find((x) => x.event_type === "claude_agent_pre_tool_use");
-    expect(e?.allowed).toBe(false);
+    // Wire-schema-compliant deny event lands on the sink. No
+    // ``event_type`` / ``allowed`` / ``tool_name`` — those triggered
+    // HTTP 422 at the ingest endpoint.
+    const e = events.find(
+      (x) =>
+        x.policy_result === "denied" && x.url_path === "/tools/Bash",
+    );
+    expect(e).toBeDefined();
+    expect(e?.url_host).toBe("claude-agent.local");
+    expect(e?.status_code).toBe(403);
+    expect(e?.span_status_code).toBe("ERROR");
   });
 
   it("returns empty object on allow", async () => {
@@ -115,7 +123,10 @@ describe("makePostToolUseHook + makeUserPromptSubmitHook + makeStopHook", () => 
       undefined,
     );
     expect(out).toEqual({});
-    expect(events[0]?.event_type).toBe("claude_agent_post_tool_use");
+    // Wire-schema-compliant. Tool name surfaces via url_path.
+    expect(events[0]?.url_path).toBe("/post-tool/Read");
+    expect(events[0]?.policy_result).toBe("allowed");
+    expect(events[0]?.event_type).toBeUndefined();
   });
 
   it("user-prompt-submit blocks on deny+enforce", async () => {
@@ -144,7 +155,8 @@ describe("makePostToolUseHook + makeUserPromptSubmitHook + makeStopHook", () => 
     const hook = makeStopHook({ agentId: "a", sink });
     const out = await hook({ session_id: "sess-1" }, undefined, undefined);
     expect(out).toEqual({});
-    expect(events[0]?.event_type).toBe("claude_agent_stop");
+    expect(events[0]?.url_path).toBe("/stop/agent");
+    expect(events[0]?.event_type).toBeUndefined();
   });
 });
 

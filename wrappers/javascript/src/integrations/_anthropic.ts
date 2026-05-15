@@ -3,7 +3,7 @@
  * proxy the module's constructor so that every `new Anthropic({...})`
  * gets a Checkrd-wrapped fetch unless the caller supplied one.
  */
-import { lazyRequireOptional } from "./_require.js";
+import { lazyRequireOptional, patchModuleExport } from "./_require.js";
 
 import {
   assertVendorShape,
@@ -39,6 +39,10 @@ export class AnthropicInstrumentor extends Instrumentor {
     super();
   }
 
+  protected override getOptions(): AnthropicInstrumentorOptions {
+    return this.options;
+  }
+
   protected override applyPatch(): void {
     const requireOptional = lazyRequireOptional(import.meta.url);
     let mod: AnthropicModule;
@@ -57,10 +61,9 @@ export class AnthropicInstrumentor extends Instrumentor {
 
     // The Anthropic SDK exposes its client as the module's `default`
     // export (both in ESM and the CommonJS build).
-    const modRec = mod as unknown as { default?: unknown };
+    const modRec = mod as unknown as Record<string, unknown>;
     const OriginalCtor = modRec.default;
     if (typeof OriginalCtor !== "function") return;
-    this.originalDefault = OriginalCtor;
 
     const Patched = new Proxy(OriginalCtor as new (opts?: Record<string, unknown>) => unknown, {
       construct(target, args: unknown[], newTarget) {
@@ -70,7 +73,8 @@ export class AnthropicInstrumentor extends Instrumentor {
         return Reflect.construct(target, [merged], newTarget) as object;
       },
     });
-    modRec.default = Patched;
+    if (!patchModuleExport(modRec, "default", Patched)) return;
+    this.originalDefault = OriginalCtor;
   }
 
   protected override revertPatch(): void {
@@ -82,7 +86,7 @@ export class AnthropicInstrumentor extends Instrumentor {
     } catch {
       return;
     }
-    (mod as unknown as { default?: unknown }).default = this.originalDefault;
+    patchModuleExport(mod as unknown as Record<string, unknown>, "default", this.originalDefault);
     this.originalDefault = null;
   }
 }

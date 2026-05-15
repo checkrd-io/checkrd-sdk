@@ -139,7 +139,7 @@ point — no monkey-patching, no internal-API risk.
 | Hono (`checkrdHono` middleware)                                       | `checkrd/hono`                |
 | Cloudflare Workers (`withCheckrd` HOC)                                | `checkrd/cloudflare`          |
 
-Each adapter is documented at <https://checkrd.io/docs/integrations>.
+Each adapter is documented at <https://checkrd.io/docs/integrations/overview>.
 Operators write one policy YAML and the same rules fire across vendor
 instrumentors and framework adapters using framework-prefixed
 synthetic URLs (`ai-sdk://...`, `langchain.local/...`,
@@ -160,17 +160,17 @@ runtime crash.
   (forged telemetry, MITM control plane, SSRF via redirect, browser
   bundle exposure) and what we explicitly don't (compromised host
   process, stolen API key).
-- **[`crates/core/SECURITY.md`](../../crates/core/SECURITY.md)** —
-  WASM core's threat model and integrity-verification recipe (shipped
-  byte-identical in this package as `dist/checkrd_core.wasm`).
+- **[`WASM-CORE.md`](./WASM-CORE.md)** — WASM core's threat model
+  and integrity-verification recipe (shipped byte-identical in this
+  package as `dist/checkrd_core.wasm`).
 - **[`API-STABILITY.md`](./API-STABILITY.md)** — what's covered by
   SemVer and what's `_underscore`-prefixed and free to change.
 - **[`CHANGELOG.md`](./CHANGELOG.md)** — Keep-a-Changelog format,
   every release links its security-relevant entries.
 
 Vulnerability reports: <security@checkrd.io>. Acknowledgement within
-2 business days, fix windows scaled to severity. PGP key at
-`https://checkrd.io/.well-known/security.asc`.
+2 business days, fix windows scaled to severity. Email if you need an
+encrypted channel.
 
 ## What a real policy looks like
 

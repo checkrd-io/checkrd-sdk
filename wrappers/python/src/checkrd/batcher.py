@@ -40,6 +40,7 @@ import ssl
 import threading
 import time
 from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, Union
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 import weakref
@@ -639,17 +640,72 @@ class TelemetryBatcher:
                         time.sleep(delay)
                         continue
 
-                    # Non-retryable or exhausted retries.
+                    # Non-retryable or exhausted retries. Surface the
+                    # response body — for 422/400s the server returns a
+                    # structured ``{"error": {"code": "...", "message":
+                    # "..."}}`` payload that pinpoints which field
+                    # failed validation. Without it the operator just
+                    # sees "HTTP 422" and has to file a support ticket
+                    # to see WHICH field is wrong.
                     dropped = len(events)
                     self._events_dropped_send_error += dropped
                     self._breaker.record_failure()
+                    body_preview = ""
+                    try:
+                        raw = resp.read().decode("utf-8", errors="replace")
+                        body_preview = raw[:512]
+                    except Exception:
+                        pass
                     logger.warning(
-                        "checkrd: telemetry send failed (HTTP %d), dropping %d events",
+                        "checkrd: telemetry send failed (HTTP %d), dropping %d events%s",
                         resp.status,
                         dropped,
+                        f"; response={body_preview}" if body_preview else "",
                     )
                     self._notify_drop("send_error", dropped)
                     return
+            except HTTPError as he:
+                # urllib raises HTTPError for any 4xx/5xx response.
+                # The status + headers + body are all on the
+                # exception — recover them so retry/backoff logic
+                # and the validation-failure log have the same
+                # data they would have had against a 2xx path.
+                response_headers = dict(he.headers) if hasattr(he, "headers") and he.headers else {}
+                if (
+                    should_retry_status(he.code, response_headers)
+                    and attempt < self._max_attempts - 1
+                ):
+                    delay = next_backoff(
+                        attempt,
+                        response_headers,
+                        max_sleep_secs=DEFAULT_MAX_SLEEP_SECS,
+                    )
+                    logger.debug(
+                        "checkrd: telemetry send HTTP %d, retry %d/%d in %.2fs",
+                        he.code,
+                        attempt + 1,
+                        self._max_attempts,
+                        delay,
+                    )
+                    time.sleep(delay)
+                    continue
+                dropped = len(events)
+                self._events_dropped_send_error += dropped
+                self._breaker.record_failure()
+                body_preview = ""
+                try:
+                    raw = he.read().decode("utf-8", errors="replace")
+                    body_preview = raw[:512]
+                except Exception:
+                    pass
+                logger.warning(
+                    "checkrd: telemetry send failed (HTTP %d), dropping %d events%s",
+                    he.code,
+                    dropped,
+                    f"; response={body_preview}" if body_preview else "",
+                )
+                self._notify_drop("send_error", dropped)
+                return
             except Exception as e:
                 # Network-level failure — no headers to inspect, fall
                 # back to local exponential backoff.
@@ -712,10 +768,33 @@ class TelemetryBatcher:
 
     @staticmethod
     def _flatten_event(event: dict[str, Any]) -> dict[str, Any]:
-        """Flatten nested TelemetryEvent (WASM output) to flat API input format.
+        """Flatten an event into the flat wire-format the ingest endpoint accepts.
 
-        The WASM core produces ``{request: {url_host, ...}, response: {...}, ...}``.
-        The API expects flat fields: ``{url_host, url_path, status_code, ...}``.
+        Two input shapes flow through here:
+
+        1. **Nested WASM-engine event** — ``{event_id, request: {url_host, ...},
+           response: {...}, ...}``. The WASM core uses nested sub-objects
+           because the policy engine operates on a structured request before
+           any HTTP response is known.
+
+        2. **Flat adapter event** — ``{request_id, url_host, url_path,
+           method, status_code, latency_ms, ...}`` emitted directly by
+           framework adapters (LangChain, OpenAI Agents, Vercel AI SDK).
+           Those adapters never round-trip through the WASM engine for
+           their telemetry, so they emit the wire format up front.
+
+        The flatten path supports both. Whitelist + pass-through:
+        every field in :data:`_TELEMETRY_WIRE_FIELDS` is copied
+        verbatim if present, then the WASM-specific renames apply
+        on top. An adapter event that already names every field
+        correctly passes through unchanged; a WASM event gets its
+        ``request``/``response`` sub-objects unrolled into the
+        whitelisted fields. Previously the flatten dropped every
+        flat field silently — the openai-agents adapter sent
+        events that arrived at the server as ``{agent_id,
+        timestamp, ...}`` with no ``request_id``, which the
+        ingest endpoint rejected with HTTP 422 ``missing field
+        `request_id```.
 
         Empty-string optional fields are dropped: the WASM core emits
         unset optionals as ``""`` (cheap encoding for FFI), but the
@@ -742,12 +821,22 @@ class TelemetryBatcher:
             }
         )
 
-        # Copy top-level scalars
-        for key in (
+        # Single whitelist of fields that flow through to the wire.
+        # Adapter events use these names; WASM events use ``event_id``
+        # / ``mode`` / ``request`` / ``response`` and are translated
+        # below.
+        _WIRE_FIELDS = (
+            "request_id",
             "event_id",
             "agent_id",
             "instance_id",
             "timestamp",
+            "url_host",
+            "url_path",
+            "method",
+            "body_hash",
+            "status_code",
+            "latency_ms",
             "policy_result",
             "deny_reason",
             "trace_id",
@@ -757,11 +846,16 @@ class TelemetryBatcher:
             "span_kind",
             "span_status_code",
             "span_status_message",
-            # B1: evaluation metadata from WASM core
+            "gen_ai_system",
+            "gen_ai_model",
+            "gen_ai_input_tokens",
+            "gen_ai_output_tokens",
             "matched_rule",
             "matched_rule_kind",
             "evaluation_path",
-        ):
+            "policy_mode",
+        )
+        for key in _WIRE_FIELDS:
             if key not in event:
                 continue
             value = event[key]
@@ -769,26 +863,36 @@ class TelemetryBatcher:
                 continue
             flat[key] = value
 
-        # Rename event_id -> request_id (WASM uses event_id, API expects request_id)
-        if "event_id" in flat:
+        # Rename WASM ``event_id`` to wire ``request_id`` if the
+        # adapter didn't already set ``request_id`` directly.
+        if "event_id" in flat and "request_id" not in flat:
             flat["request_id"] = flat.pop("event_id")
+        elif "event_id" in flat:
+            # Adapter already provided ``request_id`` — drop the
+            # redundant ``event_id`` so the wire stays clean.
+            flat.pop("event_id", None)
 
-        # WASM emits `mode`; API field is `policy_mode`.
-        if "mode" in event:
+        # WASM emits `mode`; API field is `policy_mode`. Only set
+        # when the adapter didn't already provide ``policy_mode``.
+        if "mode" in event and "policy_mode" not in flat:
             flat["policy_mode"] = event["mode"]
 
-        # Flatten request sub-object
+        # Flatten WASM request sub-object onto the wire fields when
+        # the adapter didn't already provide them at the top level.
         request: Optional[dict[str, Any]] = event.get("request")
         if request:
-            flat["url_host"] = request.get("url_host", "")
-            flat["url_path"] = request.get("url_path", "")
-            flat["method"] = request.get("method", "")
-            flat["body_hash"] = request.get("body_hash")
+            flat.setdefault("url_host", request.get("url_host", ""))
+            flat.setdefault("url_path", request.get("url_path", ""))
+            flat.setdefault("method", request.get("method", ""))
+            if request.get("body_hash") is not None and "body_hash" not in flat:
+                flat["body_hash"] = request["body_hash"]
 
-        # Flatten response sub-object
+        # Same for WASM response sub-object.
         response: Optional[dict[str, Any]] = event.get("response")
         if response:
-            flat["status_code"] = response.get("status_code")
-            flat["latency_ms"] = response.get("latency_ms")
+            if "status_code" not in flat:
+                flat["status_code"] = response.get("status_code")
+            if "latency_ms" not in flat:
+                flat["latency_ms"] = response.get("latency_ms")
 
         return flat

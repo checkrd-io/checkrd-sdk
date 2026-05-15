@@ -35,10 +35,30 @@ describe("checkrdMiddleware — wrapGenerate", () => {
     });
     expect(result.text).toBe("hi");
     expect(doGenerate).toHaveBeenCalled();
-    const completion = sink.calls.find((c) => c["event_type"] === "ai_sdk_completion");
+    // Schema-compliant ``TelemetryEventInput`` event: the
+    // completion is the second sink call (the first is the
+    // gate-time engine telemetry). Token counts use the GenAI
+    // semconv field names so the same ClickHouse query rolls them
+    // up across vendor SDKs + AI SDK calls. Older shapes used
+    // `event_type`/`input_tokens` which the ingestion endpoint
+    // rejects with HTTP 422.
+    const completion = sink.calls.find(
+      (c) => typeof c["span_name"] === "string" && (c["span_name"] as string).startsWith("ai-sdk.generate"),
+    );
     expect(completion).toBeTruthy();
-    expect(completion!["input_tokens"]).toBe(3);
-    expect(completion!["output_tokens"]).toBe(5);
+    expect(completion!["gen_ai_input_tokens"]).toBe(3);
+    expect(completion!["gen_ai_output_tokens"]).toBe(5);
+    expect(completion!["gen_ai_system"]).toBe("openai");
+    expect(completion!["gen_ai_model"]).toBe("gpt-4o");
+    expect(completion!["status_code"]).toBe(200);
+    expect(completion!["url_host"]).toBe("openai.ai-sdk");
+    // Required wire fields the ingestion endpoint validates.
+    expect(typeof completion!["request_id"]).toBe("string");
+    expect(typeof completion!["timestamp"]).toBe("string");
+    // No legacy fields — those would trigger 422 server-side.
+    expect(completion!["event_type"]).toBeUndefined();
+    expect(completion!["input_tokens"]).toBeUndefined();
+    expect(completion!["output_tokens"]).toBeUndefined();
   });
 
   it("throws CheckrdPolicyDenied when policy denies and enforce=true", async () => {
@@ -103,10 +123,17 @@ describe("checkrdMiddleware — wrapStream", () => {
     reader.releaseLock();
     // Let the flush() finalizer fire.
     await new Promise((r) => setTimeout(r, 0));
-    const completion = sink.calls.find((c) => c["event_type"] === "ai_sdk_completion");
+    const completion = sink.calls.find(
+      (c) => typeof c["span_name"] === "string" && (c["span_name"] as string).startsWith("ai-sdk.stream"),
+    );
     expect(completion).toBeTruthy();
-    expect(completion!["input_tokens"]).toBe(4);
-    expect(completion!["output_tokens"]).toBe(9);
-    expect(completion!["finish_reason"]).toBe("stop");
+    expect(completion!["gen_ai_input_tokens"]).toBe(4);
+    expect(completion!["gen_ai_output_tokens"]).toBe(9);
+    expect(completion!["gen_ai_model"]).toBe("gpt-4o");
+    // span_status_code carries the OpenTelemetry equivalent of the
+    // old `finish_reason` field; finishReason still drives our
+    // 200/500 status_code mapping but isn't surfaced as a separate
+    // wire field anymore.
+    expect(completion!["span_status_code"]).toBe("OK");
   });
 });

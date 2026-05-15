@@ -5,7 +5,7 @@
  * Together's SDK is a thin OpenAI-compatible client and accepts a
  * `fetch` option in its constructor, identical to OpenAI's.
  */
-import { lazyRequireOptional } from "./_require.js";
+import { lazyRequireOptional, patchModuleExport } from "./_require.js";
 
 import {
   assertVendorShapeAny,
@@ -37,6 +37,10 @@ export class TogetherInstrumentor extends Instrumentor {
     super();
   }
 
+  protected override getOptions(): TogetherInstrumentorOptions {
+    return this.options;
+  }
+
   protected override applyPatch(): void {
     const requireOptional = lazyRequireOptional(import.meta.url);
     let mod: TogetherModule;
@@ -56,7 +60,6 @@ export class TogetherInstrumentor extends Instrumentor {
     const patchKey = (key: "default" | "Together"): void => {
       const OriginalCtor = mod[key];
       if (typeof OriginalCtor !== "function") return;
-      this.replacements.push({ key, original: OriginalCtor });
       const Patched = new Proxy(OriginalCtor as new (opts?: Record<string, unknown>) => unknown, {
         construct(target, args: unknown[], newTarget) {
           const first = args[0] as Record<string, unknown> | undefined;
@@ -65,7 +68,10 @@ export class TogetherInstrumentor extends Instrumentor {
           return Reflect.construct(target, [merged], newTarget) as object;
         },
       });
-      mod[key] = Patched;
+      if (!patchModuleExport(mod as Record<string, unknown>, key, Patched)) {
+        return;
+      }
+      this.replacements.push({ key, original: OriginalCtor });
     };
 
     patchKey("default");
@@ -81,7 +87,7 @@ export class TogetherInstrumentor extends Instrumentor {
       return;
     }
     for (const { key, original } of this.replacements) {
-      mod[key] = original;
+      patchModuleExport(mod as Record<string, unknown>, key, original);
     }
     this.replacements = [];
   }

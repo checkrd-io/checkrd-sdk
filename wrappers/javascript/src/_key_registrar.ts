@@ -119,6 +119,11 @@ async function registerWithRetry(
     const timer = setTimeout(() => {
       controller.abort();
     }, timeoutMs);
+    // Watchdog timer for the registration fetch — unref so a clean
+    // shutdown after the request resolves doesn't have to wait for
+    // the timer to fire.
+    const nodeTimer = timer as unknown as { unref?: () => void };
+    if (typeof nodeTimer.unref === "function") nodeTimer.unref();
     let response: Response;
     try {
       response = await fetchImpl(url, {

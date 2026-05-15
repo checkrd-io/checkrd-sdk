@@ -21,6 +21,53 @@ type RequireLike = (name: string) => unknown;
 let _cached: RequireLike | null = null;
 
 /**
+ * Replace a single named export on a module's namespace object,
+ * tolerating the three shapes vendor packages ship in the wild:
+ *
+ * 1. Plain CJS object — `mod.X = patched` works directly.
+ * 2. TypeScript-compiled CJS with sealed exports — properties are
+ *    installed via `Object.defineProperty` with `writable: undefined`
+ *    + a getter, so `mod.X = patched` silently no-ops. Worked
+ *    against older OpenAI versions but broke around the v5
+ *    rewrite to a fully-typed CJS surface.
+ * 3. ESM namespace — `Object.defineProperty` with `configurable:
+ *    true` still works in Node's interop layer for CJS sources
+ *    even when the namespace object reports `[[Writable]]: false`.
+ *
+ * Returns true on success, false when the property cannot be
+ * replaced. Callers treat false the same as "package not
+ * installed" and skip instrumentation rather than partially
+ * patching.
+ */
+export function patchModuleExport(
+  mod: Record<string, unknown>,
+  name: string,
+  patched: unknown,
+): boolean {
+  // Try the simple assignment first — that path runs when the
+  // module is hand-written CJS without sealed descriptors.
+  try {
+    mod[name] = patched;
+    if (mod[name] === patched) return true;
+  } catch {
+    // Fall through to defineProperty.
+  }
+  // defineProperty path. `configurable: true` is required so that
+  // `revertPatch()` can restore the original later.
+  try {
+    Object.defineProperty(mod, name, {
+      configurable: true,
+      enumerable: true,
+      writable: true,
+      value: patched,
+    });
+    return mod[name] === patched;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Return a `require(name)`-shaped function, loading `node:module`
  * lazily. Throws an environment-specific error on runtimes that lack
  * `node:module` — callers should treat a thrown error from the
