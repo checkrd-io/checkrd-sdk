@@ -67,6 +67,12 @@ exclude = [
   "^https?://api\\.together\\.xyz",
   "^https?://generativelanguage\\.googleapis\\.com",
   "^https?://api\\.mistral\\.ai",
+  "^https?://api\\.salesforce\\.com",
+  "^https?://api\\.stripe\\.com",
+  "^https?://billing\\.stripe\\.com",
+  "^https?://checkout\\.stripe\\.com",
+  # Azure OpenAI deployments — host pattern is `<resource>.openai.azure.com`.
+  "^https?://[a-z0-9-]+\\.openai\\.azure\\.com",
 
   # The status subdomain is intentionally unpublished. Internal comments
   # explain that — see SystemHealthBadge.tsx and CLI feedback.
@@ -76,15 +82,22 @@ exclude = [
   # can't render them.
   "^https?://app\\.checkrd\\.io",
 
+  # Absolute `https://checkrd.io/docs/...` references — these are the
+  # canonical user-docs paths. We don't validate them here because the
+  # SDK repo has no copy of the website MDX; the monorepo's
+  # `check-internal-links.mjs` script is the source of truth.
+  "^https?://checkrd\\.io/docs/",
+  "^https?://checkrd\\.io/errors/",
+
   # SDK release-tag links during the brief window between version bump
   # and tag push (the tag exists by the time the user hits npm/pypi).
   "^https?://github\\.com/checkrd-io/checkrd-(sdk|cli)/releases/tag/",
 
-  # API root URLs — these are the *base* URL constants in source code
-  # (DEFAULT_BASE_URL, etc.). The API serves JSON only and 404s to a
-  # GET on `/`; that's by design.
-  "^https?://api(-staging)?\\.checkrd\\.io/?$",
-  "^https?://ingest\\.checkrd\\.io",
+  # API hosts — base-URL constants in source code (DEFAULT_BASE_URL,
+  # test fixtures with `:8443` etc.). The API serves JSON only and
+  # 404s on `/`; that's by design. Pattern covers root, paths, and
+  # non-standard ports used in test fixtures.
+  "^https?://(api(-staging)?|ingest|api\\.staging)\\.checkrd\\.io(:\\d+)?(/|$)",
 
   # Third-party telemetry receivers — OTLP / vendor APIs that don't
   # respond to GET. Their existence is well known; we reference them
@@ -114,6 +127,24 @@ exclude = [
   "evil\\.com",
   "^https?://test\\.checkrd\\.io",
   "^https?://([a-z]+:[^@]*@)?host(:[0-9]+)?(/|$)",
+
+  # Single-segment hostnames used as test fixtures throughout the SDK
+  # (e.g. `https://x/`, `https://a/`, `http://w/`, `https://api/`,
+  # `https://dash/`, `https://internal/`). These are deliberately not
+  # real hosts — they exercise the matcher logic, not the network.
+  "^https?://[a-z0-9-]+(/.*)?$",
+
+  # `.internal` TLD — convention for cluster-private hostnames in
+  # documentation (e.g. otel-collector.internal:4318 in air-gapped
+  # deployment guides).
+  "^https?://[^/]*\\.internal(:|/|$)",
+
+  # Synthetic test domains used by policy/SSRF rule examples in source
+  # comments and Rust tests. Not real APIs — used to demonstrate
+  # matcher semantics.
+  "^https?://unknown-api\\.com",
+  "^https?://api\\.hospital\\.com",
+  "^https?://my\\.custom\\.host",
 
   # Private monorepo — github.com/checkrd-io/checkrd is private and
   # 404s for unauthed visitors.
