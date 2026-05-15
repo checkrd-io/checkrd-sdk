@@ -203,8 +203,8 @@ export function checkrdMiddleware(opts: CheckrdMiddlewareOptions): LanguageModel
       // ``ai_sdk`` blob — the ingestion endpoint rejects unknown
       // keys with HTTP 422.
       event.agent_id = extra.agentId;
-      if (!event.gen_ai_system) event.gen_ai_system = extra.provider;
-      if (!event.gen_ai_model) event.gen_ai_model = extra.model;
+      event.gen_ai_system ??= extra.provider;
+      event.gen_ai_model ??= extra.model;
       sink.enqueue(event);
     } catch (err) {
       logger?.debug("failed to parse telemetry_json from engine", { err });

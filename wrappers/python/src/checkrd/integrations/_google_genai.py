@@ -65,44 +65,72 @@ class GoogleGenAIInstrumentor(HttpxClientInstrumentor):
             )
             return
 
-        for attr_name, transport_cls, expected_cls in (
-            (self._sync_client_attr, CheckrdTransport, httpx.Client),
-            (self._async_client_attr, CheckrdAsyncTransport, httpx.AsyncClient),
-        ):
-            http_client = getattr(owner, attr_name, None)
-            if http_client is None:
-                # Half the layout — sync-only or async-only API surface.
-                # Not necessarily an error; log at debug for diagnostics.
-                logger.debug(
-                    "checkrd: %s.%s.%s missing; skipping that half",
-                    type(instance).__name__,
-                    self._owner_attr,
-                    attr_name,
-                )
-                continue
-            if not isinstance(http_client, expected_cls):
-                logger.warning(
-                    "checkrd: %s.%s.%s is not an %s (got %s); cannot instrument",
-                    type(instance).__name__,
-                    self._owner_attr,
-                    attr_name,
-                    expected_cls.__name__,
-                    type(http_client).__name__,
-                )
-                continue
-
-            current_transport = http_client._transport
-            if getattr(current_transport, "_checkrd_instrumented", False):
-                continue
-            http_client._transport = transport_cls(
-                current_transport,
-                context.engine,
-                enforce=context.enforce,
-                batcher=context.sink,
-                agent_id=context.settings.agent_id,
-                dashboard_url=context.settings.dashboard_url or "",
-                on_deny=context.on_deny,
-                on_allow=context.on_allow,
-                before_request=context.before_request,
-                security_mode=context.settings.security_mode,
+        # Sync + async branches handled separately so mypy can keep the
+        # transport_cls / http_client types narrowed in lockstep. A
+        # generic loop with a (attr, transport_cls, expected_cls) tuple
+        # widens the inferred argument type for the transport
+        # constructor to `BaseTransport | AsyncBaseTransport`, which
+        # the typed signatures correctly reject.
+        sync_client = getattr(owner, self._sync_client_attr, None)
+        if sync_client is None:
+            logger.debug(
+                "checkrd: %s.%s.%s missing; skipping that half",
+                type(instance).__name__,
+                self._owner_attr,
+                self._sync_client_attr,
             )
+        elif not isinstance(sync_client, httpx.Client):
+            logger.warning(
+                "checkrd: %s.%s.%s is not an httpx.Client (got %s); cannot instrument",
+                type(instance).__name__,
+                self._owner_attr,
+                self._sync_client_attr,
+                type(sync_client).__name__,
+            )
+        else:
+            current_sync = sync_client._transport
+            if not getattr(current_sync, "_checkrd_instrumented", False):
+                sync_client._transport = CheckrdTransport(
+                    current_sync,
+                    context.engine,
+                    enforce=context.enforce,
+                    batcher=context.sink,
+                    agent_id=context.settings.agent_id,
+                    dashboard_url=context.settings.dashboard_url or "",
+                    on_deny=context.on_deny,
+                    on_allow=context.on_allow,
+                    before_request=context.before_request,
+                    security_mode=context.settings.security_mode,
+                )
+
+        async_client = getattr(owner, self._async_client_attr, None)
+        if async_client is None:
+            logger.debug(
+                "checkrd: %s.%s.%s missing; skipping that half",
+                type(instance).__name__,
+                self._owner_attr,
+                self._async_client_attr,
+            )
+        elif not isinstance(async_client, httpx.AsyncClient):
+            logger.warning(
+                "checkrd: %s.%s.%s is not an httpx.AsyncClient (got %s); cannot instrument",
+                type(instance).__name__,
+                self._owner_attr,
+                self._async_client_attr,
+                type(async_client).__name__,
+            )
+        else:
+            current_async = async_client._transport
+            if not getattr(current_async, "_checkrd_instrumented", False):
+                async_client._transport = CheckrdAsyncTransport(
+                    current_async,
+                    context.engine,
+                    enforce=context.enforce,
+                    batcher=context.sink,
+                    agent_id=context.settings.agent_id,
+                    dashboard_url=context.settings.dashboard_url or "",
+                    on_deny=context.on_deny,
+                    on_allow=context.on_allow,
+                    before_request=context.before_request,
+                    security_mode=context.settings.security_mode,
+                )

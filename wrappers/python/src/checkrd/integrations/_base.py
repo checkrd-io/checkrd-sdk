@@ -53,7 +53,13 @@ from typing import Any, Callable, ClassVar, Optional, Tuple
 import httpx
 
 from checkrd._state import _GlobalContext, get_context
-from checkrd.transports._httpx import CheckrdAsyncTransport, CheckrdTransport
+from checkrd.transports._httpx import CheckrdAsyncTransport as CheckrdAsyncTransport
+from checkrd.transports._httpx import CheckrdTransport as CheckrdTransport
+
+# `as`-rebound imports above are mypy-strict's idiom for "this module
+# explicitly re-exports these names". Without it, downstream modules
+# importing CheckrdTransport / CheckrdAsyncTransport from here fail
+# `--no-implicit-reexport` with `attr-defined`.
 
 logger = logging.getLogger("checkrd")
 

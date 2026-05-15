@@ -122,13 +122,17 @@ let _originalGlobalFetch: typeof fetch | undefined;
 
 function installGlobalFetchPatch(options: InstrumentorOptions): void {
   if (_globalFetchRefcount === 0) {
-    const original = globalThis.fetch?.bind(globalThis);
-    if (typeof original !== "function") return; // no fetch on this runtime
-    _originalGlobalFetch = original as typeof fetch;
+    // Some runtimes (older Node, certain SSR shims) have no global
+    // fetch. Guard with `typeof` rather than `?.` because the
+    // global property may not exist as a declared field; eslint
+    // then knows the rebound `original` is non-nullable.
+    if (typeof globalThis.fetch !== "function") return;
+    const original = globalThis.fetch.bind(globalThis);
+    _originalGlobalFetch = original;
     // Wrap with a Checkrd-aware fetch. Non-vendor URLs typically
     // match an ``allow: *`` rule and pass through with negligible
     // overhead, so it's safe to wrap the whole global.
-    globalThis.fetch = wrapFetch(original as FetchFn, options) as typeof fetch;
+    globalThis.fetch = wrapFetch(original, options);
   }
   _globalFetchRefcount += 1;
 }

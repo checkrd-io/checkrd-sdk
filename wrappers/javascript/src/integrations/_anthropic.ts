@@ -86,7 +86,7 @@ export class AnthropicInstrumentor extends Instrumentor {
     } catch {
       return;
     }
-    patchModuleExport(mod as unknown as Record<string, unknown>, "default", this.originalDefault);
+    patchModuleExport(mod, "default", this.originalDefault);
     this.originalDefault = null;
   }
 }
