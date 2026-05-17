@@ -20,10 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as `Ellipsis`, which is invalid after keyword arguments — the
   snippet did not parse. Now written as
   `wrap(..., key=value)  # plus your usual args`.
-- `SECURITY.md`: PEP 740 attestation URL switched from
-  `https://pypi.org/integrity/checkrd/<version>/<file>/provenance`
-  to `{version}/{file}` placeholder form. `<…>` are invalid URL
-  characters and link-checkers truncated the URL at the first `<`.
+- `SECURITY.md`: PEP 740 attestation URL placeholders switched from
+  `<version>`/`<file>` to `{version}`/`{file}` form — full URL is now
+  `https://pypi.org/integrity/checkrd/{version}/{file}/provenance`.
+  `<…>` are invalid URL characters and link-checkers truncated the
+  URL at the first `<`, then reported the truncation (the base path
+  `/integrity/checkrd/`) as a 404.
 - `CHANGELOG.md` (this file): Sigstore certificate identity for the
   0.3.1 republish is an OIDC subject, not a clickable URL. Removed
   the `https://` scheme + added the `@refs/heads/main` ref suffix
