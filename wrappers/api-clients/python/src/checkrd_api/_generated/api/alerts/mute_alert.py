@@ -8,17 +8,20 @@ import httpx
 from ... import errors
 from ...client import AuthenticatedClient, Client
 from ...models.alert_rule import AlertRule
-from ...models.error_response import ErrorResponse
 from ...models.mute_alert_request import MuteAlertRequest
-from ...types import Response
+from ...models.problem_details import ProblemDetails
+from ...types import UNSET, Response, Unset
 
 
 def _get_kwargs(
     alert_id: UUID,
     *,
     body: MuteAlertRequest,
+    idempotency_key: str | Unset = UNSET,
 ) -> dict[str, Any]:
     headers: dict[str, Any] = {}
+    if not isinstance(idempotency_key, Unset):
+        headers["Idempotency-Key"] = idempotency_key
 
     _kwargs: dict[str, Any] = {
         "method": "post",
@@ -37,29 +40,29 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> AlertRule | ErrorResponse | None:
+) -> AlertRule | ProblemDetails | None:
     if response.status_code == 200:
         response_200 = AlertRule.from_dict(response.json())
 
         return response_200
 
     if response.status_code == 400:
-        response_400 = ErrorResponse.from_dict(response.json())
+        response_400 = ProblemDetails.from_dict(response.json())
 
         return response_400
 
     if response.status_code == 401:
-        response_401 = ErrorResponse.from_dict(response.json())
+        response_401 = ProblemDetails.from_dict(response.json())
 
         return response_401
 
     if response.status_code == 403:
-        response_403 = ErrorResponse.from_dict(response.json())
+        response_403 = ProblemDetails.from_dict(response.json())
 
         return response_403
 
     if response.status_code == 404:
-        response_404 = ErrorResponse.from_dict(response.json())
+        response_404 = ProblemDetails.from_dict(response.json())
 
         return response_404
 
@@ -71,7 +74,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[AlertRule | ErrorResponse]:
+) -> Response[AlertRule | ProblemDetails]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -85,10 +88,12 @@ def sync_detailed(
     *,
     client: AuthenticatedClient,
     body: MuteAlertRequest,
-) -> Response[AlertRule | ErrorResponse]:
+    idempotency_key: str | Unset = UNSET,
+) -> Response[AlertRule | ProblemDetails]:
     """
     Args:
         alert_id (UUID):
+        idempotency_key (str | Unset):
         body (MuteAlertRequest): `POST /v1/alerts/{alert_id}/mute` request body. Provide either
             `until` (RFC 3339 timestamp) or `duration_minutes` (relative).
             `until` wins if both are set.
@@ -98,12 +103,13 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[AlertRule | ErrorResponse]
+        Response[AlertRule | ProblemDetails]
     """
 
     kwargs = _get_kwargs(
         alert_id=alert_id,
         body=body,
+        idempotency_key=idempotency_key,
     )
 
     response = client.get_httpx_client().request(
@@ -118,10 +124,12 @@ def sync(
     *,
     client: AuthenticatedClient,
     body: MuteAlertRequest,
-) -> AlertRule | ErrorResponse | None:
+    idempotency_key: str | Unset = UNSET,
+) -> AlertRule | ProblemDetails | None:
     """
     Args:
         alert_id (UUID):
+        idempotency_key (str | Unset):
         body (MuteAlertRequest): `POST /v1/alerts/{alert_id}/mute` request body. Provide either
             `until` (RFC 3339 timestamp) or `duration_minutes` (relative).
             `until` wins if both are set.
@@ -131,13 +139,14 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        AlertRule | ErrorResponse
+        AlertRule | ProblemDetails
     """
 
     return sync_detailed(
         alert_id=alert_id,
         client=client,
         body=body,
+        idempotency_key=idempotency_key,
     ).parsed
 
 
@@ -146,10 +155,12 @@ async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
     body: MuteAlertRequest,
-) -> Response[AlertRule | ErrorResponse]:
+    idempotency_key: str | Unset = UNSET,
+) -> Response[AlertRule | ProblemDetails]:
     """
     Args:
         alert_id (UUID):
+        idempotency_key (str | Unset):
         body (MuteAlertRequest): `POST /v1/alerts/{alert_id}/mute` request body. Provide either
             `until` (RFC 3339 timestamp) or `duration_minutes` (relative).
             `until` wins if both are set.
@@ -159,12 +170,13 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[AlertRule | ErrorResponse]
+        Response[AlertRule | ProblemDetails]
     """
 
     kwargs = _get_kwargs(
         alert_id=alert_id,
         body=body,
+        idempotency_key=idempotency_key,
     )
 
     response = await client.get_async_httpx_client().request(**kwargs)
@@ -177,10 +189,12 @@ async def asyncio(
     *,
     client: AuthenticatedClient,
     body: MuteAlertRequest,
-) -> AlertRule | ErrorResponse | None:
+    idempotency_key: str | Unset = UNSET,
+) -> AlertRule | ProblemDetails | None:
     """
     Args:
         alert_id (UUID):
+        idempotency_key (str | Unset):
         body (MuteAlertRequest): `POST /v1/alerts/{alert_id}/mute` request body. Provide either
             `until` (RFC 3339 timestamp) or `duration_minutes` (relative).
             `until` wins if both are set.
@@ -190,7 +204,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        AlertRule | ErrorResponse
+        AlertRule | ProblemDetails
     """
 
     return (
@@ -198,5 +212,6 @@ async def asyncio(
             alert_id=alert_id,
             client=client,
             body=body,
+            idempotency_key=idempotency_key,
         )
     ).parsed

@@ -7,8 +7,8 @@ import httpx
 
 from ... import errors
 from ...client import AuthenticatedClient, Client
-from ...models.error_response import ErrorResponse
 from ...models.merged_effective_policy_response import MergedEffectivePolicyResponse
+from ...models.problem_details import ProblemDetails
 from ...types import Response
 
 
@@ -28,19 +28,19 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> ErrorResponse | MergedEffectivePolicyResponse | None:
+) -> MergedEffectivePolicyResponse | ProblemDetails | None:
     if response.status_code == 200:
         response_200 = MergedEffectivePolicyResponse.from_dict(response.json())
 
         return response_200
 
     if response.status_code == 401:
-        response_401 = ErrorResponse.from_dict(response.json())
+        response_401 = ProblemDetails.from_dict(response.json())
 
         return response_401
 
     if response.status_code == 404:
-        response_404 = ErrorResponse.from_dict(response.json())
+        response_404 = ProblemDetails.from_dict(response.json())
 
         return response_404
 
@@ -52,7 +52,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[ErrorResponse | MergedEffectivePolicyResponse]:
+) -> Response[MergedEffectivePolicyResponse | ProblemDetails]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -65,7 +65,7 @@ def sync_detailed(
     agent_id: UUID,
     *,
     client: AuthenticatedClient,
-) -> Response[ErrorResponse | MergedEffectivePolicyResponse]:
+) -> Response[MergedEffectivePolicyResponse | ProblemDetails]:
     r"""Returns the merged effective policy and per-line source map.
     The source_map marks each line as originating from \"org\" or \"agent\".
     If no org policy exists, returns the agent's active policy directly.
@@ -79,7 +79,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ErrorResponse | MergedEffectivePolicyResponse]
+        Response[MergedEffectivePolicyResponse | ProblemDetails]
     """
 
     kwargs = _get_kwargs(
@@ -97,7 +97,7 @@ def sync(
     agent_id: UUID,
     *,
     client: AuthenticatedClient,
-) -> ErrorResponse | MergedEffectivePolicyResponse | None:
+) -> MergedEffectivePolicyResponse | ProblemDetails | None:
     r"""Returns the merged effective policy and per-line source map.
     The source_map marks each line as originating from \"org\" or \"agent\".
     If no org policy exists, returns the agent's active policy directly.
@@ -111,7 +111,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ErrorResponse | MergedEffectivePolicyResponse
+        MergedEffectivePolicyResponse | ProblemDetails
     """
 
     return sync_detailed(
@@ -124,7 +124,7 @@ async def asyncio_detailed(
     agent_id: UUID,
     *,
     client: AuthenticatedClient,
-) -> Response[ErrorResponse | MergedEffectivePolicyResponse]:
+) -> Response[MergedEffectivePolicyResponse | ProblemDetails]:
     r"""Returns the merged effective policy and per-line source map.
     The source_map marks each line as originating from \"org\" or \"agent\".
     If no org policy exists, returns the agent's active policy directly.
@@ -138,7 +138,7 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ErrorResponse | MergedEffectivePolicyResponse]
+        Response[MergedEffectivePolicyResponse | ProblemDetails]
     """
 
     kwargs = _get_kwargs(
@@ -154,7 +154,7 @@ async def asyncio(
     agent_id: UUID,
     *,
     client: AuthenticatedClient,
-) -> ErrorResponse | MergedEffectivePolicyResponse | None:
+) -> MergedEffectivePolicyResponse | ProblemDetails | None:
     r"""Returns the merged effective policy and per-line source map.
     The source_map marks each line as originating from \"org\" or \"agent\".
     If no org policy exists, returns the agent's active policy directly.
@@ -168,7 +168,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ErrorResponse | MergedEffectivePolicyResponse
+        MergedEffectivePolicyResponse | ProblemDetails
     """
 
     return (

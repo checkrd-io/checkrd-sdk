@@ -186,7 +186,7 @@ function applySemconvAttributes(span: OtelSpan, event: TelemetryEvent): void {
     span.setAttribute("checkrd.latency_ms", latencyMs);
   }
 
-  // --- GenAI semconv (1.27+) -------------------------------------
+  // --- GenAI semconv (pinned attribute names; switch-over, no dual-emit) ---
   // Two attribute-source layers, both stamped here so a span carries
   // the full GenAI picture regardless of which path produced it:
   //

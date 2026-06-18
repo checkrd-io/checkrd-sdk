@@ -7,7 +7,6 @@ from uuid import UUID
 
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
-from dateutil.parser import isoparse
 
 from ..types import UNSET, Unset
 
@@ -190,7 +189,7 @@ class AlertRule:
 
         is_enabled = d.pop("is_enabled")
 
-        created_at = isoparse(d.pop("created_at"))
+        created_at = datetime.datetime.fromisoformat(d.pop("created_at"))
 
         alert_state = d.pop("alert_state")
 
@@ -223,7 +222,7 @@ class AlertRule:
             try:
                 if not isinstance(data, str):
                     raise TypeError()
-                last_triggered_at_type_0 = isoparse(data)
+                last_triggered_at_type_0 = datetime.datetime.fromisoformat(data)
 
                 return last_triggered_at_type_0
             except (TypeError, ValueError, AttributeError, KeyError):
@@ -249,7 +248,7 @@ class AlertRule:
             try:
                 if not isinstance(data, str):
                     raise TypeError()
-                last_evaluated_at_type_0 = isoparse(data)
+                last_evaluated_at_type_0 = datetime.datetime.fromisoformat(data)
 
                 return last_evaluated_at_type_0
             except (TypeError, ValueError, AttributeError, KeyError):
@@ -266,7 +265,7 @@ class AlertRule:
             try:
                 if not isinstance(data, str):
                     raise TypeError()
-                muted_until_type_0 = isoparse(data)
+                muted_until_type_0 = datetime.datetime.fromisoformat(data)
 
                 return muted_until_type_0
             except (TypeError, ValueError, AttributeError, KeyError):

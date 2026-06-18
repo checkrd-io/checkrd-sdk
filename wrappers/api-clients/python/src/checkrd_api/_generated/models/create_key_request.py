@@ -9,7 +9,7 @@ from attrs import field as _attrs_field
 from ..types import UNSET, Unset
 
 if TYPE_CHECKING:
-    from ..models.create_key_request_permissions import CreateKeyRequestPermissions
+    from ..models.create_key_request_scope import CreateKeyRequestScope
 
 
 T = TypeVar("T", bound="CreateKeyRequest")
@@ -21,20 +21,28 @@ class CreateKeyRequest:
 
     Attributes:
         name (str): Display name for the API key. Visible on the dashboard. Example: production-ingestion.
-        permissions (CreateKeyRequestPermissions): Optional permission grant JSON. When omitted the key inherits
-            full org permissions (`{}`).
+        scope (CreateKeyRequestScope): Scope of the key. Stripe-style: `"all"` for unrestricted (only
+            minted by `checkrd login` device flow); `"read_only"` for the
+            read-everything preset; `"restricted"` with a per-resource
+            matrix for fine-grained access. Resources omitted from a
+            `restricted` map default to no access.
+
+            Wire shape:
+            - `{"kind": "all"}`
+            - `{"kind": "read_only"}`
+            - `{"kind": "restricted", "resources": {"agents": "write", "policies": "read"}}`
         description (None | str | Unset): Optional free-form description.
     """
 
     name: str
-    permissions: CreateKeyRequestPermissions
+    scope: CreateKeyRequestScope
     description: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         name = self.name
 
-        permissions = self.permissions.to_dict()
+        scope = self.scope.to_dict()
 
         description: None | str | Unset
         if isinstance(self.description, Unset):
@@ -47,7 +55,7 @@ class CreateKeyRequest:
         field_dict.update(
             {
                 "name": name,
-                "permissions": permissions,
+                "scope": scope,
             }
         )
         if description is not UNSET:
@@ -57,12 +65,12 @@ class CreateKeyRequest:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.create_key_request_permissions import CreateKeyRequestPermissions
+        from ..models.create_key_request_scope import CreateKeyRequestScope
 
         d = dict(src_dict)
         name = d.pop("name")
 
-        permissions = CreateKeyRequestPermissions.from_dict(d.pop("permissions"))
+        scope = CreateKeyRequestScope.from_dict(d.pop("scope"))
 
         def _parse_description(data: object) -> None | str | Unset:
             if data is None:
@@ -75,7 +83,7 @@ class CreateKeyRequest:
 
         create_key_request = cls(
             name=name,
-            permissions=permissions,
+            scope=scope,
             description=description,
         )
 

@@ -339,7 +339,15 @@ export type ApiKeySummary = {
 };
 
 /**
- * Audit log entry joined with user email/name for display.
+ * Audit log entry with the actor's display name when applicable.
+ *
+ * Each entry has both `actor_id` and `actor_kind` (mirrors the unified
+ * `Principal` model on the server). Dashboards branch on `actor_kind`
+ * to render attribution:
+ *
+ * - `"user"`    — `user_email` / `user_name` populated from a JOIN to `users`.
+ * - `"api_key"` — `actor_id` is the `api_keys.id`; render the key prefix.
+ * - `"system"`  — `actor_id` is null; show "Checkrd platform" / source attribution.
  *
  * Returned from `GET /v1/audit-log` and
  * `GET /v1/audit-log/{resource_type}/{resource_id}`.
@@ -371,13 +379,25 @@ export type AuditLogEntryWithUser = {
     ip_address?: string | null;
     created_at: string;
     /**
-     * Email of the user who performed the action. Null for
-     * system-generated entries (e.g., SDK-driven public-key
-     * registration with no user session).
+     * Closed-enum tag for which kind of principal performed the
+     * action: `"user"`, `"api_key"`, or `"system"`. The DB column has
+     * a CHECK constraint on these values; if a new variant is added
+     * server-side, update this doc and dashboards in lockstep.
+     */
+    actor_kind: string;
+    /**
+     * `users.id` when `actor_kind == "user"`, `api_keys.id` when
+     * `actor_kind == "api_key"`, null when `actor_kind == "system"`.
+     */
+    actor_id?: string | null;
+    /**
+     * Email of the user who performed the action. Populated only when
+     * `actor_kind == "user"`.
      */
     user_email?: string | null;
     /**
-     * Display name of the user who performed the action.
+     * Display name of the user who performed the action. Populated
+     * only when `actor_kind == "user"`.
      */
     user_name?: string | null;
 };
@@ -467,6 +487,16 @@ export type CheckoutResponse = {
  * Initial event payload pushed on SSE stream open. Sent before any
  * pubsub event so clients never need a separate poll to learn the
  * current state of the agent.
+ *
+ * **`policy_envelope` is required for self-bootstrap.** Without it,
+ * a fresh SDK connection learns only the kill-switch state and waits
+ * for a `policy_updated` event that only fires on policy *change* —
+ * so an SDK that starts up against an agent with an existing active
+ * policy never enforces it. Mirroring the polling endpoint's payload
+ * here closes that gap: every `init` event carries the same DSSE-
+ * signed envelope the polling fallback returns, the SDK installs it
+ * the moment SSE handshakes, and the rest of the stream is just
+ * deltas.
  */
 export type ControlInit = {
     /**
@@ -476,9 +506,21 @@ export type ControlInit = {
     /**
      * SHA-256 of the active policy YAML, lowercase hex. `None` only
      * when no active policy exists yet (brand-new agent before its
-     * first policy push).
+     * first policy push). Kept alongside `policy_envelope` for clients
+     * that want to compare against a cached engine fingerprint and
+     * skip the install when nothing changed.
      */
     active_policy_hash?: string | null;
+    /**
+     * DSSE-signed policy envelope, identical to the one returned by
+     * `GET /v1/agents/{agent_id}/control/state`. `None` when no
+     * active policy exists yet. Always populated after the first
+     * publish — strong-from-the-ground-up means there is no unsigned
+     * distribution path.
+     */
+    policy_envelope?: {
+        [key: string]: unknown;
+    };
 };
 
 /**
@@ -531,6 +573,14 @@ export type ControlState = {
      * Whether the kill switch is currently engaged.
      */
     kill_switch_active: boolean;
+    /**
+     * SHA-256 of the active policy YAML, lowercase hex. Same value as
+     * `ControlInit.active_policy_hash` so the SDK's hash-based
+     * idempotency cache (OPA bundle / TUF "don't re-apply unchanged"
+     * pattern) works identically across the SSE and poll paths.
+     * `None` when the agent has no active policy.
+     */
+    active_policy_hash?: string | null;
     /**
      * DSSE-signed policy envelope. `None` only when the agent has
      * no active policy at all (a brand-new agent before its first
@@ -606,10 +656,18 @@ export type CreateKeyRequest = {
      */
     description?: string | null;
     /**
-     * Optional permission grant JSON. When omitted the key inherits
-     * full org permissions (`{}`).
+     * Scope of the key. Stripe-style: `"all"` for unrestricted (only
+     * minted by `checkrd login` device flow); `"read_only"` for the
+     * read-everything preset; `"restricted"` with a per-resource
+     * matrix for fine-grained access. Resources omitted from a
+     * `restricted` map default to no access.
+     *
+     * Wire shape:
+     * - `{"kind": "all"}`
+     * - `{"kind": "read_only"}`
+     * - `{"kind": "restricted", "resources": {"agents": "write", "policies": "read"}}`
      */
-    permissions: {
+    scope: {
         [key: string]: unknown;
     };
 };
@@ -837,49 +895,6 @@ export type DiffPoliciesRequest = {
 };
 
 /**
- * The body inside the Stripe-style `{ "error": { ... } }` envelope.
- *
- * Defined separately from `ApiError` (which is the runtime sum type)
- * because OpenAPI describes the *wire shape* clients see, not the
- * internal Rust enum. Serializing `ApiError` always yields exactly
- * this shape — see the `into_response` impl below.
- */
-export type ErrorBody = {
-    /**
-     * Coarse-grained category. One of `authentication_error`,
-     * `permission_error`, `invalid_request_error`, `rate_limit_error`,
-     * `payment_required`, `not_found`, `idempotency_error`,
-     * `internal_error`, `bad_gateway`.
-     */
-    type: string;
-    /**
-     * Machine-readable, fine-grained error code. See
-     * [`ErrorCode`] for the full enumeration.
-     */
-    code: string;
-    /**
-     * Human-readable message safe to surface to end users.
-     */
-    message: string;
-    /**
-     * Optional pointer to the offending request parameter (for
-     * `invalid_request_error`).
-     */
-    param?: string | null;
-};
-
-/**
- * Stripe-style error envelope returned for any non-2xx response.
- *
- * Wire shape: `{ "error": { "type", "code", "message", "param?" } }`.
- * Every error response in the API conforms to this — clients can
- * type-narrow against it once and reuse across every endpoint.
- */
-export type ErrorResponse = {
-    error: ErrorBody;
-};
-
-/**
  * Monthly event usage. Separate type from `ResourceCount` because
  * the limit is `u64` (Free: 100K, Team: 1M, Enterprise: `u64::MAX`)
  * — `ResourceCount`'s `u32` limit can't represent the unlimited
@@ -888,6 +903,25 @@ export type ErrorResponse = {
 export type EventUsage = {
     current: number;
     limit: number;
+};
+
+/**
+ * One field-level validation failure — an extension member of
+ * [`ProblemDetails`]'s `errors` array.
+ *
+ * `pointer` is a JSON Pointer (RFC 6901) into the request body, e.g.
+ * `/email` or `/rules/0/action`. Returning an array of these lets a single
+ * response surface *every* invalid field at once.
+ */
+export type FieldError = {
+    /**
+     * JSON Pointer (RFC 6901) locating the offending member of the request body.
+     */
+    pointer: string;
+    /**
+     * Human-readable reason this field was rejected.
+     */
+    detail: string;
 };
 
 /**
@@ -1666,6 +1700,94 @@ export type PortalResponse = {
 };
 
 /**
+ * RFC 9457 Problem Details object — the body of every non-2xx response.
+ *
+ * `type`/`title`/`status`/`detail`/`instance` are the RFC 9457 standard
+ * members; everything from `code` down is an extension member (RFC 9457
+ * §3.2). `code` is the stable, machine-readable identifier clients branch
+ * on; `errors` carries per-field validation failures; the remaining typed
+ * extensions are populated only by the specific problem types that need them.
+ *
+ * Built exclusively from the [`ErrorCode`] registry via [`ProblemDetails::from_code`],
+ * so `type`, `title`, `status`, and `code` can never drift from each other.
+ *
+ * ADR-009v2 (supersedes ADR-009): the wire format is RFC 9457
+ * `application/problem+json`, not the former Stripe-style `{"error":{…}}`
+ * envelope. The house `code` (and the `errors[]` field-pointer array) ride as
+ * extension members (RFC 9457 §3.2), so no client loses information. Adopted
+ * in the pre-1.0 / zero-user window where the breaking shape change cost
+ * nothing.
+ */
+export type ProblemDetails = {
+    /**
+     * Dereferenceable URI identifying the problem type (RFC 9457 §3.1.1).
+     */
+    type: string;
+    /**
+     * Stable, short summary of the problem type (RFC 9457 §3.1.2).
+     */
+    title: string;
+    /**
+     * HTTP status code, duplicated in-body for out-of-band use (RFC 9457 §3.1.3).
+     */
+    status: number;
+    /**
+     * Human-readable explanation specific to this occurrence (RFC 9457 §3.1.4).
+     */
+    detail?: string | null;
+    /**
+     * URI reference identifying this specific occurrence (RFC 9457 §3.1.5).
+     * Stamped by the problem-normalization layer from the request path.
+     */
+    instance?: string | null;
+    /**
+     * Stable, fine-grained, machine-readable error code. Clients branch on this.
+     */
+    code: string;
+    /**
+     * Per-field validation failures (RFC 6901 pointers). Omitted when empty.
+     */
+    errors?: Array<FieldError>;
+    /**
+     * Correlation id for this request (mirrors the `x-request-id` header).
+     * Stamped by the problem-normalization layer.
+     */
+    request_id?: string | null;
+    /**
+     * Billing: the resource whose plan limit was hit (`agents`, `api_keys`, …).
+     */
+    resource?: string | null;
+    /**
+     * Billing: the limit value for the current plan.
+     */
+    limit?: number | null;
+    /**
+     * Billing: the caller's current usage.
+     */
+    current?: number | null;
+    /**
+     * Billing: the gated feature name.
+     */
+    feature?: string | null;
+    /**
+     * Billing: the tier required to unlock the feature or a higher limit.
+     */
+    required_tier?: string | null;
+    /**
+     * Versioning: the raw `Checkrd-Version` value the client sent.
+     */
+    requested?: string | null;
+    /**
+     * Versioning: the minimum supported API version.
+     */
+    minimum_supported?: string | null;
+    /**
+     * Versioning: the latest supported API version.
+     */
+    latest_supported?: string | null;
+};
+
+/**
  * `POST /v1/agents/{agent_id}/public-key` request body.
  */
 export type RegisterPublicKeyRequest = {
@@ -2184,11 +2306,11 @@ export type CallbackErrors = {
     /**
      * CSRF state validation failed
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * WorkOS upstream error
      */
-    502: ErrorResponse;
+    502: ProblemDetails;
 };
 
 export type CallbackError = CallbackErrors[keyof CallbackErrors];
@@ -2204,11 +2326,11 @@ export type DeviceApproveErrors = {
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Code unknown, already approved/denied, or expired (intentionally generic to avoid leaking which `user_code`s existed)
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
 };
 
 export type DeviceApproveError = DeviceApproveErrors[keyof DeviceApproveErrors];
@@ -2233,7 +2355,7 @@ export type DeviceCodeErrors = {
     /**
      * Failed to allocate device code
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type DeviceCodeError = DeviceCodeErrors[keyof DeviceCodeErrors];
@@ -2258,11 +2380,11 @@ export type DeviceDenyErrors = {
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Code unknown, already approved/denied, or expired (intentionally generic)
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
 };
 
 export type DeviceDenyError = DeviceDenyErrors[keyof DeviceDenyErrors];
@@ -2287,7 +2409,7 @@ export type DeviceTokenErrors = {
     /**
      * Internal poll failure
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type DeviceTokenError = DeviceTokenErrors[keyof DeviceTokenErrors];
@@ -2312,7 +2434,7 @@ export type LoginErrors = {
     /**
      * Failed to issue CSRF state token
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type LoginError = LoginErrors[keyof LoginErrors];
@@ -2335,7 +2457,7 @@ export type MeErrors = {
     /**
      * Authentication required (missing or invalid `checkrd_session` cookie)
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
 };
 
 export type MeError = MeErrors[keyof MeErrors];
@@ -2360,7 +2482,7 @@ export type RefreshErrors = {
     /**
      * Missing, invalid, or already-revoked refresh token
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
 };
 
 export type RefreshError = RefreshErrors[keyof RefreshErrors];
@@ -2385,15 +2507,15 @@ export type SwitchOrgErrors = {
     /**
      * Authentication required (missing or invalid `checkrd_session` cookie)
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Caller is not a member of the target org
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
     /**
      * Target org not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
 };
 
 export type SwitchOrgError = SwitchOrgErrors[keyof SwitchOrgErrors];
@@ -2434,16 +2556,18 @@ export type WorkosWebhookErrors = {
     /**
      * Malformed JSON body
      */
-    400: unknown;
+    400: ProblemDetails;
     /**
      * Signature verification failed
      */
-    401: unknown;
+    401: ProblemDetails;
     /**
      * Orphan invitation — local row missing; retry expected after reconciliation sweeper backfills
      */
-    503: unknown;
+    503: ProblemDetails;
 };
+
+export type WorkosWebhookError = WorkosWebhookErrors[keyof WorkosWebhookErrors];
 
 export type WorkosWebhookResponses = {
     /**
@@ -2472,7 +2596,7 @@ export type ListAgentsErrors = {
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
 };
 
 export type ListAgentsError = ListAgentsErrors[keyof ListAgentsErrors];
@@ -2488,6 +2612,12 @@ export type ListAgentsResponse = ListAgentsResponses[keyof ListAgentsResponses];
 
 export type CreateAgentData = {
     body: CreateAgentRequest;
+    headers?: {
+        /**
+         * Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.
+         */
+        'Idempotency-Key'?: string;
+    };
     path?: never;
     query?: never;
     url: '/v1/agents';
@@ -2497,15 +2627,15 @@ export type CreateAgentErrors = {
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Plan limit exceeded
      */
-    402: ErrorResponse;
+    402: ProblemDetails;
     /**
      * Caller lacks the required role
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
 };
 
 export type CreateAgentError = CreateAgentErrors[keyof CreateAgentErrors];
@@ -2521,6 +2651,12 @@ export type CreateAgentResponse = CreateAgentResponses[keyof CreateAgentResponse
 
 export type DeleteAgentData = {
     body?: never;
+    headers?: {
+        /**
+         * Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         /**
          * Agent ID
@@ -2535,15 +2671,15 @@ export type DeleteAgentErrors = {
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Caller lacks the Admin role
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
     /**
      * Agent not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
 };
 
 export type DeleteAgentError = DeleteAgentErrors[keyof DeleteAgentErrors];
@@ -2573,11 +2709,11 @@ export type GetAgentErrors = {
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Agent not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
 };
 
 export type GetAgentError = GetAgentErrors[keyof GetAgentErrors];
@@ -2593,6 +2729,12 @@ export type GetAgentResponse = GetAgentResponses[keyof GetAgentResponses];
 
 export type UpdateAgentData = {
     body: UpdateAgentRequest;
+    headers?: {
+        /**
+         * Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         /**
          * Agent ID
@@ -2607,15 +2749,15 @@ export type UpdateAgentErrors = {
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Caller lacks the required role
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
     /**
      * Agent not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
 };
 
 export type UpdateAgentError = UpdateAgentErrors[keyof UpdateAgentErrors];
@@ -2645,15 +2787,15 @@ export type ControlStreamErrors = {
     /**
      * API key authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Agent not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * SSE requires Redis; not configured
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type ControlStreamError = ControlStreamErrors[keyof ControlStreamErrors];
@@ -2683,15 +2825,15 @@ export type ControlStreamForDashboardErrors = {
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Agent not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * SSE requires Redis; not configured
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type ControlStreamForDashboardError = ControlStreamForDashboardErrors[keyof ControlStreamForDashboardErrors];
@@ -2721,15 +2863,15 @@ export type GetControlStateErrors = {
     /**
      * API key authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Agent not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Failed to sign active policy
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type GetControlStateError = GetControlStateErrors[keyof GetControlStateErrors];
@@ -2745,6 +2887,12 @@ export type GetControlStateResponse = GetControlStateResponses[keyof GetControlS
 
 export type ToggleKillSwitchData = {
     body: KillSwitchRequest;
+    headers?: {
+        /**
+         * Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         /**
          * Agent ID
@@ -2759,15 +2907,15 @@ export type ToggleKillSwitchErrors = {
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Caller lacks the Admin role
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
     /**
      * Agent not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
 };
 
 export type ToggleKillSwitchError = ToggleKillSwitchErrors[keyof ToggleKillSwitchErrors];
@@ -2806,11 +2954,11 @@ export type ListPoliciesErrors = {
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Agent not found in caller's org
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
 };
 
 export type ListPoliciesError = ListPoliciesErrors[keyof ListPoliciesErrors];
@@ -2826,6 +2974,12 @@ export type ListPoliciesResponse = ListPoliciesResponses[keyof ListPoliciesRespo
 
 export type CreatePolicyData = {
     body: CreatePolicyRequest;
+    headers?: {
+        /**
+         * Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         /**
          * Agent ID
@@ -2840,19 +2994,19 @@ export type CreatePolicyErrors = {
     /**
      * Policy YAML failed validation
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Caller lacks the Admin role
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
     /**
      * Agent not found in caller's org
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
 };
 
 export type CreatePolicyError = CreatePolicyErrors[keyof CreatePolicyErrors];
@@ -2882,11 +3036,11 @@ export type GetActivePolicyErrors = {
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Agent has no active policy
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
 };
 
 export type GetActivePolicyError = GetActivePolicyErrors[keyof GetActivePolicyErrors];
@@ -2902,6 +3056,12 @@ export type GetActivePolicyResponse = GetActivePolicyResponses[keyof GetActivePo
 
 export type AnalyzePolicyData = {
     body: AnalyzePolicyRequest;
+    headers?: {
+        /**
+         * Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         /**
          * Agent ID
@@ -2916,15 +3076,15 @@ export type AnalyzePolicyErrors = {
     /**
      * Policy YAML failed validation
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Agent not found in caller's org
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
 };
 
 export type AnalyzePolicyError = AnalyzePolicyErrors[keyof AnalyzePolicyErrors];
@@ -2940,6 +3100,12 @@ export type AnalyzePolicyResponse2 = AnalyzePolicyResponses[keyof AnalyzePolicyR
 
 export type DiffPoliciesData = {
     body: DiffPoliciesRequest;
+    headers?: {
+        /**
+         * Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         /**
          * Agent ID
@@ -2954,15 +3120,15 @@ export type DiffPoliciesErrors = {
     /**
      * Candidate YAML failed validation
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Base version does not exist for this agent
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
 };
 
 export type DiffPoliciesError = DiffPoliciesErrors[keyof DiffPoliciesErrors];
@@ -2992,11 +3158,11 @@ export type GetMergedEffectiveErrors = {
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * No org policy and no active agent policy
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
 };
 
 export type GetMergedEffectiveError = GetMergedEffectiveErrors[keyof GetMergedEffectiveErrors];
@@ -3012,6 +3178,12 @@ export type GetMergedEffectiveResponse = GetMergedEffectiveResponses[keyof GetMe
 
 export type ReplayPolicyData = {
     body: ReplayPolicyRequest;
+    headers?: {
+        /**
+         * Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         /**
          * Agent ID
@@ -3026,15 +3198,15 @@ export type ReplayPolicyErrors = {
     /**
      * Policy YAML failed validation, or `range` is unsupported
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Agent not found in caller's org
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
 };
 
 export type ReplayPolicyError = ReplayPolicyErrors[keyof ReplayPolicyErrors];
@@ -3050,6 +3222,12 @@ export type ReplayPolicyResponse2 = ReplayPolicyResponses[keyof ReplayPolicyResp
 
 export type TestPolicyData = {
     body: TestPolicyRequest;
+    headers?: {
+        /**
+         * Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         /**
          * Agent ID
@@ -3064,15 +3242,15 @@ export type TestPolicyErrors = {
     /**
      * Policy YAML failed validation, or test cases exceeded limits
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Agent not found in caller's org
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
 };
 
 export type TestPolicyError = TestPolicyErrors[keyof TestPolicyErrors];
@@ -3106,11 +3284,11 @@ export type GetPolicyByVersionErrors = {
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Policy version does not exist for this agent
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
 };
 
 export type GetPolicyByVersionError = GetPolicyByVersionErrors[keyof GetPolicyByVersionErrors];
@@ -3126,6 +3304,12 @@ export type GetPolicyByVersionResponse = GetPolicyByVersionResponses[keyof GetPo
 
 export type UpdateDraftPolicyData = {
     body: UpdateDraftPolicyRequest;
+    headers?: {
+        /**
+         * Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         /**
          * Agent ID
@@ -3144,23 +3328,23 @@ export type UpdateDraftPolicyErrors = {
     /**
      * Policy YAML failed validation
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Caller lacks the Admin role
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
     /**
      * Policy version does not exist for this agent
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Policy version is active and cannot be edited (create a new version instead)
      */
-    409: ErrorResponse;
+    409: ProblemDetails;
 };
 
 export type UpdateDraftPolicyError = UpdateDraftPolicyErrors[keyof UpdateDraftPolicyErrors];
@@ -3176,6 +3360,12 @@ export type UpdateDraftPolicyResponse = UpdateDraftPolicyResponses[keyof UpdateD
 
 export type ActivatePolicyData = {
     body?: never;
+    headers?: {
+        /**
+         * Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         /**
          * Agent ID
@@ -3194,15 +3384,15 @@ export type ActivatePolicyErrors = {
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Caller lacks the Admin role
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
     /**
      * Policy version does not exist for this agent
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
 };
 
 export type ActivatePolicyError = ActivatePolicyErrors[keyof ActivatePolicyErrors];
@@ -3218,6 +3408,12 @@ export type ActivatePolicyResponse = ActivatePolicyResponses[keyof ActivatePolic
 
 export type RegisterPublicKeyData = {
     body: RegisterPublicKeyRequest;
+    headers?: {
+        /**
+         * Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         /**
          * Agent ID
@@ -3232,15 +3428,15 @@ export type RegisterPublicKeyErrors = {
     /**
      * Invalid public key format
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * API key authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Agent already has a different key registered
      */
-    409: ErrorResponse;
+    409: ProblemDetails;
 };
 
 export type RegisterPublicKeyError = RegisterPublicKeyErrors[keyof RegisterPublicKeyErrors];
@@ -3300,15 +3496,15 @@ export type ListAlertHistoryErrors = {
     /**
      * Invalid filter (period, time range, cursor, or list bounds)
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Caller lacks the Member role
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
 };
 
 export type ListAlertHistoryError = ListAlertHistoryErrors[keyof ListAlertHistoryErrors];
@@ -3357,15 +3553,15 @@ export type TimeseriesAlertHistoryErrors = {
     /**
      * Invalid filter (period, time range, bucket, or list bounds)
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Caller lacks the Member role
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
 };
 
 export type TimeseriesAlertHistoryError = TimeseriesAlertHistoryErrors[keyof TimeseriesAlertHistoryErrors];
@@ -3418,11 +3614,11 @@ export type ListAlertsErrors = {
     /**
      * Invalid `alert_state` filter
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
 };
 
 export type ListAlertsError = ListAlertsErrors[keyof ListAlertsErrors];
@@ -3438,6 +3634,12 @@ export type ListAlertsResponse = ListAlertsResponses[keyof ListAlertsResponses];
 
 export type CreateAlertData = {
     body: CreateAlertRequest;
+    headers?: {
+        /**
+         * Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.
+         */
+        'Idempotency-Key'?: string;
+    };
     path?: never;
     query?: never;
     url: '/v1/alerts';
@@ -3447,19 +3649,19 @@ export type CreateAlertErrors = {
     /**
      * Invalid alert configuration
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Caller lacks the Member role
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
     /**
      * Agent not found in caller's workspace
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
 };
 
 export type CreateAlertError = CreateAlertErrors[keyof CreateAlertErrors];
@@ -3475,6 +3677,12 @@ export type CreateAlertResponse = CreateAlertResponses[keyof CreateAlertResponse
 
 export type DeleteAlertData = {
     body?: never;
+    headers?: {
+        /**
+         * Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         /**
          * Alert rule ID
@@ -3489,15 +3697,15 @@ export type DeleteAlertErrors = {
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Caller lacks the Admin role
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
     /**
      * Alert rule not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
 };
 
 export type DeleteAlertError = DeleteAlertErrors[keyof DeleteAlertErrors];
@@ -3513,6 +3721,12 @@ export type DeleteAlertResponse2 = DeleteAlertResponses[keyof DeleteAlertRespons
 
 export type UpdateAlertData = {
     body: UpdateAlertRequest;
+    headers?: {
+        /**
+         * Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         /**
          * Alert rule ID
@@ -3527,19 +3741,19 @@ export type UpdateAlertErrors = {
     /**
      * Invalid alert configuration
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Caller lacks the Member role
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
     /**
      * Alert rule not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
 };
 
 export type UpdateAlertError = UpdateAlertErrors[keyof UpdateAlertErrors];
@@ -3578,7 +3792,7 @@ export type ListHistoryErrors = {
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
 };
 
 export type ListHistoryError = ListHistoryErrors[keyof ListHistoryErrors];
@@ -3594,6 +3808,12 @@ export type ListHistoryResponse = ListHistoryResponses[keyof ListHistoryResponse
 
 export type MuteAlertData = {
     body: MuteAlertRequest;
+    headers?: {
+        /**
+         * Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         /**
          * Alert rule ID
@@ -3608,19 +3828,19 @@ export type MuteAlertErrors = {
     /**
      * Invalid `until` timestamp or non-positive `duration_minutes`
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Caller lacks the Member role
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
     /**
      * Alert rule not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
 };
 
 export type MuteAlertError = MuteAlertErrors[keyof MuteAlertErrors];
@@ -3659,7 +3879,7 @@ export type ListNotificationsErrors = {
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
 };
 
 export type ListNotificationsError = ListNotificationsErrors[keyof ListNotificationsErrors];
@@ -3675,6 +3895,12 @@ export type ListNotificationsResponse = ListNotificationsResponses[keyof ListNot
 
 export type ToggleAlertData = {
     body: ToggleAlertRequest;
+    headers?: {
+        /**
+         * Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         /**
          * Alert rule ID
@@ -3689,15 +3915,15 @@ export type ToggleAlertErrors = {
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Caller lacks the Member role
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
     /**
      * Alert rule not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
 };
 
 export type ToggleAlertError = ToggleAlertErrors[keyof ToggleAlertErrors];
@@ -3713,6 +3939,12 @@ export type ToggleAlertResponse = ToggleAlertResponses[keyof ToggleAlertResponse
 
 export type UnmuteAlertData = {
     body?: never;
+    headers?: {
+        /**
+         * Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         /**
          * Alert rule ID
@@ -3727,15 +3959,15 @@ export type UnmuteAlertErrors = {
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Caller lacks the Member role
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
     /**
      * Alert rule not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
 };
 
 export type UnmuteAlertError = UnmuteAlertErrors[keyof UnmuteAlertErrors];
@@ -3795,23 +4027,23 @@ export type ListAuditLogErrors = {
     /**
      * Invalid filter (e.g., `from` > `to`)
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Plan does not include audit log access
      */
-    402: ErrorResponse;
+    402: ProblemDetails;
     /**
      * Caller lacks the Admin role
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
     /**
      * Workspace not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
 };
 
 export type ListAuditLogError = ListAuditLogErrors[keyof ListAuditLogErrors];
@@ -3845,19 +4077,19 @@ export type ListForResourceErrors = {
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Plan does not include audit log access
      */
-    402: ErrorResponse;
+    402: ProblemDetails;
     /**
      * Caller lacks the Admin role
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
     /**
      * Workspace not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
 };
 
 export type ListForResourceError = ListForResourceErrors[keyof ListForResourceErrors];
@@ -3873,6 +4105,12 @@ export type ListForResourceResponse = ListForResourceResponses[keyof ListForReso
 
 export type CreateCheckoutData = {
     body?: never;
+    headers?: {
+        /**
+         * Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.
+         */
+        'Idempotency-Key'?: string;
+    };
     path?: never;
     query?: never;
     url: '/v1/billing/checkout';
@@ -3882,19 +4120,19 @@ export type CreateCheckoutErrors = {
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Caller lacks the Admin role
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
     /**
      * Workspace not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Stripe is not configured or the upstream call failed
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type CreateCheckoutError = CreateCheckoutErrors[keyof CreateCheckoutErrors];
@@ -3910,6 +4148,12 @@ export type CreateCheckoutResponse = CreateCheckoutResponses[keyof CreateCheckou
 
 export type CreatePortalData = {
     body?: never;
+    headers?: {
+        /**
+         * Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.
+         */
+        'Idempotency-Key'?: string;
+    };
     path?: never;
     query?: never;
     url: '/v1/billing/portal';
@@ -3919,19 +4163,19 @@ export type CreatePortalErrors = {
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Caller lacks the Admin role
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
     /**
      * Workspace not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Stripe is not configured or the upstream call failed
      */
-    500: ErrorResponse;
+    500: ProblemDetails;
 };
 
 export type CreatePortalError = CreatePortalErrors[keyof CreatePortalErrors];
@@ -3956,11 +4200,11 @@ export type BillingStatusErrors = {
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Workspace not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
 };
 
 export type BillingStatusError = BillingStatusErrors[keyof BillingStatusErrors];
@@ -3994,11 +4238,11 @@ export type GetAgentStatsErrors = {
     /**
      * Invalid time range
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
 };
 
 export type GetAgentStatsError = GetAgentStatsErrors[keyof GetAgentStatsErrors];
@@ -4072,11 +4316,11 @@ export type GetEventsErrors = {
     /**
      * Invalid filter or cursor
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
 };
 
 export type GetEventsError = GetEventsErrors[keyof GetEventsErrors];
@@ -4106,11 +4350,11 @@ export type GetEventByRequestIdErrors = {
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * No event with this request_id in the caller's org
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
 };
 
 export type GetEventByRequestIdError = GetEventByRequestIdErrors[keyof GetEventByRequestIdErrors];
@@ -4148,11 +4392,11 @@ export type GetTopHostsErrors = {
     /**
      * Invalid time range
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
 };
 
 export type GetTopHostsError = GetTopHostsErrors[keyof GetTopHostsErrors];
@@ -4191,11 +4435,11 @@ export type GetRuleHitsErrors = {
     /**
      * Invalid time range
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
 };
 
 export type GetRuleHitsError = GetRuleHitsErrors[keyof GetRuleHitsErrors];
@@ -4229,11 +4473,11 @@ export type GetStatsErrors = {
     /**
      * Invalid time range
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
 };
 
 export type GetStatsError = GetStatsErrors[keyof GetStatsErrors];
@@ -4267,11 +4511,11 @@ export type GetTimeseriesErrors = {
     /**
      * Invalid time range
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
 };
 
 export type GetTimeseriesError = GetTimeseriesErrors[keyof GetTimeseriesErrors];
@@ -4305,7 +4549,7 @@ export type ListKeysErrors = {
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
 };
 
 export type ListKeysError = ListKeysErrors[keyof ListKeysErrors];
@@ -4321,6 +4565,12 @@ export type ListKeysResponse = ListKeysResponses[keyof ListKeysResponses];
 
 export type CreateKeyData = {
     body: CreateKeyRequest;
+    headers?: {
+        /**
+         * Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.
+         */
+        'Idempotency-Key'?: string;
+    };
     path?: never;
     query?: never;
     url: '/v1/keys';
@@ -4330,15 +4580,15 @@ export type CreateKeyErrors = {
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Plan limit exceeded
      */
-    402: ErrorResponse;
+    402: ProblemDetails;
     /**
      * Caller lacks the Admin role
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
 };
 
 export type CreateKeyError = CreateKeyErrors[keyof CreateKeyErrors];
@@ -4354,6 +4604,12 @@ export type CreateKeyResponse2 = CreateKeyResponses[keyof CreateKeyResponses];
 
 export type DeleteKeyData = {
     body?: never;
+    headers?: {
+        /**
+         * Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         /**
          * API key ID
@@ -4368,19 +4624,19 @@ export type DeleteKeyErrors = {
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Caller lacks the Admin role
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
     /**
      * Key not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Key is still active — call /revoke first
      */
-    409: ErrorResponse;
+    409: ProblemDetails;
 };
 
 export type DeleteKeyError = DeleteKeyErrors[keyof DeleteKeyErrors];
@@ -4396,6 +4652,12 @@ export type DeleteKeyResponse = DeleteKeyResponses[keyof DeleteKeyResponses];
 
 export type RevokeKeyData = {
     body?: never;
+    headers?: {
+        /**
+         * Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         /**
          * API key ID
@@ -4410,15 +4672,15 @@ export type RevokeKeyErrors = {
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Caller lacks the Admin role
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
     /**
      * Key not found or already revoked
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
 };
 
 export type RevokeKeyError = RevokeKeyErrors[keyof RevokeKeyErrors];
@@ -4452,7 +4714,7 @@ export type ListOrgPoliciesErrors = {
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
 };
 
 export type ListOrgPoliciesError = ListOrgPoliciesErrors[keyof ListOrgPoliciesErrors];
@@ -4468,6 +4730,12 @@ export type ListOrgPoliciesResponse = ListOrgPoliciesResponses[keyof ListOrgPoli
 
 export type CreateOrgPolicyData = {
     body: CreateOrgPolicyRequest;
+    headers?: {
+        /**
+         * Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.
+         */
+        'Idempotency-Key'?: string;
+    };
     path?: never;
     query?: never;
     url: '/v1/org-policies';
@@ -4477,15 +4745,15 @@ export type CreateOrgPolicyErrors = {
     /**
      * Policy YAML failed validation
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Caller lacks the Admin role
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
 };
 
 export type CreateOrgPolicyError = CreateOrgPolicyErrors[keyof CreateOrgPolicyErrors];
@@ -4510,11 +4778,11 @@ export type GetActiveOrgPolicyErrors = {
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * No active org policy
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
 };
 
 export type GetActiveOrgPolicyError = GetActiveOrgPolicyErrors[keyof GetActiveOrgPolicyErrors];
@@ -4530,6 +4798,12 @@ export type GetActiveOrgPolicyResponse = GetActiveOrgPolicyResponses[keyof GetAc
 
 export type AnalyzeOrgPolicyData = {
     body: AnalyzeOrgPolicyRequest;
+    headers?: {
+        /**
+         * Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.
+         */
+        'Idempotency-Key'?: string;
+    };
     path?: never;
     query?: never;
     url: '/v1/org-policies/analyze';
@@ -4539,11 +4813,11 @@ export type AnalyzeOrgPolicyErrors = {
     /**
      * Policy YAML failed validation
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
 };
 
 export type AnalyzeOrgPolicyError = AnalyzeOrgPolicyErrors[keyof AnalyzeOrgPolicyErrors];
@@ -4568,7 +4842,7 @@ export type ListInheritedByHandlerErrors = {
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
 };
 
 export type ListInheritedByHandlerError = ListInheritedByHandlerErrors[keyof ListInheritedByHandlerErrors];
@@ -4584,6 +4858,12 @@ export type ListInheritedByHandlerResponse = ListInheritedByHandlerResponses[key
 
 export type ReplayOrgPolicyData = {
     body: OrgReplayRequest;
+    headers?: {
+        /**
+         * Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.
+         */
+        'Idempotency-Key'?: string;
+    };
     path?: never;
     query?: never;
     url: '/v1/org-policies/replay';
@@ -4593,11 +4873,11 @@ export type ReplayOrgPolicyErrors = {
     /**
      * Policy YAML failed validation, or `range` is unsupported
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
 };
 
 export type ReplayOrgPolicyError = ReplayOrgPolicyErrors[keyof ReplayOrgPolicyErrors];
@@ -4613,6 +4893,12 @@ export type ReplayOrgPolicyResponse = ReplayOrgPolicyResponses[keyof ReplayOrgPo
 
 export type TestOrgPolicyData = {
     body: TestOrgPolicyRequest;
+    headers?: {
+        /**
+         * Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.
+         */
+        'Idempotency-Key'?: string;
+    };
     path?: never;
     query?: never;
     url: '/v1/org-policies/test';
@@ -4622,11 +4908,11 @@ export type TestOrgPolicyErrors = {
     /**
      * Policy YAML failed validation, or test cases exceeded limits
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
 };
 
 export type TestOrgPolicyError = TestOrgPolicyErrors[keyof TestOrgPolicyErrors];
@@ -4642,6 +4928,12 @@ export type TestOrgPolicyResponse = TestOrgPolicyResponses[keyof TestOrgPolicyRe
 
 export type ActivateOrgPolicyData = {
     body?: never;
+    headers?: {
+        /**
+         * Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         /**
          * Org policy version to activate
@@ -4656,15 +4948,15 @@ export type ActivateOrgPolicyErrors = {
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Caller lacks the Admin role
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
     /**
      * Version does not exist for this org
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
 };
 
 export type ActivateOrgPolicyError = ActivateOrgPolicyErrors[keyof ActivateOrgPolicyErrors];
@@ -4689,7 +4981,7 @@ export type ListOrgsErrors = {
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
 };
 
 export type ListOrgsError = ListOrgsErrors[keyof ListOrgsErrors];
@@ -4705,6 +4997,12 @@ export type ListOrgsResponse2 = ListOrgsResponses[keyof ListOrgsResponses];
 
 export type CreateOrgData = {
     body: CreateOrgRequest;
+    headers?: {
+        /**
+         * Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.
+         */
+        'Idempotency-Key'?: string;
+    };
     path?: never;
     query?: never;
     url: '/v1/orgs';
@@ -4714,15 +5012,15 @@ export type CreateOrgErrors = {
     /**
      * Invalid name or per-user free-org cap exceeded (`org_count_exceeded`)
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Per-user create-org rate limit exceeded
      */
-    429: ErrorResponse;
+    429: ProblemDetails;
 };
 
 export type CreateOrgError = CreateOrgErrors[keyof CreateOrgErrors];
@@ -4738,6 +5036,12 @@ export type CreateOrgResponse = CreateOrgResponses[keyof CreateOrgResponses];
 
 export type DeleteOrgData = {
     body?: never;
+    headers?: {
+        /**
+         * Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         /**
          * Workspace ID
@@ -4752,19 +5056,19 @@ export type DeleteOrgErrors = {
     /**
      * Workspace is the caller's last owned workspace (`cannot_delete_last_org`)
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Caller lacks the Owner role or is not a member
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
     /**
      * Workspace not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
 };
 
 export type DeleteOrgError = DeleteOrgErrors[keyof DeleteOrgErrors];
@@ -4780,6 +5084,12 @@ export type DeleteOrgResponse = DeleteOrgResponses[keyof DeleteOrgResponses];
 
 export type RenameOrgData = {
     body: RenameOrgRequest;
+    headers?: {
+        /**
+         * Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         /**
          * Workspace ID
@@ -4794,19 +5104,19 @@ export type RenameOrgErrors = {
     /**
      * Invalid name (empty after trim or >100 chars)
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Caller lacks the Admin role or is not a member
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
     /**
      * Workspace not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
 };
 
 export type RenameOrgError = RenameOrgErrors[keyof RenameOrgErrors];
@@ -4853,15 +5163,15 @@ export type ListInvitationsErrors = {
     /**
      * Invalid cursor or unknown status filter
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Caller is not a member of the workspace
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
 };
 
 export type ListInvitationsError = ListInvitationsErrors[keyof ListInvitationsErrors];
@@ -4877,6 +5187,12 @@ export type ListInvitationsResponse = ListInvitationsResponses[keyof ListInvitat
 
 export type SendInvitationData = {
     body: SendInvitationRequest;
+    headers?: {
+        /**
+         * Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         /**
          * Workspace ID
@@ -4891,31 +5207,31 @@ export type SendInvitationErrors = {
     /**
      * Invalid email or role
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Plan member limit exceeded
      */
-    402: ErrorResponse;
+    402: ProblemDetails;
     /**
      * Caller lacks the Admin role or is not a member
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
     /**
      * Workspace not found
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * A pending invitation already exists for this email (`conflict_already_invited`)
      */
-    409: ErrorResponse;
+    409: ProblemDetails;
     /**
      * Per-workspace invitation rate limit exceeded
      */
-    429: ErrorResponse;
+    429: ProblemDetails;
 };
 
 export type SendInvitationError = SendInvitationErrors[keyof SendInvitationErrors];
@@ -4931,6 +5247,12 @@ export type SendInvitationResponse = SendInvitationResponses[keyof SendInvitatio
 
 export type ResendInvitationData = {
     body?: never;
+    headers?: {
+        /**
+         * Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         /**
          * Workspace ID
@@ -4949,19 +5271,19 @@ export type ResendInvitationErrors = {
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Caller lacks the Admin role or is not a member
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
     /**
      * Invitation not found in this workspace (`invitation_not_found`)
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Invitation is already in a terminal state (`invitation_invalid_state`)
      */
-    409: ErrorResponse;
+    409: ProblemDetails;
 };
 
 export type ResendInvitationError = ResendInvitationErrors[keyof ResendInvitationErrors];
@@ -4977,6 +5299,12 @@ export type ResendInvitationResponse = ResendInvitationResponses[keyof ResendInv
 
 export type RevokeInvitationData = {
     body?: never;
+    headers?: {
+        /**
+         * Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         /**
          * Workspace ID
@@ -4995,19 +5323,19 @@ export type RevokeInvitationErrors = {
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Caller lacks the Admin role or is not a member
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
     /**
      * Invitation not found in this workspace (`invitation_not_found`)
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Invitation is already in a terminal state (`invitation_invalid_state`)
      */
-    409: ErrorResponse;
+    409: ProblemDetails;
 };
 
 export type RevokeInvitationError = RevokeInvitationErrors[keyof RevokeInvitationErrors];
@@ -5037,11 +5365,11 @@ export type ListMembersErrors = {
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Caller is not a member of the workspace
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
 };
 
 export type ListMembersError = ListMembersErrors[keyof ListMembersErrors];
@@ -5057,6 +5385,12 @@ export type ListMembersResponse2 = ListMembersResponses[keyof ListMembersRespons
 
 export type RemoveMemberData = {
     body?: never;
+    headers?: {
+        /**
+         * Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         /**
          * Workspace ID
@@ -5075,15 +5409,15 @@ export type RemoveMemberErrors = {
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Caller lacks the Admin role or is not a member
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
     /**
      * Membership not found, or the target is an owner (owners cannot be removed directly)
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
 };
 
 export type RemoveMemberError = RemoveMemberErrors[keyof RemoveMemberErrors];
@@ -5099,6 +5433,12 @@ export type RemoveMemberResponse = RemoveMemberResponses[keyof RemoveMemberRespo
 
 export type UpdateMemberRoleData = {
     body: UpdateRoleRequest;
+    headers?: {
+        /**
+         * Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         /**
          * Workspace ID
@@ -5117,19 +5457,19 @@ export type UpdateMemberRoleErrors = {
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Caller lacks the Admin role or is not a member
      */
-    403: ErrorResponse;
+    403: ProblemDetails;
     /**
      * Membership not found in this workspace
      */
-    404: ErrorResponse;
+    404: ProblemDetails;
     /**
      * Update would demote the last owner of the workspace
      */
-    422: ErrorResponse;
+    422: ProblemDetails;
 };
 
 export type UpdateMemberRoleError = UpdateMemberRoleErrors[keyof UpdateMemberRoleErrors];
@@ -5154,7 +5494,7 @@ export type ListTemplatesErrors = {
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
 };
 
 export type ListTemplatesError = ListTemplatesErrors[keyof ListTemplatesErrors];
@@ -5184,11 +5524,11 @@ export type RenderTemplateErrors = {
     /**
      * Unknown template, missing required parameter, or rendered YAML failed validation
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * Authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
 };
 
 export type RenderTemplateError = RenderTemplateErrors[keyof RenderTemplateErrors];
@@ -5216,12 +5556,14 @@ export type StripeWebhookErrors = {
     /**
      * Body not UTF-8, unparseable, or signature verification failed
      */
-    400: unknown;
+    400: ProblemDetails;
     /**
      * Internal error recording the event for idempotency
      */
-    500: unknown;
+    500: ProblemDetails;
 };
+
+export type StripeWebhookError = StripeWebhookErrors[keyof StripeWebhookErrors];
 
 export type StripeWebhookResponses = {
     /**
@@ -5241,15 +5583,15 @@ export type IngestErrors = {
     /**
      * Invalid JSON body, oversized batch (>1000), invalid event, or invalid signature
      */
-    400: ErrorResponse;
+    400: ProblemDetails;
     /**
      * API key authentication required
      */
-    401: ErrorResponse;
+    401: ProblemDetails;
     /**
      * Per-org telemetry rate limit exceeded for the caller's plan tier
      */
-    429: ErrorResponse;
+    429: ProblemDetails;
 };
 
 export type IngestError = IngestErrors[keyof IngestErrors];

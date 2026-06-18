@@ -11,7 +11,7 @@ from ...models.device_token_response_type_1 import DeviceTokenResponseType1
 from ...models.device_token_response_type_2 import DeviceTokenResponseType2
 from ...models.device_token_response_type_3 import DeviceTokenResponseType3
 from ...models.device_token_response_type_4 import DeviceTokenResponseType4
-from ...models.error_response import ErrorResponse
+from ...models.problem_details import ProblemDetails
 from ...types import Response
 
 
@@ -42,7 +42,7 @@ def _parse_response(
     | DeviceTokenResponseType2
     | DeviceTokenResponseType3
     | DeviceTokenResponseType4
-    | ErrorResponse
+    | ProblemDetails
     | None
 ):
     if response.status_code == 200:
@@ -99,7 +99,7 @@ def _parse_response(
         return response_200
 
     if response.status_code == 500:
-        response_500 = ErrorResponse.from_dict(response.json())
+        response_500 = ProblemDetails.from_dict(response.json())
 
         return response_500
 
@@ -117,7 +117,7 @@ def _build_response(
     | DeviceTokenResponseType2
     | DeviceTokenResponseType3
     | DeviceTokenResponseType4
-    | ErrorResponse
+    | ProblemDetails
 ]:
     return Response(
         status_code=HTTPStatus(response.status_code),
@@ -137,7 +137,7 @@ def sync_detailed(
     | DeviceTokenResponseType2
     | DeviceTokenResponseType3
     | DeviceTokenResponseType4
-    | ErrorResponse
+    | ProblemDetails
 ]:
     """Public — the device_code itself is the bearer secret. CLI polls this every `interval` seconds until
     a terminal status (`approved`, `denied`, `expired`).
@@ -150,7 +150,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[DeviceTokenResponseType0 | DeviceTokenResponseType1 | DeviceTokenResponseType2 | DeviceTokenResponseType3 | DeviceTokenResponseType4 | ErrorResponse]
+        Response[DeviceTokenResponseType0 | DeviceTokenResponseType1 | DeviceTokenResponseType2 | DeviceTokenResponseType3 | DeviceTokenResponseType4 | ProblemDetails]
     """
 
     kwargs = _get_kwargs(
@@ -174,7 +174,7 @@ def sync(
     | DeviceTokenResponseType2
     | DeviceTokenResponseType3
     | DeviceTokenResponseType4
-    | ErrorResponse
+    | ProblemDetails
     | None
 ):
     """Public — the device_code itself is the bearer secret. CLI polls this every `interval` seconds until
@@ -188,7 +188,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        DeviceTokenResponseType0 | DeviceTokenResponseType1 | DeviceTokenResponseType2 | DeviceTokenResponseType3 | DeviceTokenResponseType4 | ErrorResponse
+        DeviceTokenResponseType0 | DeviceTokenResponseType1 | DeviceTokenResponseType2 | DeviceTokenResponseType3 | DeviceTokenResponseType4 | ProblemDetails
     """
 
     return sync_detailed(
@@ -207,7 +207,7 @@ async def asyncio_detailed(
     | DeviceTokenResponseType2
     | DeviceTokenResponseType3
     | DeviceTokenResponseType4
-    | ErrorResponse
+    | ProblemDetails
 ]:
     """Public — the device_code itself is the bearer secret. CLI polls this every `interval` seconds until
     a terminal status (`approved`, `denied`, `expired`).
@@ -220,7 +220,7 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[DeviceTokenResponseType0 | DeviceTokenResponseType1 | DeviceTokenResponseType2 | DeviceTokenResponseType3 | DeviceTokenResponseType4 | ErrorResponse]
+        Response[DeviceTokenResponseType0 | DeviceTokenResponseType1 | DeviceTokenResponseType2 | DeviceTokenResponseType3 | DeviceTokenResponseType4 | ProblemDetails]
     """
 
     kwargs = _get_kwargs(
@@ -242,7 +242,7 @@ async def asyncio(
     | DeviceTokenResponseType2
     | DeviceTokenResponseType3
     | DeviceTokenResponseType4
-    | ErrorResponse
+    | ProblemDetails
     | None
 ):
     """Public — the device_code itself is the bearer secret. CLI polls this every `interval` seconds until
@@ -256,7 +256,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        DeviceTokenResponseType0 | DeviceTokenResponseType1 | DeviceTokenResponseType2 | DeviceTokenResponseType3 | DeviceTokenResponseType4 | ErrorResponse
+        DeviceTokenResponseType0 | DeviceTokenResponseType1 | DeviceTokenResponseType2 | DeviceTokenResponseType3 | DeviceTokenResponseType4 | ProblemDetails
     """
 
     return (

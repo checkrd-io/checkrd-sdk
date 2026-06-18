@@ -200,12 +200,25 @@ export class PolicySignatureError extends CheckrdError {
 /**
  * Parsed control-plane error-response body. Matches the Stripe-style
  * envelope at ``crates/api/src/errors.rs``:
- * ``{ error: { type, code, message, param } }``.
+ * RFC 9457 problem+json from the control plane, or the legacy nested
+ * `{ error: { ... } }` envelope from telemetry-ingestion (until M-7).
  */
 export interface APIErrorBody {
+  /** RFC 9457 type URI, e.g. https://checkrd.io/errors/invalid_api_key. */
   type?: string;
+  /** RFC 9457 stable, human-readable problem-type summary. */
+  title?: string;
+  /** RFC 9457 HTTP status, duplicated in-body. */
+  status?: number;
+  /** RFC 9457 occurrence-specific explanation. */
+  detail?: string;
+  /** Stable, machine-readable code (extension member). Branch on this. */
   code?: string;
+  /** Per-field validation failures (RFC 6901 JSON Pointers). */
+  errors?: { pointer: string; detail: string }[];
+  /** Legacy nested-envelope message (telemetry-ingestion, until M-7). */
   message?: string;
+  /** Legacy nested-envelope param (telemetry-ingestion, until M-7). */
   param?: string | null;
 }
 

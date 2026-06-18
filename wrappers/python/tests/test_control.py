@@ -84,7 +84,7 @@ _PERMISSIVE_POLICY: dict[str, Any] = {
 def _build_dsse_envelope_for_test(
     payload_dict: dict[str, Any],
     keyid: str = "test-cp",
-    payload_type: str = "application/vnd.checkrd.policy-bundle+yaml",
+    payload_type: str = "application/vnd.checkrd.policy-bundle+json",
 ) -> dict[str, Any]:
     """Build a DSSE envelope wrapping a PolicyBundle payload.
 
@@ -194,7 +194,7 @@ class TestEventHandling:
         # and a (now, max_age_secs) tuple.
         call_args = engine.reload_policy_signed.call_args[0]
         envelope_arg = json.loads(call_args[0])
-        assert envelope_arg["payloadType"] == "application/vnd.checkrd.policy-bundle+yaml"
+        assert envelope_arg["payloadType"] == "application/vnd.checkrd.policy-bundle+json"
         assert "signatures" in envelope_arg
         # Trust list is JSON-encoded; just confirm it parses.
         trusted_arg = json.loads(call_args[1])
@@ -944,7 +944,7 @@ class TestEndToEnd:
 
         # Verify the signed envelope was forwarded to the verifier as JSON.
         envelope_arg = json.loads(engine.reload_policy_signed.call_args[0][0])
-        assert envelope_arg["payloadType"] == "application/vnd.checkrd.policy-bundle+yaml"
+        assert envelope_arg["payloadType"] == "application/vnd.checkrd.policy-bundle+json"
         assert "signatures" in envelope_arg
 
     def test_e2e_sse_disconnect_then_poll_fallback(self) -> None:

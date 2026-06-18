@@ -7,18 +7,21 @@ import httpx
 
 from ... import errors
 from ...client import AuthenticatedClient, Client
-from ...models.error_response import ErrorResponse
+from ...models.problem_details import ProblemDetails
 from ...models.replay_policy_request import ReplayPolicyRequest
 from ...models.replay_policy_response import ReplayPolicyResponse
-from ...types import Response
+from ...types import UNSET, Response, Unset
 
 
 def _get_kwargs(
     agent_id: UUID,
     *,
     body: ReplayPolicyRequest,
+    idempotency_key: str | Unset = UNSET,
 ) -> dict[str, Any]:
     headers: dict[str, Any] = {}
+    if not isinstance(idempotency_key, Unset):
+        headers["Idempotency-Key"] = idempotency_key
 
     _kwargs: dict[str, Any] = {
         "method": "post",
@@ -37,24 +40,24 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> ErrorResponse | ReplayPolicyResponse | None:
+) -> ProblemDetails | ReplayPolicyResponse | None:
     if response.status_code == 200:
         response_200 = ReplayPolicyResponse.from_dict(response.json())
 
         return response_200
 
     if response.status_code == 400:
-        response_400 = ErrorResponse.from_dict(response.json())
+        response_400 = ProblemDetails.from_dict(response.json())
 
         return response_400
 
     if response.status_code == 401:
-        response_401 = ErrorResponse.from_dict(response.json())
+        response_401 = ProblemDetails.from_dict(response.json())
 
         return response_401
 
     if response.status_code == 404:
-        response_404 = ErrorResponse.from_dict(response.json())
+        response_404 = ProblemDetails.from_dict(response.json())
 
         return response_404
 
@@ -66,7 +69,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[ErrorResponse | ReplayPolicyResponse]:
+) -> Response[ProblemDetails | ReplayPolicyResponse]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -80,10 +83,12 @@ def sync_detailed(
     *,
     client: AuthenticatedClient,
     body: ReplayPolicyRequest,
-) -> Response[ErrorResponse | ReplayPolicyResponse]:
+    idempotency_key: str | Unset = UNSET,
+) -> Response[ProblemDetails | ReplayPolicyResponse]:
     """
     Args:
         agent_id (UUID):
+        idempotency_key (str | Unset):
         body (ReplayPolicyRequest): `POST /v1/agents/{agent_id}/policies/replay` request body.
 
     Raises:
@@ -91,12 +96,13 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ErrorResponse | ReplayPolicyResponse]
+        Response[ProblemDetails | ReplayPolicyResponse]
     """
 
     kwargs = _get_kwargs(
         agent_id=agent_id,
         body=body,
+        idempotency_key=idempotency_key,
     )
 
     response = client.get_httpx_client().request(
@@ -111,10 +117,12 @@ def sync(
     *,
     client: AuthenticatedClient,
     body: ReplayPolicyRequest,
-) -> ErrorResponse | ReplayPolicyResponse | None:
+    idempotency_key: str | Unset = UNSET,
+) -> ProblemDetails | ReplayPolicyResponse | None:
     """
     Args:
         agent_id (UUID):
+        idempotency_key (str | Unset):
         body (ReplayPolicyRequest): `POST /v1/agents/{agent_id}/policies/replay` request body.
 
     Raises:
@@ -122,13 +130,14 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ErrorResponse | ReplayPolicyResponse
+        ProblemDetails | ReplayPolicyResponse
     """
 
     return sync_detailed(
         agent_id=agent_id,
         client=client,
         body=body,
+        idempotency_key=idempotency_key,
     ).parsed
 
 
@@ -137,10 +146,12 @@ async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
     body: ReplayPolicyRequest,
-) -> Response[ErrorResponse | ReplayPolicyResponse]:
+    idempotency_key: str | Unset = UNSET,
+) -> Response[ProblemDetails | ReplayPolicyResponse]:
     """
     Args:
         agent_id (UUID):
+        idempotency_key (str | Unset):
         body (ReplayPolicyRequest): `POST /v1/agents/{agent_id}/policies/replay` request body.
 
     Raises:
@@ -148,12 +159,13 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ErrorResponse | ReplayPolicyResponse]
+        Response[ProblemDetails | ReplayPolicyResponse]
     """
 
     kwargs = _get_kwargs(
         agent_id=agent_id,
         body=body,
+        idempotency_key=idempotency_key,
     )
 
     response = await client.get_async_httpx_client().request(**kwargs)
@@ -166,10 +178,12 @@ async def asyncio(
     *,
     client: AuthenticatedClient,
     body: ReplayPolicyRequest,
-) -> ErrorResponse | ReplayPolicyResponse | None:
+    idempotency_key: str | Unset = UNSET,
+) -> ProblemDetails | ReplayPolicyResponse | None:
     """
     Args:
         agent_id (UUID):
+        idempotency_key (str | Unset):
         body (ReplayPolicyRequest): `POST /v1/agents/{agent_id}/policies/replay` request body.
 
     Raises:
@@ -177,7 +191,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ErrorResponse | ReplayPolicyResponse
+        ProblemDetails | ReplayPolicyResponse
     """
 
     return (
@@ -185,5 +199,6 @@ async def asyncio(
             agent_id=agent_id,
             client=client,
             body=body,
+            idempotency_key=idempotency_key,
         )
     ).parsed

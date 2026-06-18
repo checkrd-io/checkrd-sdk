@@ -7,14 +7,19 @@ import httpx
 
 from ... import errors
 from ...client import AuthenticatedClient, Client
-from ...models.error_response import ErrorResponse
+from ...models.problem_details import ProblemDetails
 from ...models.success_response import SuccessResponse
-from ...types import Response
+from ...types import UNSET, Response, Unset
 
 
 def _get_kwargs(
     org_id: UUID,
+    *,
+    idempotency_key: str | Unset = UNSET,
 ) -> dict[str, Any]:
+    headers: dict[str, Any] = {}
+    if not isinstance(idempotency_key, Unset):
+        headers["Idempotency-Key"] = idempotency_key
 
     _kwargs: dict[str, Any] = {
         "method": "delete",
@@ -23,34 +28,35 @@ def _get_kwargs(
         ),
     }
 
+    _kwargs["headers"] = headers
     return _kwargs
 
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> ErrorResponse | SuccessResponse | None:
+) -> ProblemDetails | SuccessResponse | None:
     if response.status_code == 200:
         response_200 = SuccessResponse.from_dict(response.json())
 
         return response_200
 
     if response.status_code == 400:
-        response_400 = ErrorResponse.from_dict(response.json())
+        response_400 = ProblemDetails.from_dict(response.json())
 
         return response_400
 
     if response.status_code == 401:
-        response_401 = ErrorResponse.from_dict(response.json())
+        response_401 = ProblemDetails.from_dict(response.json())
 
         return response_401
 
     if response.status_code == 403:
-        response_403 = ErrorResponse.from_dict(response.json())
+        response_403 = ProblemDetails.from_dict(response.json())
 
         return response_403
 
     if response.status_code == 404:
-        response_404 = ErrorResponse.from_dict(response.json())
+        response_404 = ProblemDetails.from_dict(response.json())
 
         return response_404
 
@@ -62,7 +68,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[ErrorResponse | SuccessResponse]:
+) -> Response[ProblemDetails | SuccessResponse]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -75,7 +81,8 @@ def sync_detailed(
     org_id: UUID,
     *,
     client: AuthenticatedClient,
-) -> Response[ErrorResponse | SuccessResponse]:
+    idempotency_key: str | Unset = UNSET,
+) -> Response[ProblemDetails | SuccessResponse]:
     """Soft-delete a workspace. Requires the Owner role. Blocked when
     the workspace is the caller's last owned workspace (would leave
     the user orgless and unable to authenticate) — returns
@@ -83,17 +90,19 @@ def sync_detailed(
 
     Args:
         org_id (UUID):
+        idempotency_key (str | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ErrorResponse | SuccessResponse]
+        Response[ProblemDetails | SuccessResponse]
     """
 
     kwargs = _get_kwargs(
         org_id=org_id,
+        idempotency_key=idempotency_key,
     )
 
     response = client.get_httpx_client().request(
@@ -107,7 +116,8 @@ def sync(
     org_id: UUID,
     *,
     client: AuthenticatedClient,
-) -> ErrorResponse | SuccessResponse | None:
+    idempotency_key: str | Unset = UNSET,
+) -> ProblemDetails | SuccessResponse | None:
     """Soft-delete a workspace. Requires the Owner role. Blocked when
     the workspace is the caller's last owned workspace (would leave
     the user orgless and unable to authenticate) — returns
@@ -115,18 +125,20 @@ def sync(
 
     Args:
         org_id (UUID):
+        idempotency_key (str | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ErrorResponse | SuccessResponse
+        ProblemDetails | SuccessResponse
     """
 
     return sync_detailed(
         org_id=org_id,
         client=client,
+        idempotency_key=idempotency_key,
     ).parsed
 
 
@@ -134,7 +146,8 @@ async def asyncio_detailed(
     org_id: UUID,
     *,
     client: AuthenticatedClient,
-) -> Response[ErrorResponse | SuccessResponse]:
+    idempotency_key: str | Unset = UNSET,
+) -> Response[ProblemDetails | SuccessResponse]:
     """Soft-delete a workspace. Requires the Owner role. Blocked when
     the workspace is the caller's last owned workspace (would leave
     the user orgless and unable to authenticate) — returns
@@ -142,17 +155,19 @@ async def asyncio_detailed(
 
     Args:
         org_id (UUID):
+        idempotency_key (str | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ErrorResponse | SuccessResponse]
+        Response[ProblemDetails | SuccessResponse]
     """
 
     kwargs = _get_kwargs(
         org_id=org_id,
+        idempotency_key=idempotency_key,
     )
 
     response = await client.get_async_httpx_client().request(**kwargs)
@@ -164,7 +179,8 @@ async def asyncio(
     org_id: UUID,
     *,
     client: AuthenticatedClient,
-) -> ErrorResponse | SuccessResponse | None:
+    idempotency_key: str | Unset = UNSET,
+) -> ProblemDetails | SuccessResponse | None:
     """Soft-delete a workspace. Requires the Owner role. Blocked when
     the workspace is the caller's last owned workspace (would leave
     the user orgless and unable to authenticate) — returns
@@ -172,18 +188,20 @@ async def asyncio(
 
     Args:
         org_id (UUID):
+        idempotency_key (str | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ErrorResponse | SuccessResponse
+        ProblemDetails | SuccessResponse
     """
 
     return (
         await asyncio_detailed(
             org_id=org_id,
             client=client,
+            idempotency_key=idempotency_key,
         )
     ).parsed

@@ -5,8 +5,8 @@ import httpx
 
 from ... import errors
 from ...client import AuthenticatedClient, Client
-from ...models.error_response import ErrorResponse
 from ...models.inherited_by_agent import InheritedByAgent
+from ...models.problem_details import ProblemDetails
 from ...types import Response
 
 
@@ -22,7 +22,7 @@ def _get_kwargs() -> dict[str, Any]:
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> ErrorResponse | list[InheritedByAgent] | None:
+) -> ProblemDetails | list[InheritedByAgent] | None:
     if response.status_code == 200:
         response_200 = []
         _response_200 = response.json()
@@ -34,7 +34,7 @@ def _parse_response(
         return response_200
 
     if response.status_code == 401:
-        response_401 = ErrorResponse.from_dict(response.json())
+        response_401 = ProblemDetails.from_dict(response.json())
 
         return response_401
 
@@ -46,7 +46,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[ErrorResponse | list[InheritedByAgent]]:
+) -> Response[ProblemDetails | list[InheritedByAgent]]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -58,7 +58,7 @@ def _build_response(
 def sync_detailed(
     *,
     client: AuthenticatedClient,
-) -> Response[ErrorResponse | list[InheritedByAgent]]:
+) -> Response[ProblemDetails | list[InheritedByAgent]]:
     """Lists every agent in the caller's org that inherits the active org policy.
     Every non-deleted agent inherits automatically — there is no opt-out
     today — so this is effectively a per-agent summary of (name, active
@@ -70,7 +70,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ErrorResponse | list[InheritedByAgent]]
+        Response[ProblemDetails | list[InheritedByAgent]]
     """
 
     kwargs = _get_kwargs()
@@ -85,7 +85,7 @@ def sync_detailed(
 def sync(
     *,
     client: AuthenticatedClient,
-) -> ErrorResponse | list[InheritedByAgent] | None:
+) -> ProblemDetails | list[InheritedByAgent] | None:
     """Lists every agent in the caller's org that inherits the active org policy.
     Every non-deleted agent inherits automatically — there is no opt-out
     today — so this is effectively a per-agent summary of (name, active
@@ -97,7 +97,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ErrorResponse | list[InheritedByAgent]
+        ProblemDetails | list[InheritedByAgent]
     """
 
     return sync_detailed(
@@ -108,7 +108,7 @@ def sync(
 async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
-) -> Response[ErrorResponse | list[InheritedByAgent]]:
+) -> Response[ProblemDetails | list[InheritedByAgent]]:
     """Lists every agent in the caller's org that inherits the active org policy.
     Every non-deleted agent inherits automatically — there is no opt-out
     today — so this is effectively a per-agent summary of (name, active
@@ -120,7 +120,7 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ErrorResponse | list[InheritedByAgent]]
+        Response[ProblemDetails | list[InheritedByAgent]]
     """
 
     kwargs = _get_kwargs()
@@ -133,7 +133,7 @@ async def asyncio_detailed(
 async def asyncio(
     *,
     client: AuthenticatedClient,
-) -> ErrorResponse | list[InheritedByAgent] | None:
+) -> ProblemDetails | list[InheritedByAgent] | None:
     """Lists every agent in the caller's org that inherits the active org policy.
     Every non-deleted agent inherits automatically — there is no opt-out
     today — so this is effectively a per-agent summary of (name, active
@@ -145,7 +145,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ErrorResponse | list[InheritedByAgent]
+        ProblemDetails | list[InheritedByAgent]
     """
 
     return (

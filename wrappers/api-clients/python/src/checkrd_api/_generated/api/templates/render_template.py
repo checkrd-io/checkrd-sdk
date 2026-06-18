@@ -6,7 +6,7 @@ import httpx
 
 from ... import errors
 from ...client import AuthenticatedClient, Client
-from ...models.error_response import ErrorResponse
+from ...models.problem_details import ProblemDetails
 from ...models.render_template_request import RenderTemplateRequest
 from ...models.render_template_response import RenderTemplateResponse
 from ...types import Response
@@ -36,19 +36,19 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> ErrorResponse | RenderTemplateResponse | None:
+) -> ProblemDetails | RenderTemplateResponse | None:
     if response.status_code == 200:
         response_200 = RenderTemplateResponse.from_dict(response.json())
 
         return response_200
 
     if response.status_code == 400:
-        response_400 = ErrorResponse.from_dict(response.json())
+        response_400 = ProblemDetails.from_dict(response.json())
 
         return response_400
 
     if response.status_code == 401:
-        response_401 = ErrorResponse.from_dict(response.json())
+        response_401 = ProblemDetails.from_dict(response.json())
 
         return response_401
 
@@ -60,7 +60,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[ErrorResponse | RenderTemplateResponse]:
+) -> Response[ProblemDetails | RenderTemplateResponse]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -74,7 +74,7 @@ def sync_detailed(
     *,
     client: AuthenticatedClient,
     body: RenderTemplateRequest,
-) -> Response[ErrorResponse | RenderTemplateResponse]:
+) -> Response[ProblemDetails | RenderTemplateResponse]:
     """
     Args:
         id (str):
@@ -89,7 +89,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ErrorResponse | RenderTemplateResponse]
+        Response[ProblemDetails | RenderTemplateResponse]
     """
 
     kwargs = _get_kwargs(
@@ -109,7 +109,7 @@ def sync(
     *,
     client: AuthenticatedClient,
     body: RenderTemplateRequest,
-) -> ErrorResponse | RenderTemplateResponse | None:
+) -> ProblemDetails | RenderTemplateResponse | None:
     """
     Args:
         id (str):
@@ -124,7 +124,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ErrorResponse | RenderTemplateResponse
+        ProblemDetails | RenderTemplateResponse
     """
 
     return sync_detailed(
@@ -139,7 +139,7 @@ async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
     body: RenderTemplateRequest,
-) -> Response[ErrorResponse | RenderTemplateResponse]:
+) -> Response[ProblemDetails | RenderTemplateResponse]:
     """
     Args:
         id (str):
@@ -154,7 +154,7 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ErrorResponse | RenderTemplateResponse]
+        Response[ProblemDetails | RenderTemplateResponse]
     """
 
     kwargs = _get_kwargs(
@@ -172,7 +172,7 @@ async def asyncio(
     *,
     client: AuthenticatedClient,
     body: RenderTemplateRequest,
-) -> ErrorResponse | RenderTemplateResponse | None:
+) -> ProblemDetails | RenderTemplateResponse | None:
     """
     Args:
         id (str):
@@ -187,7 +187,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ErrorResponse | RenderTemplateResponse
+        ProblemDetails | RenderTemplateResponse
     """
 
     return (

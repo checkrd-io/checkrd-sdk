@@ -7,8 +7,8 @@ import httpx
 
 from ... import errors
 from ...client import AuthenticatedClient, Client
-from ...models.error_response import ErrorResponse
 from ...models.list_members_response import ListMembersResponse
+from ...models.problem_details import ProblemDetails
 from ...types import Response
 
 
@@ -28,19 +28,19 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> ErrorResponse | ListMembersResponse | None:
+) -> ListMembersResponse | ProblemDetails | None:
     if response.status_code == 200:
         response_200 = ListMembersResponse.from_dict(response.json())
 
         return response_200
 
     if response.status_code == 401:
-        response_401 = ErrorResponse.from_dict(response.json())
+        response_401 = ProblemDetails.from_dict(response.json())
 
         return response_401
 
     if response.status_code == 403:
-        response_403 = ErrorResponse.from_dict(response.json())
+        response_403 = ProblemDetails.from_dict(response.json())
 
         return response_403
 
@@ -52,7 +52,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[ErrorResponse | ListMembersResponse]:
+) -> Response[ListMembersResponse | ProblemDetails]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -65,7 +65,7 @@ def sync_detailed(
     org_id: UUID,
     *,
     client: AuthenticatedClient,
-) -> Response[ErrorResponse | ListMembersResponse]:
+) -> Response[ListMembersResponse | ProblemDetails]:
     """List every member of a workspace. Any member of the workspace
     (regardless of role) can view the roster.
 
@@ -77,7 +77,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ErrorResponse | ListMembersResponse]
+        Response[ListMembersResponse | ProblemDetails]
     """
 
     kwargs = _get_kwargs(
@@ -95,7 +95,7 @@ def sync(
     org_id: UUID,
     *,
     client: AuthenticatedClient,
-) -> ErrorResponse | ListMembersResponse | None:
+) -> ListMembersResponse | ProblemDetails | None:
     """List every member of a workspace. Any member of the workspace
     (regardless of role) can view the roster.
 
@@ -107,7 +107,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ErrorResponse | ListMembersResponse
+        ListMembersResponse | ProblemDetails
     """
 
     return sync_detailed(
@@ -120,7 +120,7 @@ async def asyncio_detailed(
     org_id: UUID,
     *,
     client: AuthenticatedClient,
-) -> Response[ErrorResponse | ListMembersResponse]:
+) -> Response[ListMembersResponse | ProblemDetails]:
     """List every member of a workspace. Any member of the workspace
     (regardless of role) can view the roster.
 
@@ -132,7 +132,7 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ErrorResponse | ListMembersResponse]
+        Response[ListMembersResponse | ProblemDetails]
     """
 
     kwargs = _get_kwargs(
@@ -148,7 +148,7 @@ async def asyncio(
     org_id: UUID,
     *,
     client: AuthenticatedClient,
-) -> ErrorResponse | ListMembersResponse | None:
+) -> ListMembersResponse | ProblemDetails | None:
     """List every member of a workspace. Any member of the workspace
     (regardless of role) can view the roster.
 
@@ -160,7 +160,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ErrorResponse | ListMembersResponse
+        ListMembersResponse | ProblemDetails
     """
 
     return (

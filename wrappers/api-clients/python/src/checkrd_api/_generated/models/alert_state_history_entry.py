@@ -7,7 +7,6 @@ from uuid import UUID
 
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
-from dateutil.parser import isoparse
 
 from ..types import UNSET, Unset
 
@@ -86,7 +85,7 @@ class AlertStateHistoryEntry:
 
         reason = d.pop("reason")
 
-        evaluated_at = isoparse(d.pop("evaluated_at"))
+        evaluated_at = datetime.datetime.fromisoformat(d.pop("evaluated_at"))
 
         def _parse_observed_value(data: object) -> float | None | Unset:
             if data is None:

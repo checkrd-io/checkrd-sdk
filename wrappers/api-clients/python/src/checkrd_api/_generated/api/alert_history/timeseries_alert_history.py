@@ -7,7 +7,7 @@ import httpx
 from ... import errors
 from ...client import AuthenticatedClient, Client
 from ...models.alert_history_bucket import AlertHistoryBucket
-from ...models.error_response import ErrorResponse
+from ...models.problem_details import ProblemDetails
 from ...types import UNSET, Response, Unset
 
 
@@ -57,7 +57,7 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> ErrorResponse | list[AlertHistoryBucket] | None:
+) -> ProblemDetails | list[AlertHistoryBucket] | None:
     if response.status_code == 200:
         response_200 = []
         _response_200 = response.json()
@@ -69,17 +69,17 @@ def _parse_response(
         return response_200
 
     if response.status_code == 400:
-        response_400 = ErrorResponse.from_dict(response.json())
+        response_400 = ProblemDetails.from_dict(response.json())
 
         return response_400
 
     if response.status_code == 401:
-        response_401 = ErrorResponse.from_dict(response.json())
+        response_401 = ProblemDetails.from_dict(response.json())
 
         return response_401
 
     if response.status_code == 403:
-        response_403 = ErrorResponse.from_dict(response.json())
+        response_403 = ProblemDetails.from_dict(response.json())
 
         return response_403
 
@@ -91,7 +91,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[ErrorResponse | list[AlertHistoryBucket]]:
+) -> Response[ProblemDetails | list[AlertHistoryBucket]]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -110,7 +110,7 @@ def sync_detailed(
     agent_id: str | Unset = UNSET,
     new_state: str | Unset = UNSET,
     bucket: str | Unset = UNSET,
-) -> Response[ErrorResponse | list[AlertHistoryBucket]]:
+) -> Response[ProblemDetails | list[AlertHistoryBucket]]:
     """
     Args:
         period (str | Unset):
@@ -126,7 +126,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ErrorResponse | list[AlertHistoryBucket]]
+        Response[ProblemDetails | list[AlertHistoryBucket]]
     """
 
     kwargs = _get_kwargs(
@@ -156,7 +156,7 @@ def sync(
     agent_id: str | Unset = UNSET,
     new_state: str | Unset = UNSET,
     bucket: str | Unset = UNSET,
-) -> ErrorResponse | list[AlertHistoryBucket] | None:
+) -> ProblemDetails | list[AlertHistoryBucket] | None:
     """
     Args:
         period (str | Unset):
@@ -172,7 +172,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ErrorResponse | list[AlertHistoryBucket]
+        ProblemDetails | list[AlertHistoryBucket]
     """
 
     return sync_detailed(
@@ -197,7 +197,7 @@ async def asyncio_detailed(
     agent_id: str | Unset = UNSET,
     new_state: str | Unset = UNSET,
     bucket: str | Unset = UNSET,
-) -> Response[ErrorResponse | list[AlertHistoryBucket]]:
+) -> Response[ProblemDetails | list[AlertHistoryBucket]]:
     """
     Args:
         period (str | Unset):
@@ -213,7 +213,7 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ErrorResponse | list[AlertHistoryBucket]]
+        Response[ProblemDetails | list[AlertHistoryBucket]]
     """
 
     kwargs = _get_kwargs(
@@ -241,7 +241,7 @@ async def asyncio(
     agent_id: str | Unset = UNSET,
     new_state: str | Unset = UNSET,
     bucket: str | Unset = UNSET,
-) -> ErrorResponse | list[AlertHistoryBucket] | None:
+) -> ProblemDetails | list[AlertHistoryBucket] | None:
     """
     Args:
         period (str | Unset):
@@ -257,7 +257,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ErrorResponse | list[AlertHistoryBucket]
+        ProblemDetails | list[AlertHistoryBucket]
     """
 
     return (

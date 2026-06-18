@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
@@ -23,6 +23,11 @@ class ControlState:
 
         Attributes:
             kill_switch_active (bool): Whether the kill switch is currently engaged.
+            active_policy_hash (None | str | Unset): SHA-256 of the active policy YAML, lowercase hex. Same value as
+                `ControlInit.active_policy_hash` so the SDK's hash-based
+                idempotency cache (OPA bundle / TUF "don't re-apply unchanged"
+                pattern) works identically across the SSE and poll paths.
+                `None` when the agent has no active policy.
             policy_envelope (ControlStatePolicyEnvelope | Unset): DSSE-signed policy envelope. `None` only when the agent
                 has
                 no active policy at all (a brand-new agent before its first
@@ -32,11 +37,18 @@ class ControlState:
     """
 
     kill_switch_active: bool
+    active_policy_hash: None | str | Unset = UNSET
     policy_envelope: ControlStatePolicyEnvelope | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         kill_switch_active = self.kill_switch_active
+
+        active_policy_hash: None | str | Unset
+        if isinstance(self.active_policy_hash, Unset):
+            active_policy_hash = UNSET
+        else:
+            active_policy_hash = self.active_policy_hash
 
         policy_envelope: dict[str, Any] | Unset = UNSET
         if not isinstance(self.policy_envelope, Unset):
@@ -49,6 +61,8 @@ class ControlState:
                 "kill_switch_active": kill_switch_active,
             }
         )
+        if active_policy_hash is not UNSET:
+            field_dict["active_policy_hash"] = active_policy_hash
         if policy_envelope is not UNSET:
             field_dict["policy_envelope"] = policy_envelope
 
@@ -61,6 +75,15 @@ class ControlState:
         d = dict(src_dict)
         kill_switch_active = d.pop("kill_switch_active")
 
+        def _parse_active_policy_hash(data: object) -> None | str | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(None | str | Unset, data)
+
+        active_policy_hash = _parse_active_policy_hash(d.pop("active_policy_hash", UNSET))
+
         _policy_envelope = d.pop("policy_envelope", UNSET)
         policy_envelope: ControlStatePolicyEnvelope | Unset
         if isinstance(_policy_envelope, Unset):
@@ -70,6 +93,7 @@ class ControlState:
 
         control_state = cls(
             kill_switch_active=kill_switch_active,
+            active_policy_hash=active_policy_hash,
             policy_envelope=policy_envelope,
         )
 

@@ -5,7 +5,7 @@ import httpx
 
 from ... import errors
 from ...client import AuthenticatedClient, Client
-from ...models.error_response import ErrorResponse
+from ...models.problem_details import ProblemDetails
 from ...types import UNSET, Response
 
 
@@ -32,18 +32,18 @@ def _get_kwargs(
     return _kwargs
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Any | ErrorResponse | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Any | ProblemDetails | None:
     if response.status_code == 302:
         response_302 = cast(Any, None)
         return response_302
 
     if response.status_code == 401:
-        response_401 = ErrorResponse.from_dict(response.json())
+        response_401 = ProblemDetails.from_dict(response.json())
 
         return response_401
 
     if response.status_code == 502:
-        response_502 = ErrorResponse.from_dict(response.json())
+        response_502 = ProblemDetails.from_dict(response.json())
 
         return response_502
 
@@ -53,7 +53,9 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any | ErrorResponse]:
+def _build_response(
+    *, client: AuthenticatedClient | Client, response: httpx.Response
+) -> Response[Any | ProblemDetails]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -67,7 +69,7 @@ def sync_detailed(
     client: AuthenticatedClient | Client,
     code: str,
     state: str,
-) -> Response[Any | ErrorResponse]:
+) -> Response[Any | ProblemDetails]:
     """Public — completes the WorkOS OAuth round-trip. Exchanges `code` for user identity, upserts the
     user, auto-creates a workspace if needed, issues an EdDSA JWT, and redirects to the dashboard with
     httpOnly session cookies set.
@@ -81,7 +83,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any | ErrorResponse]
+        Response[Any | ProblemDetails]
     """
 
     kwargs = _get_kwargs(
@@ -101,7 +103,7 @@ def sync(
     client: AuthenticatedClient | Client,
     code: str,
     state: str,
-) -> Any | ErrorResponse | None:
+) -> Any | ProblemDetails | None:
     """Public — completes the WorkOS OAuth round-trip. Exchanges `code` for user identity, upserts the
     user, auto-creates a workspace if needed, issues an EdDSA JWT, and redirects to the dashboard with
     httpOnly session cookies set.
@@ -115,7 +117,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Any | ErrorResponse
+        Any | ProblemDetails
     """
 
     return sync_detailed(
@@ -130,7 +132,7 @@ async def asyncio_detailed(
     client: AuthenticatedClient | Client,
     code: str,
     state: str,
-) -> Response[Any | ErrorResponse]:
+) -> Response[Any | ProblemDetails]:
     """Public — completes the WorkOS OAuth round-trip. Exchanges `code` for user identity, upserts the
     user, auto-creates a workspace if needed, issues an EdDSA JWT, and redirects to the dashboard with
     httpOnly session cookies set.
@@ -144,7 +146,7 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any | ErrorResponse]
+        Response[Any | ProblemDetails]
     """
 
     kwargs = _get_kwargs(
@@ -162,7 +164,7 @@ async def asyncio(
     client: AuthenticatedClient | Client,
     code: str,
     state: str,
-) -> Any | ErrorResponse | None:
+) -> Any | ProblemDetails | None:
     """Public — completes the WorkOS OAuth round-trip. Exchanges `code` for user identity, upserts the
     user, auto-creates a workspace if needed, issues an EdDSA JWT, and redirects to the dashboard with
     httpOnly session cookies set.
@@ -176,7 +178,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Any | ErrorResponse
+        Any | ProblemDetails
     """
 
     return (

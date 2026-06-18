@@ -254,6 +254,17 @@ from checkrd.batcher import TelemetryBatcher as ControlPlaneSink  # noqa: E402
 # ---------------------------------------------------------------------------
 
 
+# OpenTelemetry GenAI semantic-conventions version this SDK emits. Pinned
+# explicitly so collectors know exactly which convention the gen_ai.* span
+# attributes follow. `schema_url` is OTel's canonical mechanism for declaring
+# it on emitted telemetry. Migration posture is switch-over (emit the latest
+# attribute names) — never dual-emit; operators may still set
+# OTEL_SEMCONV_STABILITY_OPT_IN and the OTel SDK reads it directly (we never
+# override it). Bump in lockstep with the GenAI attribute names below.
+GENAI_SEMCONV_VERSION = "1.41.0"
+OTEL_SCHEMA_URL = f"https://opentelemetry.io/schemas/{GENAI_SEMCONV_VERSION}"
+
+
 class OtlpSink:
     """Export telemetry events as OTLP/HTTP traces to an external collector.
 
@@ -314,14 +325,19 @@ class OtlpSink:
                 "Install with: pip install checkrd[otlp]"
             ) from None
 
-        resource = Resource.create({"service.name": service_name})
+        resource = Resource.create(
+            {"service.name": service_name}, schema_url=OTEL_SCHEMA_URL
+        )
         exporter = OTLPSpanExporter(
             endpoint=f"{endpoint.rstrip('/')}/v1/traces",
             headers=headers or {},
         )
         self._provider = TracerProvider(resource=resource)
         self._provider.add_span_processor(BatchSpanProcessor(exporter))
-        self._tracer = self._provider.get_tracer("checkrd.otlp_sink")
+        # schema_url pins the GenAI semconv version on this tracer's spans.
+        self._tracer = self._provider.get_tracer(
+            "checkrd.otlp_sink", schema_url=OTEL_SCHEMA_URL
+        )
         self._stopped = False
 
     def enqueue(self, event: dict[str, Any]) -> None:
@@ -486,7 +502,7 @@ class OTelSpanSink:
                 ) from None
             from checkrd._version import __version__
 
-            tracer = trace.get_tracer("checkrd.sdk", __version__)
+            tracer = trace.get_tracer("checkrd.sdk", __version__, OTEL_SCHEMA_URL)
 
         self._tracer = tracer
         self._stopped = False
@@ -565,7 +581,7 @@ def _apply_semconv_attributes(span: Any, event: dict[str, Any]) -> None:
     if latency_ms is not None:
         span.set_attribute("checkrd.latency_ms", latency_ms)
 
-    # --- GenAI semconv (1.27+) ----------------------------------------
+    # --- GenAI semconv (pinned via OTEL_SCHEMA_URL; switch-over, no dual-emit) ---
     # Two attribute-source layers, both stamped here so a span carries
     # the full GenAI picture regardless of which path produced it:
     #

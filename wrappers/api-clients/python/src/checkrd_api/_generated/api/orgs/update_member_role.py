@@ -7,10 +7,10 @@ import httpx
 
 from ... import errors
 from ...client import AuthenticatedClient, Client
-from ...models.error_response import ErrorResponse
+from ...models.problem_details import ProblemDetails
 from ...models.success_response import SuccessResponse
 from ...models.update_role_request import UpdateRoleRequest
-from ...types import Response
+from ...types import UNSET, Response, Unset
 
 
 def _get_kwargs(
@@ -18,8 +18,11 @@ def _get_kwargs(
     member_id: UUID,
     *,
     body: UpdateRoleRequest,
+    idempotency_key: str | Unset = UNSET,
 ) -> dict[str, Any]:
     headers: dict[str, Any] = {}
+    if not isinstance(idempotency_key, Unset):
+        headers["Idempotency-Key"] = idempotency_key
 
     _kwargs: dict[str, Any] = {
         "method": "put",
@@ -39,29 +42,29 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> ErrorResponse | SuccessResponse | None:
+) -> ProblemDetails | SuccessResponse | None:
     if response.status_code == 200:
         response_200 = SuccessResponse.from_dict(response.json())
 
         return response_200
 
     if response.status_code == 401:
-        response_401 = ErrorResponse.from_dict(response.json())
+        response_401 = ProblemDetails.from_dict(response.json())
 
         return response_401
 
     if response.status_code == 403:
-        response_403 = ErrorResponse.from_dict(response.json())
+        response_403 = ProblemDetails.from_dict(response.json())
 
         return response_403
 
     if response.status_code == 404:
-        response_404 = ErrorResponse.from_dict(response.json())
+        response_404 = ProblemDetails.from_dict(response.json())
 
         return response_404
 
     if response.status_code == 422:
-        response_422 = ErrorResponse.from_dict(response.json())
+        response_422 = ProblemDetails.from_dict(response.json())
 
         return response_422
 
@@ -73,7 +76,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[ErrorResponse | SuccessResponse]:
+) -> Response[ProblemDetails | SuccessResponse]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -88,7 +91,8 @@ def sync_detailed(
     *,
     client: AuthenticatedClient,
     body: UpdateRoleRequest,
-) -> Response[ErrorResponse | SuccessResponse]:
+    idempotency_key: str | Unset = UNSET,
+) -> Response[ProblemDetails | SuccessResponse]:
     r"""Update a member's role. Requires the Admin role.
 
      The mutation is linearizable: the implementation locks every
@@ -101,6 +105,7 @@ def sync_detailed(
     Args:
         org_id (UUID):
         member_id (UUID):
+        idempotency_key (str | Unset):
         body (UpdateRoleRequest): Request body for `PUT
             /v1/orgs/{org_id}/members/{member_id}/role`.
 
@@ -109,13 +114,14 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ErrorResponse | SuccessResponse]
+        Response[ProblemDetails | SuccessResponse]
     """
 
     kwargs = _get_kwargs(
         org_id=org_id,
         member_id=member_id,
         body=body,
+        idempotency_key=idempotency_key,
     )
 
     response = client.get_httpx_client().request(
@@ -131,7 +137,8 @@ def sync(
     *,
     client: AuthenticatedClient,
     body: UpdateRoleRequest,
-) -> ErrorResponse | SuccessResponse | None:
+    idempotency_key: str | Unset = UNSET,
+) -> ProblemDetails | SuccessResponse | None:
     r"""Update a member's role. Requires the Admin role.
 
      The mutation is linearizable: the implementation locks every
@@ -144,6 +151,7 @@ def sync(
     Args:
         org_id (UUID):
         member_id (UUID):
+        idempotency_key (str | Unset):
         body (UpdateRoleRequest): Request body for `PUT
             /v1/orgs/{org_id}/members/{member_id}/role`.
 
@@ -152,7 +160,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ErrorResponse | SuccessResponse
+        ProblemDetails | SuccessResponse
     """
 
     return sync_detailed(
@@ -160,6 +168,7 @@ def sync(
         member_id=member_id,
         client=client,
         body=body,
+        idempotency_key=idempotency_key,
     ).parsed
 
 
@@ -169,7 +178,8 @@ async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
     body: UpdateRoleRequest,
-) -> Response[ErrorResponse | SuccessResponse]:
+    idempotency_key: str | Unset = UNSET,
+) -> Response[ProblemDetails | SuccessResponse]:
     r"""Update a member's role. Requires the Admin role.
 
      The mutation is linearizable: the implementation locks every
@@ -182,6 +192,7 @@ async def asyncio_detailed(
     Args:
         org_id (UUID):
         member_id (UUID):
+        idempotency_key (str | Unset):
         body (UpdateRoleRequest): Request body for `PUT
             /v1/orgs/{org_id}/members/{member_id}/role`.
 
@@ -190,13 +201,14 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ErrorResponse | SuccessResponse]
+        Response[ProblemDetails | SuccessResponse]
     """
 
     kwargs = _get_kwargs(
         org_id=org_id,
         member_id=member_id,
         body=body,
+        idempotency_key=idempotency_key,
     )
 
     response = await client.get_async_httpx_client().request(**kwargs)
@@ -210,7 +222,8 @@ async def asyncio(
     *,
     client: AuthenticatedClient,
     body: UpdateRoleRequest,
-) -> ErrorResponse | SuccessResponse | None:
+    idempotency_key: str | Unset = UNSET,
+) -> ProblemDetails | SuccessResponse | None:
     r"""Update a member's role. Requires the Admin role.
 
      The mutation is linearizable: the implementation locks every
@@ -223,6 +236,7 @@ async def asyncio(
     Args:
         org_id (UUID):
         member_id (UUID):
+        idempotency_key (str | Unset):
         body (UpdateRoleRequest): Request body for `PUT
             /v1/orgs/{org_id}/members/{member_id}/role`.
 
@@ -231,7 +245,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ErrorResponse | SuccessResponse
+        ProblemDetails | SuccessResponse
     """
 
     return (
@@ -240,5 +254,6 @@ async def asyncio(
             member_id=member_id,
             client=client,
             body=body,
+            idempotency_key=idempotency_key,
         )
     ).parsed

@@ -6,16 +6,19 @@ import httpx
 from ... import errors
 from ...client import AuthenticatedClient, Client
 from ...models.create_org_request import CreateOrgRequest
-from ...models.error_response import ErrorResponse
 from ...models.organization import Organization
-from ...types import Response
+from ...models.problem_details import ProblemDetails
+from ...types import UNSET, Response, Unset
 
 
 def _get_kwargs(
     *,
     body: CreateOrgRequest,
+    idempotency_key: str | Unset = UNSET,
 ) -> dict[str, Any]:
     headers: dict[str, Any] = {}
+    if not isinstance(idempotency_key, Unset):
+        headers["Idempotency-Key"] = idempotency_key
 
     _kwargs: dict[str, Any] = {
         "method": "post",
@@ -32,24 +35,24 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> ErrorResponse | Organization | None:
+) -> Organization | ProblemDetails | None:
     if response.status_code == 200:
         response_200 = Organization.from_dict(response.json())
 
         return response_200
 
     if response.status_code == 400:
-        response_400 = ErrorResponse.from_dict(response.json())
+        response_400 = ProblemDetails.from_dict(response.json())
 
         return response_400
 
     if response.status_code == 401:
-        response_401 = ErrorResponse.from_dict(response.json())
+        response_401 = ProblemDetails.from_dict(response.json())
 
         return response_401
 
     if response.status_code == 429:
-        response_429 = ErrorResponse.from_dict(response.json())
+        response_429 = ProblemDetails.from_dict(response.json())
 
         return response_429
 
@@ -61,7 +64,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[ErrorResponse | Organization]:
+) -> Response[Organization | ProblemDetails]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -74,7 +77,8 @@ def sync_detailed(
     *,
     client: AuthenticatedClient,
     body: CreateOrgRequest,
-) -> Response[ErrorResponse | Organization]:
+    idempotency_key: str | Unset = UNSET,
+) -> Response[Organization | ProblemDetails]:
     """Create a new workspace owned by the caller.
 
      Per-user cap of 5 free workspaces (Supabase pattern); paid
@@ -85,6 +89,7 @@ def sync_detailed(
     and `org_rate_limited` (429) when the per-hour limit fires.
 
     Args:
+        idempotency_key (str | Unset):
         body (CreateOrgRequest): Request body for `POST /v1/orgs`.
 
             Trimmed and validated server-side: 1-100 characters after trim.
@@ -94,11 +99,12 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ErrorResponse | Organization]
+        Response[Organization | ProblemDetails]
     """
 
     kwargs = _get_kwargs(
         body=body,
+        idempotency_key=idempotency_key,
     )
 
     response = client.get_httpx_client().request(
@@ -112,7 +118,8 @@ def sync(
     *,
     client: AuthenticatedClient,
     body: CreateOrgRequest,
-) -> ErrorResponse | Organization | None:
+    idempotency_key: str | Unset = UNSET,
+) -> Organization | ProblemDetails | None:
     """Create a new workspace owned by the caller.
 
      Per-user cap of 5 free workspaces (Supabase pattern); paid
@@ -123,6 +130,7 @@ def sync(
     and `org_rate_limited` (429) when the per-hour limit fires.
 
     Args:
+        idempotency_key (str | Unset):
         body (CreateOrgRequest): Request body for `POST /v1/orgs`.
 
             Trimmed and validated server-side: 1-100 characters after trim.
@@ -132,12 +140,13 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ErrorResponse | Organization
+        Organization | ProblemDetails
     """
 
     return sync_detailed(
         client=client,
         body=body,
+        idempotency_key=idempotency_key,
     ).parsed
 
 
@@ -145,7 +154,8 @@ async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
     body: CreateOrgRequest,
-) -> Response[ErrorResponse | Organization]:
+    idempotency_key: str | Unset = UNSET,
+) -> Response[Organization | ProblemDetails]:
     """Create a new workspace owned by the caller.
 
      Per-user cap of 5 free workspaces (Supabase pattern); paid
@@ -156,6 +166,7 @@ async def asyncio_detailed(
     and `org_rate_limited` (429) when the per-hour limit fires.
 
     Args:
+        idempotency_key (str | Unset):
         body (CreateOrgRequest): Request body for `POST /v1/orgs`.
 
             Trimmed and validated server-side: 1-100 characters after trim.
@@ -165,11 +176,12 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ErrorResponse | Organization]
+        Response[Organization | ProblemDetails]
     """
 
     kwargs = _get_kwargs(
         body=body,
+        idempotency_key=idempotency_key,
     )
 
     response = await client.get_async_httpx_client().request(**kwargs)
@@ -181,7 +193,8 @@ async def asyncio(
     *,
     client: AuthenticatedClient,
     body: CreateOrgRequest,
-) -> ErrorResponse | Organization | None:
+    idempotency_key: str | Unset = UNSET,
+) -> Organization | ProblemDetails | None:
     """Create a new workspace owned by the caller.
 
      Per-user cap of 5 free workspaces (Supabase pattern); paid
@@ -192,6 +205,7 @@ async def asyncio(
     and `org_rate_limited` (429) when the per-hour limit fires.
 
     Args:
+        idempotency_key (str | Unset):
         body (CreateOrgRequest): Request body for `POST /v1/orgs`.
 
             Trimmed and validated server-side: 1-100 characters after trim.
@@ -201,12 +215,13 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ErrorResponse | Organization
+        Organization | ProblemDetails
     """
 
     return (
         await asyncio_detailed(
             client=client,
             body=body,
+            idempotency_key=idempotency_key,
         )
     ).parsed

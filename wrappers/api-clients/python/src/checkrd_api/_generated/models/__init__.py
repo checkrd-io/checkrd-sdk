@@ -24,6 +24,7 @@ from .auto_fix import AutoFix
 from .billing_status import BillingStatus
 from .checkout_response import CheckoutResponse
 from .control_init import ControlInit
+from .control_init_policy_envelope import ControlInitPolicyEnvelope
 from .control_kill_switch_event import ControlKillSwitchEvent
 from .control_policy_updated_event import ControlPolicyUpdatedEvent
 from .control_policy_updated_event_policy_envelope import ControlPolicyUpdatedEventPolicyEnvelope
@@ -32,7 +33,7 @@ from .control_state_policy_envelope import ControlStatePolicyEnvelope
 from .create_agent_request import CreateAgentRequest
 from .create_alert_request import CreateAlertRequest
 from .create_key_request import CreateKeyRequest
-from .create_key_request_permissions import CreateKeyRequestPermissions
+from .create_key_request_scope import CreateKeyRequestScope
 from .create_key_response import CreateKeyResponse
 from .create_org_policy_request import CreateOrgPolicyRequest
 from .create_org_policy_response import CreateOrgPolicyResponse
@@ -56,9 +57,8 @@ from .device_token_response_type_3_status import DeviceTokenResponseType3Status
 from .device_token_response_type_4_data import DeviceTokenResponseType4Data
 from .device_token_response_type_4_status import DeviceTokenResponseType4Status
 from .diff_policies_request import DiffPoliciesRequest
-from .error_body import ErrorBody
-from .error_response import ErrorResponse
 from .event_usage import EventUsage
+from .field_error import FieldError
 from .health_status import HealthStatus
 from .ingest_request import IngestRequest
 from .ingest_request_events_item import IngestRequestEventsItem
@@ -103,6 +103,7 @@ from .policy_template_param_schema import PolicyTemplateParamSchema
 from .policy_test_summary_response import PolicyTestSummaryResponse
 from .policy_test_summary_response_results_item import PolicyTestSummaryResponseResultsItem
 from .portal_response import PortalResponse
+from .problem_details import ProblemDetails
 from .register_public_key_request import RegisterPublicKeyRequest
 from .register_public_key_response import RegisterPublicKeyResponse
 from .rename_org_request import RenameOrgRequest
@@ -159,6 +160,7 @@ __all__ = (
     "BillingStatus",
     "CheckoutResponse",
     "ControlInit",
+    "ControlInitPolicyEnvelope",
     "ControlKillSwitchEvent",
     "ControlPolicyUpdatedEvent",
     "ControlPolicyUpdatedEventPolicyEnvelope",
@@ -167,7 +169,7 @@ __all__ = (
     "CreateAgentRequest",
     "CreateAlertRequest",
     "CreateKeyRequest",
-    "CreateKeyRequestPermissions",
+    "CreateKeyRequestScope",
     "CreateKeyResponse",
     "CreateOrgPolicyRequest",
     "CreateOrgPolicyResponse",
@@ -191,9 +193,8 @@ __all__ = (
     "DeviceTokenResponseType4Data",
     "DeviceTokenResponseType4Status",
     "DiffPoliciesRequest",
-    "ErrorBody",
-    "ErrorResponse",
     "EventUsage",
+    "FieldError",
     "HealthStatus",
     "IngestRequest",
     "IngestRequestEventsItem",
@@ -238,6 +239,7 @@ __all__ = (
     "PolicyTestSummaryResponse",
     "PolicyTestSummaryResponseResultsItem",
     "PortalResponse",
+    "ProblemDetails",
     "RegisterPublicKeyRequest",
     "RegisterPublicKeyResponse",
     "RenameOrgRequest",

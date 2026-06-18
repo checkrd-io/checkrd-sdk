@@ -8,17 +8,20 @@ import httpx
 from ... import errors
 from ...client import AuthenticatedClient, Client
 from ...models.create_policy_request import CreatePolicyRequest
-from ...models.error_response import ErrorResponse
 from ...models.policy import Policy
-from ...types import Response
+from ...models.problem_details import ProblemDetails
+from ...types import UNSET, Response, Unset
 
 
 def _get_kwargs(
     agent_id: UUID,
     *,
     body: CreatePolicyRequest,
+    idempotency_key: str | Unset = UNSET,
 ) -> dict[str, Any]:
     headers: dict[str, Any] = {}
+    if not isinstance(idempotency_key, Unset):
+        headers["Idempotency-Key"] = idempotency_key
 
     _kwargs: dict[str, Any] = {
         "method": "post",
@@ -35,29 +38,31 @@ def _get_kwargs(
     return _kwargs
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> ErrorResponse | Policy | None:
+def _parse_response(
+    *, client: AuthenticatedClient | Client, response: httpx.Response
+) -> Policy | ProblemDetails | None:
     if response.status_code == 200:
         response_200 = Policy.from_dict(response.json())
 
         return response_200
 
     if response.status_code == 400:
-        response_400 = ErrorResponse.from_dict(response.json())
+        response_400 = ProblemDetails.from_dict(response.json())
 
         return response_400
 
     if response.status_code == 401:
-        response_401 = ErrorResponse.from_dict(response.json())
+        response_401 = ProblemDetails.from_dict(response.json())
 
         return response_401
 
     if response.status_code == 403:
-        response_403 = ErrorResponse.from_dict(response.json())
+        response_403 = ProblemDetails.from_dict(response.json())
 
         return response_403
 
     if response.status_code == 404:
-        response_404 = ErrorResponse.from_dict(response.json())
+        response_404 = ProblemDetails.from_dict(response.json())
 
         return response_404
 
@@ -69,7 +74,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[ErrorResponse | Policy]:
+) -> Response[Policy | ProblemDetails]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -83,10 +88,12 @@ def sync_detailed(
     *,
     client: AuthenticatedClient,
     body: CreatePolicyRequest,
-) -> Response[ErrorResponse | Policy]:
+    idempotency_key: str | Unset = UNSET,
+) -> Response[Policy | ProblemDetails]:
     """
     Args:
         agent_id (UUID):
+        idempotency_key (str | Unset):
         body (CreatePolicyRequest): `POST /v1/agents/{agent_id}/policies` request body.
 
     Raises:
@@ -94,12 +101,13 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ErrorResponse | Policy]
+        Response[Policy | ProblemDetails]
     """
 
     kwargs = _get_kwargs(
         agent_id=agent_id,
         body=body,
+        idempotency_key=idempotency_key,
     )
 
     response = client.get_httpx_client().request(
@@ -114,10 +122,12 @@ def sync(
     *,
     client: AuthenticatedClient,
     body: CreatePolicyRequest,
-) -> ErrorResponse | Policy | None:
+    idempotency_key: str | Unset = UNSET,
+) -> Policy | ProblemDetails | None:
     """
     Args:
         agent_id (UUID):
+        idempotency_key (str | Unset):
         body (CreatePolicyRequest): `POST /v1/agents/{agent_id}/policies` request body.
 
     Raises:
@@ -125,13 +135,14 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ErrorResponse | Policy
+        Policy | ProblemDetails
     """
 
     return sync_detailed(
         agent_id=agent_id,
         client=client,
         body=body,
+        idempotency_key=idempotency_key,
     ).parsed
 
 
@@ -140,10 +151,12 @@ async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
     body: CreatePolicyRequest,
-) -> Response[ErrorResponse | Policy]:
+    idempotency_key: str | Unset = UNSET,
+) -> Response[Policy | ProblemDetails]:
     """
     Args:
         agent_id (UUID):
+        idempotency_key (str | Unset):
         body (CreatePolicyRequest): `POST /v1/agents/{agent_id}/policies` request body.
 
     Raises:
@@ -151,12 +164,13 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ErrorResponse | Policy]
+        Response[Policy | ProblemDetails]
     """
 
     kwargs = _get_kwargs(
         agent_id=agent_id,
         body=body,
+        idempotency_key=idempotency_key,
     )
 
     response = await client.get_async_httpx_client().request(**kwargs)
@@ -169,10 +183,12 @@ async def asyncio(
     *,
     client: AuthenticatedClient,
     body: CreatePolicyRequest,
-) -> ErrorResponse | Policy | None:
+    idempotency_key: str | Unset = UNSET,
+) -> Policy | ProblemDetails | None:
     """
     Args:
         agent_id (UUID):
+        idempotency_key (str | Unset):
         body (CreatePolicyRequest): `POST /v1/agents/{agent_id}/policies` request body.
 
     Raises:
@@ -180,7 +196,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ErrorResponse | Policy
+        Policy | ProblemDetails
     """
 
     return (
@@ -188,5 +204,6 @@ async def asyncio(
             agent_id=agent_id,
             client=client,
             body=body,
+            idempotency_key=idempotency_key,
         )
     ).parsed

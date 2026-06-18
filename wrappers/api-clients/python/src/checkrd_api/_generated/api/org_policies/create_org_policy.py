@@ -7,15 +7,18 @@ from ... import errors
 from ...client import AuthenticatedClient, Client
 from ...models.create_org_policy_request import CreateOrgPolicyRequest
 from ...models.create_org_policy_response import CreateOrgPolicyResponse
-from ...models.error_response import ErrorResponse
-from ...types import Response
+from ...models.problem_details import ProblemDetails
+from ...types import UNSET, Response, Unset
 
 
 def _get_kwargs(
     *,
     body: CreateOrgPolicyRequest,
+    idempotency_key: str | Unset = UNSET,
 ) -> dict[str, Any]:
     headers: dict[str, Any] = {}
+    if not isinstance(idempotency_key, Unset):
+        headers["Idempotency-Key"] = idempotency_key
 
     _kwargs: dict[str, Any] = {
         "method": "post",
@@ -32,24 +35,24 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> CreateOrgPolicyResponse | ErrorResponse | None:
+) -> CreateOrgPolicyResponse | ProblemDetails | None:
     if response.status_code == 200:
         response_200 = CreateOrgPolicyResponse.from_dict(response.json())
 
         return response_200
 
     if response.status_code == 400:
-        response_400 = ErrorResponse.from_dict(response.json())
+        response_400 = ProblemDetails.from_dict(response.json())
 
         return response_400
 
     if response.status_code == 401:
-        response_401 = ErrorResponse.from_dict(response.json())
+        response_401 = ProblemDetails.from_dict(response.json())
 
         return response_401
 
     if response.status_code == 403:
-        response_403 = ErrorResponse.from_dict(response.json())
+        response_403 = ProblemDetails.from_dict(response.json())
 
         return response_403
 
@@ -61,7 +64,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[CreateOrgPolicyResponse | ErrorResponse]:
+) -> Response[CreateOrgPolicyResponse | ProblemDetails]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -74,9 +77,11 @@ def sync_detailed(
     *,
     client: AuthenticatedClient,
     body: CreateOrgPolicyRequest,
-) -> Response[CreateOrgPolicyResponse | ErrorResponse]:
+    idempotency_key: str | Unset = UNSET,
+) -> Response[CreateOrgPolicyResponse | ProblemDetails]:
     """
     Args:
+        idempotency_key (str | Unset):
         body (CreateOrgPolicyRequest): `POST /v1/org-policies` request body.
 
     Raises:
@@ -84,11 +89,12 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[CreateOrgPolicyResponse | ErrorResponse]
+        Response[CreateOrgPolicyResponse | ProblemDetails]
     """
 
     kwargs = _get_kwargs(
         body=body,
+        idempotency_key=idempotency_key,
     )
 
     response = client.get_httpx_client().request(
@@ -102,9 +108,11 @@ def sync(
     *,
     client: AuthenticatedClient,
     body: CreateOrgPolicyRequest,
-) -> CreateOrgPolicyResponse | ErrorResponse | None:
+    idempotency_key: str | Unset = UNSET,
+) -> CreateOrgPolicyResponse | ProblemDetails | None:
     """
     Args:
+        idempotency_key (str | Unset):
         body (CreateOrgPolicyRequest): `POST /v1/org-policies` request body.
 
     Raises:
@@ -112,12 +120,13 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        CreateOrgPolicyResponse | ErrorResponse
+        CreateOrgPolicyResponse | ProblemDetails
     """
 
     return sync_detailed(
         client=client,
         body=body,
+        idempotency_key=idempotency_key,
     ).parsed
 
 
@@ -125,9 +134,11 @@ async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
     body: CreateOrgPolicyRequest,
-) -> Response[CreateOrgPolicyResponse | ErrorResponse]:
+    idempotency_key: str | Unset = UNSET,
+) -> Response[CreateOrgPolicyResponse | ProblemDetails]:
     """
     Args:
+        idempotency_key (str | Unset):
         body (CreateOrgPolicyRequest): `POST /v1/org-policies` request body.
 
     Raises:
@@ -135,11 +146,12 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[CreateOrgPolicyResponse | ErrorResponse]
+        Response[CreateOrgPolicyResponse | ProblemDetails]
     """
 
     kwargs = _get_kwargs(
         body=body,
+        idempotency_key=idempotency_key,
     )
 
     response = await client.get_async_httpx_client().request(**kwargs)
@@ -151,9 +163,11 @@ async def asyncio(
     *,
     client: AuthenticatedClient,
     body: CreateOrgPolicyRequest,
-) -> CreateOrgPolicyResponse | ErrorResponse | None:
+    idempotency_key: str | Unset = UNSET,
+) -> CreateOrgPolicyResponse | ProblemDetails | None:
     """
     Args:
+        idempotency_key (str | Unset):
         body (CreateOrgPolicyRequest): `POST /v1/org-policies` request body.
 
     Raises:
@@ -161,12 +175,13 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        CreateOrgPolicyResponse | ErrorResponse
+        CreateOrgPolicyResponse | ProblemDetails
     """
 
     return (
         await asyncio_detailed(
             client=client,
             body=body,
+            idempotency_key=idempotency_key,
         )
     ).parsed

@@ -8,17 +8,20 @@ import httpx
 from ... import errors
 from ...client import AuthenticatedClient, Client
 from ...models.agent import Agent
-from ...models.error_response import ErrorResponse
+from ...models.problem_details import ProblemDetails
 from ...models.update_agent_request import UpdateAgentRequest
-from ...types import Response
+from ...types import UNSET, Response, Unset
 
 
 def _get_kwargs(
     agent_id: UUID,
     *,
     body: UpdateAgentRequest,
+    idempotency_key: str | Unset = UNSET,
 ) -> dict[str, Any]:
     headers: dict[str, Any] = {}
+    if not isinstance(idempotency_key, Unset):
+        headers["Idempotency-Key"] = idempotency_key
 
     _kwargs: dict[str, Any] = {
         "method": "put",
@@ -35,24 +38,24 @@ def _get_kwargs(
     return _kwargs
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Agent | ErrorResponse | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Agent | ProblemDetails | None:
     if response.status_code == 200:
         response_200 = Agent.from_dict(response.json())
 
         return response_200
 
     if response.status_code == 401:
-        response_401 = ErrorResponse.from_dict(response.json())
+        response_401 = ProblemDetails.from_dict(response.json())
 
         return response_401
 
     if response.status_code == 403:
-        response_403 = ErrorResponse.from_dict(response.json())
+        response_403 = ProblemDetails.from_dict(response.json())
 
         return response_403
 
     if response.status_code == 404:
-        response_404 = ErrorResponse.from_dict(response.json())
+        response_404 = ProblemDetails.from_dict(response.json())
 
         return response_404
 
@@ -64,7 +67,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[Agent | ErrorResponse]:
+) -> Response[Agent | ProblemDetails]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -78,10 +81,12 @@ def sync_detailed(
     *,
     client: AuthenticatedClient,
     body: UpdateAgentRequest,
-) -> Response[Agent | ErrorResponse]:
+    idempotency_key: str | Unset = UNSET,
+) -> Response[Agent | ProblemDetails]:
     """
     Args:
         agent_id (UUID):
+        idempotency_key (str | Unset):
         body (UpdateAgentRequest): `PUT /v1/agents/{agent_id}` request body. Both fields are
             optional; omitted fields leave the existing value in place.
 
@@ -90,12 +95,13 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Agent | ErrorResponse]
+        Response[Agent | ProblemDetails]
     """
 
     kwargs = _get_kwargs(
         agent_id=agent_id,
         body=body,
+        idempotency_key=idempotency_key,
     )
 
     response = client.get_httpx_client().request(
@@ -110,10 +116,12 @@ def sync(
     *,
     client: AuthenticatedClient,
     body: UpdateAgentRequest,
-) -> Agent | ErrorResponse | None:
+    idempotency_key: str | Unset = UNSET,
+) -> Agent | ProblemDetails | None:
     """
     Args:
         agent_id (UUID):
+        idempotency_key (str | Unset):
         body (UpdateAgentRequest): `PUT /v1/agents/{agent_id}` request body. Both fields are
             optional; omitted fields leave the existing value in place.
 
@@ -122,13 +130,14 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Agent | ErrorResponse
+        Agent | ProblemDetails
     """
 
     return sync_detailed(
         agent_id=agent_id,
         client=client,
         body=body,
+        idempotency_key=idempotency_key,
     ).parsed
 
 
@@ -137,10 +146,12 @@ async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
     body: UpdateAgentRequest,
-) -> Response[Agent | ErrorResponse]:
+    idempotency_key: str | Unset = UNSET,
+) -> Response[Agent | ProblemDetails]:
     """
     Args:
         agent_id (UUID):
+        idempotency_key (str | Unset):
         body (UpdateAgentRequest): `PUT /v1/agents/{agent_id}` request body. Both fields are
             optional; omitted fields leave the existing value in place.
 
@@ -149,12 +160,13 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Agent | ErrorResponse]
+        Response[Agent | ProblemDetails]
     """
 
     kwargs = _get_kwargs(
         agent_id=agent_id,
         body=body,
+        idempotency_key=idempotency_key,
     )
 
     response = await client.get_async_httpx_client().request(**kwargs)
@@ -167,10 +179,12 @@ async def asyncio(
     *,
     client: AuthenticatedClient,
     body: UpdateAgentRequest,
-) -> Agent | ErrorResponse | None:
+    idempotency_key: str | Unset = UNSET,
+) -> Agent | ProblemDetails | None:
     """
     Args:
         agent_id (UUID):
+        idempotency_key (str | Unset):
         body (UpdateAgentRequest): `PUT /v1/agents/{agent_id}` request body. Both fields are
             optional; omitted fields leave the existing value in place.
 
@@ -179,7 +193,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Agent | ErrorResponse
+        Agent | ProblemDetails
     """
 
     return (
@@ -187,5 +201,6 @@ async def asyncio(
             agent_id=agent_id,
             client=client,
             body=body,
+            idempotency_key=idempotency_key,
         )
     ).parsed

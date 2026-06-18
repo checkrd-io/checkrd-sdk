@@ -7,7 +7,6 @@ from uuid import UUID
 
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
-from dateutil.parser import isoparse
 
 from ..types import UNSET, Unset
 
@@ -20,7 +19,15 @@ T = TypeVar("T", bound="AuditLogEntryWithUser")
 
 @_attrs_define
 class AuditLogEntryWithUser:
-    """Audit log entry joined with user email/name for display.
+    """Audit log entry with the actor's display name when applicable.
+
+    Each entry has both `actor_id` and `actor_kind` (mirrors the unified
+    `Principal` model on the server). Dashboards branch on `actor_kind`
+    to render attribution:
+
+    - `"user"`    — `user_email` / `user_name` populated from a JOIN to `users`.
+    - `"api_key"` — `actor_id` is the `api_keys.id`; render the key prefix.
+    - `"system"`  — `actor_id` is null; show "Checkrd platform" / source attribution.
 
     Returned from `GET /v1/audit-log` and
     `GET /v1/audit-log/{resource_type}/{resource_id}`.
@@ -35,12 +42,18 @@ class AuditLogEntryWithUser:
             details (AuditLogEntryWithUserDetails): Free-form JSON payload with action-specific context (names,
                 before/after diffs, kill-switch reasons, etc.).
             created_at (datetime.datetime):
+            actor_kind (str): Closed-enum tag for which kind of principal performed the
+                action: `"user"`, `"api_key"`, or `"system"`. The DB column has
+                a CHECK constraint on these values; if a new variant is added
+                server-side, update this doc and dashboards in lockstep.
             ip_address (None | str | Unset): Source IP address of the request that triggered the action,
                 when available.
-            user_email (None | str | Unset): Email of the user who performed the action. Null for
-                system-generated entries (e.g., SDK-driven public-key
-                registration with no user session).
-            user_name (None | str | Unset): Display name of the user who performed the action.
+            actor_id (None | Unset | UUID): `users.id` when `actor_kind == "user"`, `api_keys.id` when
+                `actor_kind == "api_key"`, null when `actor_kind == "system"`.
+            user_email (None | str | Unset): Email of the user who performed the action. Populated only when
+                `actor_kind == "user"`.
+            user_name (None | str | Unset): Display name of the user who performed the action. Populated
+                only when `actor_kind == "user"`.
     """
 
     id: UUID
@@ -49,7 +62,9 @@ class AuditLogEntryWithUser:
     resource_id: UUID
     details: AuditLogEntryWithUserDetails
     created_at: datetime.datetime
+    actor_kind: str
     ip_address: None | str | Unset = UNSET
+    actor_id: None | Unset | UUID = UNSET
     user_email: None | str | Unset = UNSET
     user_name: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -67,11 +82,21 @@ class AuditLogEntryWithUser:
 
         created_at = self.created_at.isoformat()
 
+        actor_kind = self.actor_kind
+
         ip_address: None | str | Unset
         if isinstance(self.ip_address, Unset):
             ip_address = UNSET
         else:
             ip_address = self.ip_address
+
+        actor_id: None | str | Unset
+        if isinstance(self.actor_id, Unset):
+            actor_id = UNSET
+        elif isinstance(self.actor_id, UUID):
+            actor_id = str(self.actor_id)
+        else:
+            actor_id = self.actor_id
 
         user_email: None | str | Unset
         if isinstance(self.user_email, Unset):
@@ -95,10 +120,13 @@ class AuditLogEntryWithUser:
                 "resource_id": resource_id,
                 "details": details,
                 "created_at": created_at,
+                "actor_kind": actor_kind,
             }
         )
         if ip_address is not UNSET:
             field_dict["ip_address"] = ip_address
+        if actor_id is not UNSET:
+            field_dict["actor_id"] = actor_id
         if user_email is not UNSET:
             field_dict["user_email"] = user_email
         if user_name is not UNSET:
@@ -121,7 +149,9 @@ class AuditLogEntryWithUser:
 
         details = AuditLogEntryWithUserDetails.from_dict(d.pop("details"))
 
-        created_at = isoparse(d.pop("created_at"))
+        created_at = datetime.datetime.fromisoformat(d.pop("created_at"))
+
+        actor_kind = d.pop("actor_kind")
 
         def _parse_ip_address(data: object) -> None | str | Unset:
             if data is None:
@@ -131,6 +161,23 @@ class AuditLogEntryWithUser:
             return cast(None | str | Unset, data)
 
         ip_address = _parse_ip_address(d.pop("ip_address", UNSET))
+
+        def _parse_actor_id(data: object) -> None | Unset | UUID:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            try:
+                if not isinstance(data, str):
+                    raise TypeError()
+                actor_id_type_0 = UUID(data)
+
+                return actor_id_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(None | Unset | UUID, data)
+
+        actor_id = _parse_actor_id(d.pop("actor_id", UNSET))
 
         def _parse_user_email(data: object) -> None | str | Unset:
             if data is None:
@@ -157,7 +204,9 @@ class AuditLogEntryWithUser:
             resource_id=resource_id,
             details=details,
             created_at=created_at,
+            actor_kind=actor_kind,
             ip_address=ip_address,
+            actor_id=actor_id,
             user_email=user_email,
             user_name=user_name,
         )

@@ -256,9 +256,15 @@ async function parseErrorBody(response: Response): Promise<{
     return { body: undefined, message: `HTTP ${response.status.toString()} ${response.statusText}` };
   }
   try {
-    const parsed = JSON.parse(text) as { error?: import("./exceptions.js").APIErrorBody };
-    const body = parsed.error ?? undefined;
+    // RFC 9457 problem+json (control plane) is flat; telemetry-ingestion still
+    // uses the nested `{ error: { ... } }` envelope (until M-7). Accept both.
+    const root = JSON.parse(text) as {
+      error?: import("./exceptions.js").APIErrorBody;
+    } & import("./exceptions.js").APIErrorBody;
+    const body = root.error ?? root;
     const message =
+      body?.detail ??
+      body?.title ??
       body?.message ??
       `HTTP ${response.status.toString()} ${response.statusText}: ${text.slice(0, 200)}`;
     return { body, message };

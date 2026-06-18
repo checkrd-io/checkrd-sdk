@@ -72,7 +72,7 @@ def _signed_envelope(version: int = 1) -> dict[str, Any]:
     bundle = {"schema_version": 1, "version": version, "signed_at": 1730000000, "policy": {}}
     payload = json.dumps(bundle).encode()
     return {
-        "payloadType": "application/vnd.checkrd.policy-bundle+yaml",
+        "payloadType": "application/vnd.checkrd.policy-bundle+json",
         "payload": base64.b64encode(payload).decode(),
         "signatures": [{"keyid": "test", "sig": base64.b64encode(b"\x00" * 64).decode()}],
     }

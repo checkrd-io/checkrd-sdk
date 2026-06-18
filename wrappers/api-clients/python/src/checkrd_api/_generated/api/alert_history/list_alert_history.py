@@ -6,8 +6,8 @@ import httpx
 
 from ... import errors
 from ...client import AuthenticatedClient, Client
-from ...models.error_response import ErrorResponse
 from ...models.paginated_alert_history import PaginatedAlertHistory
+from ...models.problem_details import ProblemDetails
 from ...types import UNSET, Response, Unset
 
 
@@ -60,24 +60,24 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> ErrorResponse | PaginatedAlertHistory | None:
+) -> PaginatedAlertHistory | ProblemDetails | None:
     if response.status_code == 200:
         response_200 = PaginatedAlertHistory.from_dict(response.json())
 
         return response_200
 
     if response.status_code == 400:
-        response_400 = ErrorResponse.from_dict(response.json())
+        response_400 = ProblemDetails.from_dict(response.json())
 
         return response_400
 
     if response.status_code == 401:
-        response_401 = ErrorResponse.from_dict(response.json())
+        response_401 = ProblemDetails.from_dict(response.json())
 
         return response_401
 
     if response.status_code == 403:
-        response_403 = ErrorResponse.from_dict(response.json())
+        response_403 = ProblemDetails.from_dict(response.json())
 
         return response_403
 
@@ -89,7 +89,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[ErrorResponse | PaginatedAlertHistory]:
+) -> Response[PaginatedAlertHistory | ProblemDetails]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -109,7 +109,7 @@ def sync_detailed(
     new_state: str | Unset = UNSET,
     cursor: str | Unset = UNSET,
     limit: int | Unset = UNSET,
-) -> Response[ErrorResponse | PaginatedAlertHistory]:
+) -> Response[PaginatedAlertHistory | ProblemDetails]:
     """
     Args:
         period (str | Unset):
@@ -126,7 +126,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ErrorResponse | PaginatedAlertHistory]
+        Response[PaginatedAlertHistory | ProblemDetails]
     """
 
     kwargs = _get_kwargs(
@@ -158,7 +158,7 @@ def sync(
     new_state: str | Unset = UNSET,
     cursor: str | Unset = UNSET,
     limit: int | Unset = UNSET,
-) -> ErrorResponse | PaginatedAlertHistory | None:
+) -> PaginatedAlertHistory | ProblemDetails | None:
     """
     Args:
         period (str | Unset):
@@ -175,7 +175,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ErrorResponse | PaginatedAlertHistory
+        PaginatedAlertHistory | ProblemDetails
     """
 
     return sync_detailed(
@@ -202,7 +202,7 @@ async def asyncio_detailed(
     new_state: str | Unset = UNSET,
     cursor: str | Unset = UNSET,
     limit: int | Unset = UNSET,
-) -> Response[ErrorResponse | PaginatedAlertHistory]:
+) -> Response[PaginatedAlertHistory | ProblemDetails]:
     """
     Args:
         period (str | Unset):
@@ -219,7 +219,7 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ErrorResponse | PaginatedAlertHistory]
+        Response[PaginatedAlertHistory | ProblemDetails]
     """
 
     kwargs = _get_kwargs(
@@ -249,7 +249,7 @@ async def asyncio(
     new_state: str | Unset = UNSET,
     cursor: str | Unset = UNSET,
     limit: int | Unset = UNSET,
-) -> ErrorResponse | PaginatedAlertHistory | None:
+) -> PaginatedAlertHistory | ProblemDetails | None:
     """
     Args:
         period (str | Unset):
@@ -266,7 +266,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ErrorResponse | PaginatedAlertHistory
+        PaginatedAlertHistory | ProblemDetails
     """
 
     return (

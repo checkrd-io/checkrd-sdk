@@ -7,10 +7,10 @@ import httpx
 
 from ... import errors
 from ...client import AuthenticatedClient, Client
-from ...models.error_response import ErrorResponse
 from ...models.policy import Policy
+from ...models.problem_details import ProblemDetails
 from ...models.update_draft_policy_request import UpdateDraftPolicyRequest
-from ...types import Response
+from ...types import UNSET, Response, Unset
 
 
 def _get_kwargs(
@@ -18,8 +18,11 @@ def _get_kwargs(
     version: int,
     *,
     body: UpdateDraftPolicyRequest,
+    idempotency_key: str | Unset = UNSET,
 ) -> dict[str, Any]:
     headers: dict[str, Any] = {}
+    if not isinstance(idempotency_key, Unset):
+        headers["Idempotency-Key"] = idempotency_key
 
     _kwargs: dict[str, Any] = {
         "method": "patch",
@@ -37,34 +40,36 @@ def _get_kwargs(
     return _kwargs
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> ErrorResponse | Policy | None:
+def _parse_response(
+    *, client: AuthenticatedClient | Client, response: httpx.Response
+) -> Policy | ProblemDetails | None:
     if response.status_code == 200:
         response_200 = Policy.from_dict(response.json())
 
         return response_200
 
     if response.status_code == 400:
-        response_400 = ErrorResponse.from_dict(response.json())
+        response_400 = ProblemDetails.from_dict(response.json())
 
         return response_400
 
     if response.status_code == 401:
-        response_401 = ErrorResponse.from_dict(response.json())
+        response_401 = ProblemDetails.from_dict(response.json())
 
         return response_401
 
     if response.status_code == 403:
-        response_403 = ErrorResponse.from_dict(response.json())
+        response_403 = ProblemDetails.from_dict(response.json())
 
         return response_403
 
     if response.status_code == 404:
-        response_404 = ErrorResponse.from_dict(response.json())
+        response_404 = ProblemDetails.from_dict(response.json())
 
         return response_404
 
     if response.status_code == 409:
-        response_409 = ErrorResponse.from_dict(response.json())
+        response_409 = ProblemDetails.from_dict(response.json())
 
         return response_409
 
@@ -76,7 +81,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[ErrorResponse | Policy]:
+) -> Response[Policy | ProblemDetails]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -91,11 +96,13 @@ def sync_detailed(
     *,
     client: AuthenticatedClient,
     body: UpdateDraftPolicyRequest,
-) -> Response[ErrorResponse | Policy]:
+    idempotency_key: str | Unset = UNSET,
+) -> Response[Policy | ProblemDetails]:
     """
     Args:
         agent_id (UUID):
         version (int):
+        idempotency_key (str | Unset):
         body (UpdateDraftPolicyRequest): `PATCH /v1/agents/{agent_id}/policies/{version}` request
             body.
 
@@ -108,13 +115,14 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ErrorResponse | Policy]
+        Response[Policy | ProblemDetails]
     """
 
     kwargs = _get_kwargs(
         agent_id=agent_id,
         version=version,
         body=body,
+        idempotency_key=idempotency_key,
     )
 
     response = client.get_httpx_client().request(
@@ -130,11 +138,13 @@ def sync(
     *,
     client: AuthenticatedClient,
     body: UpdateDraftPolicyRequest,
-) -> ErrorResponse | Policy | None:
+    idempotency_key: str | Unset = UNSET,
+) -> Policy | ProblemDetails | None:
     """
     Args:
         agent_id (UUID):
         version (int):
+        idempotency_key (str | Unset):
         body (UpdateDraftPolicyRequest): `PATCH /v1/agents/{agent_id}/policies/{version}` request
             body.
 
@@ -147,7 +157,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ErrorResponse | Policy
+        Policy | ProblemDetails
     """
 
     return sync_detailed(
@@ -155,6 +165,7 @@ def sync(
         version=version,
         client=client,
         body=body,
+        idempotency_key=idempotency_key,
     ).parsed
 
 
@@ -164,11 +175,13 @@ async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
     body: UpdateDraftPolicyRequest,
-) -> Response[ErrorResponse | Policy]:
+    idempotency_key: str | Unset = UNSET,
+) -> Response[Policy | ProblemDetails]:
     """
     Args:
         agent_id (UUID):
         version (int):
+        idempotency_key (str | Unset):
         body (UpdateDraftPolicyRequest): `PATCH /v1/agents/{agent_id}/policies/{version}` request
             body.
 
@@ -181,13 +194,14 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ErrorResponse | Policy]
+        Response[Policy | ProblemDetails]
     """
 
     kwargs = _get_kwargs(
         agent_id=agent_id,
         version=version,
         body=body,
+        idempotency_key=idempotency_key,
     )
 
     response = await client.get_async_httpx_client().request(**kwargs)
@@ -201,11 +215,13 @@ async def asyncio(
     *,
     client: AuthenticatedClient,
     body: UpdateDraftPolicyRequest,
-) -> ErrorResponse | Policy | None:
+    idempotency_key: str | Unset = UNSET,
+) -> Policy | ProblemDetails | None:
     """
     Args:
         agent_id (UUID):
         version (int):
+        idempotency_key (str | Unset):
         body (UpdateDraftPolicyRequest): `PATCH /v1/agents/{agent_id}/policies/{version}` request
             body.
 
@@ -218,7 +234,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ErrorResponse | Policy
+        Policy | ProblemDetails
     """
 
     return (
@@ -227,5 +243,6 @@ async def asyncio(
             version=version,
             client=client,
             body=body,
+            idempotency_key=idempotency_key,
         )
     ).parsed

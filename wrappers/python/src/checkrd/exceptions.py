@@ -302,8 +302,11 @@ class APIError(CheckrdError):
         request: The ``httpx.Request`` that failed (or ``None`` if not
             available). Useful for retries and forensic logging.
         body:    Parsed error response body, when one was returned.
-            Typically a dict matching the Stripe-style envelope
-            ``{"error": {"type", "code", "message", "param"}}``.
+            From the control plane this is an RFC 9457 problem document
+            (top-level ``type``/``title``/``status``/``detail``/``code``);
+            telemetry-ingestion still uses the nested ``{"error": {...}}``
+            envelope until it migrates (M-7). Both are understood by
+            :func:`_extract_code` / :func:`_extract_message`.
     """
 
     request: Any
@@ -550,19 +553,27 @@ def _extract_code(body: Any) -> Optional[str]:
 
 
 def _extract_message(body: Any) -> Optional[str]:
-    """Pull a human-readable message from a Stripe-style error envelope.
+    """Pull a human-readable message from an API error body.
 
-    Handles two shapes:
+    Handles the shapes the SDK can receive:
 
-    - ``{"error": {"message": "..."}}`` — Stripe's nested envelope, also
-      what ``crates/api/src/errors.rs`` emits.
-    - ``{"message": "..."}`` — plain top-level message.
+    - RFC 9457 problem+json from the control plane (``crates/api``):
+      the occurrence-specific top-level ``detail``, falling back to the
+      problem-type ``title``.
+    - The nested ``{"error": {"message": "..."}}`` envelope and a plain
+      top-level ``message`` — still emitted by telemetry-ingestion until
+      it migrates to problem+json (M-7).
 
-    Returns ``None`` if neither shape applies, leaving the caller to
-    pick a sensible default.
+    Returns ``None`` if none apply, leaving the caller to pick a default.
     """
     if not isinstance(body, dict):
         return None
+    # RFC 9457 problem+json (control plane).
+    for key in ("detail", "title"):
+        value = body.get(key)
+        if isinstance(value, str) and value:
+            return value
+    # Nested envelope (ingestion) and plain top-level message.
     err = body.get("error")
     if isinstance(err, dict):
         msg = err.get("message")

@@ -185,6 +185,15 @@ function normaliseEndpoint(endpoint: string): string {
 }
 
 /**
+ * OpenTelemetry GenAI semantic-conventions version this SDK emits. Pinned
+ * explicitly so collectors know which convention the gen_ai.* attributes
+ * follow; emitted as the OTLP `schemaUrl`. Migration posture is switch-over
+ * (emit the latest attribute names) — never dual-emit. Keep in lockstep with
+ * the gen_ai.* attributes in `eventToSpan`.
+ */
+const OTEL_SCHEMA_URL = "https://opentelemetry.io/schemas/1.41.0";
+
+/**
  * Translate a batch of Checkrd events into an OTLP/HTTP JSON payload.
  * Exported only for testing; consumers interact with the sink above.
  */
@@ -208,9 +217,12 @@ export function eventsToOtlpJson(
             },
           ],
         },
+        // Pins the GenAI semconv version this SDK follows (RFC: switch-over).
+        schemaUrl: OTEL_SCHEMA_URL,
         scopeSpans: [
           {
             scope: { name: "checkrd.otlp_sink" },
+            schemaUrl: OTEL_SCHEMA_URL,
             spans,
           },
         ],
@@ -267,7 +279,7 @@ function eventToSpan(event: TelemetryEvent): OtlpSpan {
   if (statusCode !== undefined) pushIntAttr(attributes, "http.response.status_code", statusCode);
   if (latencyMs > 0) pushDoubleAttr(attributes, "checkrd.latency_ms", latencyMs);
 
-  // GenAI attributes (OTel semconv 1.27+).
+  // GenAI attributes — pinned via OTEL_SCHEMA_URL (switch-over, no dual-emit).
   const genAiSystem = readString(event, "gen_ai_system");
   if (genAiSystem !== undefined) pushAttr(attributes, "gen_ai.system", genAiSystem);
   const genAiModel = readString(event, "gen_ai_model");

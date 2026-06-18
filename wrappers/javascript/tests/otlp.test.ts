@@ -12,8 +12,10 @@ import { eventsToOtlpJson, OtlpSink } from "../src/_otlp.js";
 interface OtlpPayload {
   resourceSpans: Array<{
     resource: { attributes: Array<{ key: string; value: Record<string, unknown> }> };
+    schemaUrl?: string;
     scopeSpans: Array<{
       scope: { name: string };
+      schemaUrl?: string;
       spans: Array<{
         traceId: string;
         spanId: string;
@@ -40,6 +42,15 @@ describe("eventsToOtlpJson", () => {
     const attrs = payload.resourceSpans[0]!.resource.attributes;
     const serviceName = attrs.find((a) => a.key === "service.name");
     expect(serviceName?.value).toEqual({ stringValue: "my-service" });
+  });
+
+  it("pins the GenAI semconv version via schema_url (RFC: switch-over)", () => {
+    const payload = parsePayload(eventsToOtlpJson([], "svc"));
+    const rs = payload.resourceSpans[0]!;
+    expect(rs.schemaUrl).toMatch(
+      /^https:\/\/opentelemetry\.io\/schemas\/\d+\.\d+\.\d+$/,
+    );
+    expect(rs.scopeSpans[0]!.schemaUrl).toBe(rs.schemaUrl);
   });
 
   it("translates HTTP semantic-convention attributes", () => {

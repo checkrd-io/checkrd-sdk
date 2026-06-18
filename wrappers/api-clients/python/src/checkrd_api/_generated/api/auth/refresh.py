@@ -5,7 +5,7 @@ import httpx
 
 from ... import errors
 from ...client import AuthenticatedClient, Client
-from ...models.error_response import ErrorResponse
+from ...models.problem_details import ProblemDetails
 from ...models.token_response import TokenResponse
 from ...types import Response
 
@@ -22,14 +22,14 @@ def _get_kwargs() -> dict[str, Any]:
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> ErrorResponse | TokenResponse | None:
+) -> ProblemDetails | TokenResponse | None:
     if response.status_code == 200:
         response_200 = TokenResponse.from_dict(response.json())
 
         return response_200
 
     if response.status_code == 401:
-        response_401 = ErrorResponse.from_dict(response.json())
+        response_401 = ProblemDetails.from_dict(response.json())
 
         return response_401
 
@@ -41,7 +41,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[ErrorResponse | TokenResponse]:
+) -> Response[ProblemDetails | TokenResponse]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -53,7 +53,7 @@ def _build_response(
 def sync_detailed(
     *,
     client: AuthenticatedClient | Client,
-) -> Response[ErrorResponse | TokenResponse]:
+) -> Response[ProblemDetails | TokenResponse]:
     """Authenticated via httpOnly refresh cookie (`checkrd_refresh`). Atomic revoke-and-return guarantees
     only one of two concurrent refresh requests with the same token can succeed.
 
@@ -62,7 +62,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ErrorResponse | TokenResponse]
+        Response[ProblemDetails | TokenResponse]
     """
 
     kwargs = _get_kwargs()
@@ -77,7 +77,7 @@ def sync_detailed(
 def sync(
     *,
     client: AuthenticatedClient | Client,
-) -> ErrorResponse | TokenResponse | None:
+) -> ProblemDetails | TokenResponse | None:
     """Authenticated via httpOnly refresh cookie (`checkrd_refresh`). Atomic revoke-and-return guarantees
     only one of two concurrent refresh requests with the same token can succeed.
 
@@ -86,7 +86,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ErrorResponse | TokenResponse
+        ProblemDetails | TokenResponse
     """
 
     return sync_detailed(
@@ -97,7 +97,7 @@ def sync(
 async def asyncio_detailed(
     *,
     client: AuthenticatedClient | Client,
-) -> Response[ErrorResponse | TokenResponse]:
+) -> Response[ProblemDetails | TokenResponse]:
     """Authenticated via httpOnly refresh cookie (`checkrd_refresh`). Atomic revoke-and-return guarantees
     only one of two concurrent refresh requests with the same token can succeed.
 
@@ -106,7 +106,7 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ErrorResponse | TokenResponse]
+        Response[ProblemDetails | TokenResponse]
     """
 
     kwargs = _get_kwargs()
@@ -119,7 +119,7 @@ async def asyncio_detailed(
 async def asyncio(
     *,
     client: AuthenticatedClient | Client,
-) -> ErrorResponse | TokenResponse | None:
+) -> ProblemDetails | TokenResponse | None:
     """Authenticated via httpOnly refresh cookie (`checkrd_refresh`). Atomic revoke-and-return guarantees
     only one of two concurrent refresh requests with the same token can succeed.
 
@@ -128,7 +128,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ErrorResponse | TokenResponse
+        ProblemDetails | TokenResponse
     """
 
     return (

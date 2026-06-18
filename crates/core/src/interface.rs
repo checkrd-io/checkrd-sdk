@@ -97,7 +97,7 @@ const FFI_INVALID_KEY: i32 = -3;
 // --- reload_policy_signed error codes ---
 
 /// DSSE envelope payload type did not match the expected
-/// `application/vnd.checkrd.policy-bundle+yaml` — cross-type replay defense.
+/// `application/vnd.checkrd.policy-bundle+json` — cross-type replay defense.
 const FFI_POLICY_PAYLOAD_TYPE_MISMATCH: i32 = -4;
 /// Ed25519 signature verification failed (or envelope encoding malformed).
 const FFI_POLICY_SIGNATURE_INVALID: i32 = -5;

@@ -7,7 +7,7 @@ import httpx
 
 from ... import errors
 from ...client import AuthenticatedClient, Client
-from ...models.error_response import ErrorResponse
+from ...models.problem_details import ProblemDetails
 from ...types import Response
 
 
@@ -25,23 +25,23 @@ def _get_kwargs(
     return _kwargs
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> ErrorResponse | str | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> ProblemDetails | str | None:
     if response.status_code == 200:
         response_200 = response.text
         return response_200
 
     if response.status_code == 401:
-        response_401 = ErrorResponse.from_dict(response.json())
+        response_401 = ProblemDetails.from_dict(response.json())
 
         return response_401
 
     if response.status_code == 404:
-        response_404 = ErrorResponse.from_dict(response.json())
+        response_404 = ProblemDetails.from_dict(response.json())
 
         return response_404
 
     if response.status_code == 500:
-        response_500 = ErrorResponse.from_dict(response.json())
+        response_500 = ProblemDetails.from_dict(response.json())
 
         return response_500
 
@@ -51,7 +51,9 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[ErrorResponse | str]:
+def _build_response(
+    *, client: AuthenticatedClient | Client, response: httpx.Response
+) -> Response[ProblemDetails | str]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -64,7 +66,7 @@ def sync_detailed(
     agent_id: UUID,
     *,
     client: AuthenticatedClient,
-) -> Response[ErrorResponse | str]:
+) -> Response[ProblemDetails | str]:
     """JWT-authenticated SSE stream for the dashboard.
 
      Same payload shape as the SDK-facing `/control` stream (init event +
@@ -86,7 +88,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ErrorResponse | str]
+        Response[ProblemDetails | str]
     """
 
     kwargs = _get_kwargs(
@@ -104,7 +106,7 @@ def sync(
     agent_id: UUID,
     *,
     client: AuthenticatedClient,
-) -> ErrorResponse | str | None:
+) -> ProblemDetails | str | None:
     """JWT-authenticated SSE stream for the dashboard.
 
      Same payload shape as the SDK-facing `/control` stream (init event +
@@ -126,7 +128,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ErrorResponse | str
+        ProblemDetails | str
     """
 
     return sync_detailed(
@@ -139,7 +141,7 @@ async def asyncio_detailed(
     agent_id: UUID,
     *,
     client: AuthenticatedClient,
-) -> Response[ErrorResponse | str]:
+) -> Response[ProblemDetails | str]:
     """JWT-authenticated SSE stream for the dashboard.
 
      Same payload shape as the SDK-facing `/control` stream (init event +
@@ -161,7 +163,7 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ErrorResponse | str]
+        Response[ProblemDetails | str]
     """
 
     kwargs = _get_kwargs(
@@ -177,7 +179,7 @@ async def asyncio(
     agent_id: UUID,
     *,
     client: AuthenticatedClient,
-) -> ErrorResponse | str | None:
+) -> ProblemDetails | str | None:
     """JWT-authenticated SSE stream for the dashboard.
 
      Same payload shape as the SDK-facing `/control` stream (init event +
@@ -199,7 +201,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ErrorResponse | str
+        ProblemDetails | str
     """
 
     return (

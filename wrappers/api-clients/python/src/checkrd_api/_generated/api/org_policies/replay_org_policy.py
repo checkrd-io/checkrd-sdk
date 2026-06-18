@@ -5,17 +5,20 @@ import httpx
 
 from ... import errors
 from ...client import AuthenticatedClient, Client
-from ...models.error_response import ErrorResponse
 from ...models.org_replay_request import OrgReplayRequest
 from ...models.org_replay_response import OrgReplayResponse
-from ...types import Response
+from ...models.problem_details import ProblemDetails
+from ...types import UNSET, Response, Unset
 
 
 def _get_kwargs(
     *,
     body: OrgReplayRequest,
+    idempotency_key: str | Unset = UNSET,
 ) -> dict[str, Any]:
     headers: dict[str, Any] = {}
+    if not isinstance(idempotency_key, Unset):
+        headers["Idempotency-Key"] = idempotency_key
 
     _kwargs: dict[str, Any] = {
         "method": "post",
@@ -32,19 +35,19 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> ErrorResponse | OrgReplayResponse | None:
+) -> OrgReplayResponse | ProblemDetails | None:
     if response.status_code == 200:
         response_200 = OrgReplayResponse.from_dict(response.json())
 
         return response_200
 
     if response.status_code == 400:
-        response_400 = ErrorResponse.from_dict(response.json())
+        response_400 = ProblemDetails.from_dict(response.json())
 
         return response_400
 
     if response.status_code == 401:
-        response_401 = ErrorResponse.from_dict(response.json())
+        response_401 = ProblemDetails.from_dict(response.json())
 
         return response_401
 
@@ -56,7 +59,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[ErrorResponse | OrgReplayResponse]:
+) -> Response[OrgReplayResponse | ProblemDetails]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -69,7 +72,8 @@ def sync_detailed(
     *,
     client: AuthenticatedClient,
     body: OrgReplayRequest,
-) -> Response[ErrorResponse | OrgReplayResponse]:
+    idempotency_key: str | Unset = UNSET,
+) -> Response[OrgReplayResponse | ProblemDetails]:
     """Replay the candidate org policy against recent events from *every*
     inheriting agent in the workspace. Aggregates verdict counts and
     surfaces the set of events whose verdict would change under the new
@@ -80,6 +84,7 @@ def sync_detailed(
     same org-scope gate as the other org-policies routes via `live_role`.
 
     Args:
+        idempotency_key (str | Unset):
         body (OrgReplayRequest): `POST /v1/org-policies/replay` request body.
 
     Raises:
@@ -87,11 +92,12 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ErrorResponse | OrgReplayResponse]
+        Response[OrgReplayResponse | ProblemDetails]
     """
 
     kwargs = _get_kwargs(
         body=body,
+        idempotency_key=idempotency_key,
     )
 
     response = client.get_httpx_client().request(
@@ -105,7 +111,8 @@ def sync(
     *,
     client: AuthenticatedClient,
     body: OrgReplayRequest,
-) -> ErrorResponse | OrgReplayResponse | None:
+    idempotency_key: str | Unset = UNSET,
+) -> OrgReplayResponse | ProblemDetails | None:
     """Replay the candidate org policy against recent events from *every*
     inheriting agent in the workspace. Aggregates verdict counts and
     surfaces the set of events whose verdict would change under the new
@@ -116,6 +123,7 @@ def sync(
     same org-scope gate as the other org-policies routes via `live_role`.
 
     Args:
+        idempotency_key (str | Unset):
         body (OrgReplayRequest): `POST /v1/org-policies/replay` request body.
 
     Raises:
@@ -123,12 +131,13 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ErrorResponse | OrgReplayResponse
+        OrgReplayResponse | ProblemDetails
     """
 
     return sync_detailed(
         client=client,
         body=body,
+        idempotency_key=idempotency_key,
     ).parsed
 
 
@@ -136,7 +145,8 @@ async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
     body: OrgReplayRequest,
-) -> Response[ErrorResponse | OrgReplayResponse]:
+    idempotency_key: str | Unset = UNSET,
+) -> Response[OrgReplayResponse | ProblemDetails]:
     """Replay the candidate org policy against recent events from *every*
     inheriting agent in the workspace. Aggregates verdict counts and
     surfaces the set of events whose verdict would change under the new
@@ -147,6 +157,7 @@ async def asyncio_detailed(
     same org-scope gate as the other org-policies routes via `live_role`.
 
     Args:
+        idempotency_key (str | Unset):
         body (OrgReplayRequest): `POST /v1/org-policies/replay` request body.
 
     Raises:
@@ -154,11 +165,12 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ErrorResponse | OrgReplayResponse]
+        Response[OrgReplayResponse | ProblemDetails]
     """
 
     kwargs = _get_kwargs(
         body=body,
+        idempotency_key=idempotency_key,
     )
 
     response = await client.get_async_httpx_client().request(**kwargs)
@@ -170,7 +182,8 @@ async def asyncio(
     *,
     client: AuthenticatedClient,
     body: OrgReplayRequest,
-) -> ErrorResponse | OrgReplayResponse | None:
+    idempotency_key: str | Unset = UNSET,
+) -> OrgReplayResponse | ProblemDetails | None:
     """Replay the candidate org policy against recent events from *every*
     inheriting agent in the workspace. Aggregates verdict counts and
     surfaces the set of events whose verdict would change under the new
@@ -181,6 +194,7 @@ async def asyncio(
     same org-scope gate as the other org-policies routes via `live_role`.
 
     Args:
+        idempotency_key (str | Unset):
         body (OrgReplayRequest): `POST /v1/org-policies/replay` request body.
 
     Raises:
@@ -188,12 +202,13 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ErrorResponse | OrgReplayResponse
+        OrgReplayResponse | ProblemDetails
     """
 
     return (
         await asyncio_detailed(
             client=client,
             body=body,
+            idempotency_key=idempotency_key,
         )
     ).parsed

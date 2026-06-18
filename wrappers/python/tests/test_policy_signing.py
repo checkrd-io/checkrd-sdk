@@ -86,7 +86,7 @@ def _build_dsse_envelope(
     private_key_bytes: bytes,
     keyid: str,
     payload_bytes: bytes,
-    payload_type: str = "application/vnd.checkrd.policy-bundle+yaml",
+    payload_type: str = "application/vnd.checkrd.policy-bundle+json",
 ) -> dict:
     """Construct a DSSE envelope by signing with PyCA cryptography.
 
@@ -480,7 +480,7 @@ def test_envelope_with_no_signatures_is_rejected() -> None:
 
     payload = _build_policy_bundle(_PERMISSIVE_POLICY)
     envelope_no_sigs = {
-        "payloadType": "application/vnd.checkrd.policy-bundle+yaml",
+        "payloadType": "application/vnd.checkrd.policy-bundle+json",
         "payload": base64.b64encode(payload).decode(),
         "signatures": [],
     }

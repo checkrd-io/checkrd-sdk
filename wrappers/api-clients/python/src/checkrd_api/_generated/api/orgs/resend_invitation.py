@@ -7,15 +7,20 @@ import httpx
 
 from ... import errors
 from ...client import AuthenticatedClient, Client
-from ...models.error_response import ErrorResponse
 from ...models.invitation import Invitation
-from ...types import Response
+from ...models.problem_details import ProblemDetails
+from ...types import UNSET, Response, Unset
 
 
 def _get_kwargs(
     org_id: UUID,
     invitation_id: UUID,
+    *,
+    idempotency_key: str | Unset = UNSET,
 ) -> dict[str, Any]:
+    headers: dict[str, Any] = {}
+    if not isinstance(idempotency_key, Unset):
+        headers["Idempotency-Key"] = idempotency_key
 
     _kwargs: dict[str, Any] = {
         "method": "post",
@@ -25,34 +30,35 @@ def _get_kwargs(
         ),
     }
 
+    _kwargs["headers"] = headers
     return _kwargs
 
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> ErrorResponse | Invitation | None:
+) -> Invitation | ProblemDetails | None:
     if response.status_code == 200:
         response_200 = Invitation.from_dict(response.json())
 
         return response_200
 
     if response.status_code == 401:
-        response_401 = ErrorResponse.from_dict(response.json())
+        response_401 = ProblemDetails.from_dict(response.json())
 
         return response_401
 
     if response.status_code == 403:
-        response_403 = ErrorResponse.from_dict(response.json())
+        response_403 = ProblemDetails.from_dict(response.json())
 
         return response_403
 
     if response.status_code == 404:
-        response_404 = ErrorResponse.from_dict(response.json())
+        response_404 = ProblemDetails.from_dict(response.json())
 
         return response_404
 
     if response.status_code == 409:
-        response_409 = ErrorResponse.from_dict(response.json())
+        response_409 = ProblemDetails.from_dict(response.json())
 
         return response_409
 
@@ -64,7 +70,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[ErrorResponse | Invitation]:
+) -> Response[Invitation | ProblemDetails]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -78,7 +84,8 @@ def sync_detailed(
     invitation_id: UUID,
     *,
     client: AuthenticatedClient,
-) -> Response[ErrorResponse | Invitation]:
+    idempotency_key: str | Unset = UNSET,
+) -> Response[Invitation | ProblemDetails]:
     r"""Resend an invitation. Requires the Admin role.
 
      Implemented as revoke + new send: WorkOS' own resend endpoint
@@ -89,18 +96,20 @@ def sync_detailed(
     Args:
         org_id (UUID):
         invitation_id (UUID):
+        idempotency_key (str | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ErrorResponse | Invitation]
+        Response[Invitation | ProblemDetails]
     """
 
     kwargs = _get_kwargs(
         org_id=org_id,
         invitation_id=invitation_id,
+        idempotency_key=idempotency_key,
     )
 
     response = client.get_httpx_client().request(
@@ -115,7 +124,8 @@ def sync(
     invitation_id: UUID,
     *,
     client: AuthenticatedClient,
-) -> ErrorResponse | Invitation | None:
+    idempotency_key: str | Unset = UNSET,
+) -> Invitation | ProblemDetails | None:
     r"""Resend an invitation. Requires the Admin role.
 
      Implemented as revoke + new send: WorkOS' own resend endpoint
@@ -126,19 +136,21 @@ def sync(
     Args:
         org_id (UUID):
         invitation_id (UUID):
+        idempotency_key (str | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ErrorResponse | Invitation
+        Invitation | ProblemDetails
     """
 
     return sync_detailed(
         org_id=org_id,
         invitation_id=invitation_id,
         client=client,
+        idempotency_key=idempotency_key,
     ).parsed
 
 
@@ -147,7 +159,8 @@ async def asyncio_detailed(
     invitation_id: UUID,
     *,
     client: AuthenticatedClient,
-) -> Response[ErrorResponse | Invitation]:
+    idempotency_key: str | Unset = UNSET,
+) -> Response[Invitation | ProblemDetails]:
     r"""Resend an invitation. Requires the Admin role.
 
      Implemented as revoke + new send: WorkOS' own resend endpoint
@@ -158,18 +171,20 @@ async def asyncio_detailed(
     Args:
         org_id (UUID):
         invitation_id (UUID):
+        idempotency_key (str | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ErrorResponse | Invitation]
+        Response[Invitation | ProblemDetails]
     """
 
     kwargs = _get_kwargs(
         org_id=org_id,
         invitation_id=invitation_id,
+        idempotency_key=idempotency_key,
     )
 
     response = await client.get_async_httpx_client().request(**kwargs)
@@ -182,7 +197,8 @@ async def asyncio(
     invitation_id: UUID,
     *,
     client: AuthenticatedClient,
-) -> ErrorResponse | Invitation | None:
+    idempotency_key: str | Unset = UNSET,
+) -> Invitation | ProblemDetails | None:
     r"""Resend an invitation. Requires the Admin role.
 
      Implemented as revoke + new send: WorkOS' own resend endpoint
@@ -193,13 +209,14 @@ async def asyncio(
     Args:
         org_id (UUID):
         invitation_id (UUID):
+        idempotency_key (str | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ErrorResponse | Invitation
+        Invitation | ProblemDetails
     """
 
     return (
@@ -207,5 +224,6 @@ async def asyncio(
             org_id=org_id,
             invitation_id=invitation_id,
             client=client,
+            idempotency_key=idempotency_key,
         )
     ).parsed

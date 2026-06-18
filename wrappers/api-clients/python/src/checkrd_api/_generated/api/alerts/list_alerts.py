@@ -6,8 +6,8 @@ import httpx
 
 from ... import errors
 from ...client import AuthenticatedClient, Client
-from ...models.error_response import ErrorResponse
 from ...models.paginated_alert_rules import PaginatedAlertRules
+from ...models.problem_details import ProblemDetails
 from ...types import UNSET, Response, Unset
 
 
@@ -54,19 +54,19 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> ErrorResponse | PaginatedAlertRules | None:
+) -> PaginatedAlertRules | ProblemDetails | None:
     if response.status_code == 200:
         response_200 = PaginatedAlertRules.from_dict(response.json())
 
         return response_200
 
     if response.status_code == 400:
-        response_400 = ErrorResponse.from_dict(response.json())
+        response_400 = ProblemDetails.from_dict(response.json())
 
         return response_400
 
     if response.status_code == 401:
-        response_401 = ErrorResponse.from_dict(response.json())
+        response_401 = ProblemDetails.from_dict(response.json())
 
         return response_401
 
@@ -78,7 +78,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[ErrorResponse | PaginatedAlertRules]:
+) -> Response[PaginatedAlertRules | ProblemDetails]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -96,7 +96,7 @@ def sync_detailed(
     alert_state: str | Unset = UNSET,
     condition_type: str | Unset = UNSET,
     is_enabled: bool | Unset = UNSET,
-) -> Response[ErrorResponse | PaginatedAlertRules]:
+) -> Response[PaginatedAlertRules | ProblemDetails]:
     """
     Args:
         limit (int | Unset):
@@ -111,7 +111,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ErrorResponse | PaginatedAlertRules]
+        Response[PaginatedAlertRules | ProblemDetails]
     """
 
     kwargs = _get_kwargs(
@@ -139,7 +139,7 @@ def sync(
     alert_state: str | Unset = UNSET,
     condition_type: str | Unset = UNSET,
     is_enabled: bool | Unset = UNSET,
-) -> ErrorResponse | PaginatedAlertRules | None:
+) -> PaginatedAlertRules | ProblemDetails | None:
     """
     Args:
         limit (int | Unset):
@@ -154,7 +154,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ErrorResponse | PaginatedAlertRules
+        PaginatedAlertRules | ProblemDetails
     """
 
     return sync_detailed(
@@ -177,7 +177,7 @@ async def asyncio_detailed(
     alert_state: str | Unset = UNSET,
     condition_type: str | Unset = UNSET,
     is_enabled: bool | Unset = UNSET,
-) -> Response[ErrorResponse | PaginatedAlertRules]:
+) -> Response[PaginatedAlertRules | ProblemDetails]:
     """
     Args:
         limit (int | Unset):
@@ -192,7 +192,7 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ErrorResponse | PaginatedAlertRules]
+        Response[PaginatedAlertRules | ProblemDetails]
     """
 
     kwargs = _get_kwargs(
@@ -218,7 +218,7 @@ async def asyncio(
     alert_state: str | Unset = UNSET,
     condition_type: str | Unset = UNSET,
     is_enabled: bool | Unset = UNSET,
-) -> ErrorResponse | PaginatedAlertRules | None:
+) -> PaginatedAlertRules | ProblemDetails | None:
     """
     Args:
         limit (int | Unset):
@@ -233,7 +233,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ErrorResponse | PaginatedAlertRules
+        PaginatedAlertRules | ProblemDetails
     """
 
     return (

@@ -6,7 +6,7 @@ import httpx
 
 from ... import errors
 from ...client import AuthenticatedClient, Client
-from ...models.error_response import ErrorResponse
+from ...models.problem_details import ProblemDetails
 from ...models.rule_hit import RuleHit
 from ...types import UNSET, Response, Unset
 
@@ -42,7 +42,7 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> ErrorResponse | list[RuleHit] | None:
+) -> ProblemDetails | list[RuleHit] | None:
     if response.status_code == 200:
         response_200 = []
         _response_200 = response.json()
@@ -54,12 +54,12 @@ def _parse_response(
         return response_200
 
     if response.status_code == 400:
-        response_400 = ErrorResponse.from_dict(response.json())
+        response_400 = ProblemDetails.from_dict(response.json())
 
         return response_400
 
     if response.status_code == 401:
-        response_401 = ErrorResponse.from_dict(response.json())
+        response_401 = ProblemDetails.from_dict(response.json())
 
         return response_401
 
@@ -71,7 +71,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[ErrorResponse | list[RuleHit]]:
+) -> Response[ProblemDetails | list[RuleHit]]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -86,7 +86,7 @@ def sync_detailed(
     agent_id: UUID | Unset = UNSET,
     from_: str | Unset = UNSET,
     to: str | Unset = UNSET,
-) -> Response[ErrorResponse | list[RuleHit]]:
+) -> Response[ProblemDetails | list[RuleHit]]:
     r"""Per-rule hit counts with a sparkline-ready hourly histogram.
 
      Stripe Radar pattern: \"rule X matched Y times in the last N hours\" with a
@@ -104,7 +104,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ErrorResponse | list[RuleHit]]
+        Response[ProblemDetails | list[RuleHit]]
     """
 
     kwargs = _get_kwargs(
@@ -126,7 +126,7 @@ def sync(
     agent_id: UUID | Unset = UNSET,
     from_: str | Unset = UNSET,
     to: str | Unset = UNSET,
-) -> ErrorResponse | list[RuleHit] | None:
+) -> ProblemDetails | list[RuleHit] | None:
     r"""Per-rule hit counts with a sparkline-ready hourly histogram.
 
      Stripe Radar pattern: \"rule X matched Y times in the last N hours\" with a
@@ -144,7 +144,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ErrorResponse | list[RuleHit]
+        ProblemDetails | list[RuleHit]
     """
 
     return sync_detailed(
@@ -161,7 +161,7 @@ async def asyncio_detailed(
     agent_id: UUID | Unset = UNSET,
     from_: str | Unset = UNSET,
     to: str | Unset = UNSET,
-) -> Response[ErrorResponse | list[RuleHit]]:
+) -> Response[ProblemDetails | list[RuleHit]]:
     r"""Per-rule hit counts with a sparkline-ready hourly histogram.
 
      Stripe Radar pattern: \"rule X matched Y times in the last N hours\" with a
@@ -179,7 +179,7 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ErrorResponse | list[RuleHit]]
+        Response[ProblemDetails | list[RuleHit]]
     """
 
     kwargs = _get_kwargs(
@@ -199,7 +199,7 @@ async def asyncio(
     agent_id: UUID | Unset = UNSET,
     from_: str | Unset = UNSET,
     to: str | Unset = UNSET,
-) -> ErrorResponse | list[RuleHit] | None:
+) -> ProblemDetails | list[RuleHit] | None:
     r"""Per-rule hit counts with a sparkline-ready hourly histogram.
 
      Stripe Radar pattern: \"rule X matched Y times in the last N hours\" with a
@@ -217,7 +217,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ErrorResponse | list[RuleHit]
+        ProblemDetails | list[RuleHit]
     """
 
     return (

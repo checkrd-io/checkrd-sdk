@@ -6,14 +6,19 @@ import httpx
 
 from ... import errors
 from ...client import AuthenticatedClient, Client
-from ...models.error_response import ErrorResponse
 from ...models.org_policy import OrgPolicy
-from ...types import Response
+from ...models.problem_details import ProblemDetails
+from ...types import UNSET, Response, Unset
 
 
 def _get_kwargs(
     version: int,
+    *,
+    idempotency_key: str | Unset = UNSET,
 ) -> dict[str, Any]:
+    headers: dict[str, Any] = {}
+    if not isinstance(idempotency_key, Unset):
+        headers["Idempotency-Key"] = idempotency_key
 
     _kwargs: dict[str, Any] = {
         "method": "post",
@@ -22,29 +27,30 @@ def _get_kwargs(
         ),
     }
 
+    _kwargs["headers"] = headers
     return _kwargs
 
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> ErrorResponse | OrgPolicy | None:
+) -> OrgPolicy | ProblemDetails | None:
     if response.status_code == 200:
         response_200 = OrgPolicy.from_dict(response.json())
 
         return response_200
 
     if response.status_code == 401:
-        response_401 = ErrorResponse.from_dict(response.json())
+        response_401 = ProblemDetails.from_dict(response.json())
 
         return response_401
 
     if response.status_code == 403:
-        response_403 = ErrorResponse.from_dict(response.json())
+        response_403 = ProblemDetails.from_dict(response.json())
 
         return response_403
 
     if response.status_code == 404:
-        response_404 = ErrorResponse.from_dict(response.json())
+        response_404 = ProblemDetails.from_dict(response.json())
 
         return response_404
 
@@ -56,7 +62,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[ErrorResponse | OrgPolicy]:
+) -> Response[OrgPolicy | ProblemDetails]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -69,21 +75,24 @@ def sync_detailed(
     version: int,
     *,
     client: AuthenticatedClient,
-) -> Response[ErrorResponse | OrgPolicy]:
+    idempotency_key: str | Unset = UNSET,
+) -> Response[OrgPolicy | ProblemDetails]:
     """
     Args:
         version (int):
+        idempotency_key (str | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ErrorResponse | OrgPolicy]
+        Response[OrgPolicy | ProblemDetails]
     """
 
     kwargs = _get_kwargs(
         version=version,
+        idempotency_key=idempotency_key,
     )
 
     response = client.get_httpx_client().request(
@@ -97,22 +106,25 @@ def sync(
     version: int,
     *,
     client: AuthenticatedClient,
-) -> ErrorResponse | OrgPolicy | None:
+    idempotency_key: str | Unset = UNSET,
+) -> OrgPolicy | ProblemDetails | None:
     """
     Args:
         version (int):
+        idempotency_key (str | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ErrorResponse | OrgPolicy
+        OrgPolicy | ProblemDetails
     """
 
     return sync_detailed(
         version=version,
         client=client,
+        idempotency_key=idempotency_key,
     ).parsed
 
 
@@ -120,21 +132,24 @@ async def asyncio_detailed(
     version: int,
     *,
     client: AuthenticatedClient,
-) -> Response[ErrorResponse | OrgPolicy]:
+    idempotency_key: str | Unset = UNSET,
+) -> Response[OrgPolicy | ProblemDetails]:
     """
     Args:
         version (int):
+        idempotency_key (str | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ErrorResponse | OrgPolicy]
+        Response[OrgPolicy | ProblemDetails]
     """
 
     kwargs = _get_kwargs(
         version=version,
+        idempotency_key=idempotency_key,
     )
 
     response = await client.get_async_httpx_client().request(**kwargs)
@@ -146,22 +161,25 @@ async def asyncio(
     version: int,
     *,
     client: AuthenticatedClient,
-) -> ErrorResponse | OrgPolicy | None:
+    idempotency_key: str | Unset = UNSET,
+) -> OrgPolicy | ProblemDetails | None:
     """
     Args:
         version (int):
+        idempotency_key (str | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ErrorResponse | OrgPolicy
+        OrgPolicy | ProblemDetails
     """
 
     return (
         await asyncio_detailed(
             version=version,
             client=client,
+            idempotency_key=idempotency_key,
         )
     ).parsed

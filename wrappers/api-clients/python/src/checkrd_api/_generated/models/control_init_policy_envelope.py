@@ -6,13 +6,16 @@ from typing import Any, TypeVar
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
 
-T = TypeVar("T", bound="CreateKeyRequestPermissions")
+T = TypeVar("T", bound="ControlInitPolicyEnvelope")
 
 
 @_attrs_define
-class CreateKeyRequestPermissions:
-    """Optional permission grant JSON. When omitted the key inherits
-    full org permissions (`{}`).
+class ControlInitPolicyEnvelope:
+    """DSSE-signed policy envelope, identical to the one returned by
+    `GET /v1/agents/{agent_id}/control/state`. `None` when no
+    active policy exists yet. Always populated after the first
+    publish — strong-from-the-ground-up means there is no unsigned
+    distribution path.
 
     """
 
@@ -28,10 +31,10 @@ class CreateKeyRequestPermissions:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        create_key_request_permissions = cls()
+        control_init_policy_envelope = cls()
 
-        create_key_request_permissions.additional_properties = d
-        return create_key_request_permissions
+        control_init_policy_envelope.additional_properties = d
+        return control_init_policy_envelope
 
     @property
     def additional_keys(self) -> list[str]:

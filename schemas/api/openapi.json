@@ -6,7 +6,7 @@
     "license": {
       "name": "Apache-2.0"
     },
-    "version": "0.1.0"
+    "version": "0.1.5"
   },
   "servers": [
     {
@@ -53,9 +53,9 @@
           "401": {
             "description": "CSRF state validation failed",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -63,9 +63,9 @@
           "502": {
             "description": "WorkOS upstream error",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -105,9 +105,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -115,9 +115,9 @@
           "404": {
             "description": "Code unknown, already approved/denied, or expired (intentionally generic to avoid leaking which `user_code`s existed)",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -147,9 +147,9 @@
           "500": {
             "description": "Failed to allocate device code",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -189,9 +189,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -199,9 +199,9 @@
           "404": {
             "description": "Code unknown, already approved/denied, or expired (intentionally generic)",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -241,9 +241,9 @@
           "500": {
             "description": "Internal poll failure",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -266,9 +266,9 @@
           "500": {
             "description": "Failed to issue CSRF state token",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -313,9 +313,9 @@
           "401": {
             "description": "Authentication required (missing or invalid `checkrd_session` cookie)",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -345,9 +345,9 @@
           "401": {
             "description": "Missing, invalid, or already-revoked refresh token",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -387,9 +387,9 @@
           "401": {
             "description": "Authentication required (missing or invalid `checkrd_session` cookie)",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -397,9 +397,9 @@
           "403": {
             "description": "Caller is not a member of the target org",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -407,9 +407,9 @@
           "404": {
             "description": "Target org not found",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -463,13 +463,34 @@
             "description": "Event accepted (also returned for malformed handler errors so WorkOS does not infinitely retry a broken event)"
           },
           "400": {
-            "description": "Malformed JSON body"
+            "description": "Malformed JSON body",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
           },
           "401": {
-            "description": "Signature verification failed"
+            "description": "Signature verification failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
           },
           "503": {
-            "description": "Orphan invitation — local row missing; retry expected after reconciliation sweeper backfills"
+            "description": "Orphan invitation — local row missing; retry expected after reconciliation sweeper backfills",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
           }
         },
         "security": []
@@ -517,9 +538,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -536,6 +557,17 @@
           "agents"
         ],
         "operationId": "create_agent",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -560,9 +592,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -570,9 +602,9 @@
           "402": {
             "description": "Plan limit exceeded",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -580,9 +612,9 @@
           "403": {
             "description": "Caller lacks the required role",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -627,9 +659,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -637,9 +669,9 @@
           "404": {
             "description": "Agent not found",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -665,6 +697,15 @@
             "schema": {
               "type": "string",
               "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.",
+            "required": false,
+            "schema": {
+              "type": "string"
             }
           }
         ],
@@ -692,9 +733,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -702,9 +743,9 @@
           "403": {
             "description": "Caller lacks the required role",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -712,9 +753,9 @@
           "404": {
             "description": "Agent not found",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -741,6 +782,15 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -757,9 +807,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -767,9 +817,9 @@
           "403": {
             "description": "Caller lacks the Admin role",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -777,9 +827,9 @@
           "404": {
             "description": "Agent not found",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -824,9 +874,9 @@
           "401": {
             "description": "API key authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -834,9 +884,9 @@
           "404": {
             "description": "Agent not found",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -844,9 +894,9 @@
           "500": {
             "description": "SSE requires Redis; not configured",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -893,9 +943,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -903,9 +953,9 @@
           "404": {
             "description": "Agent not found",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -913,9 +963,9 @@
           "500": {
             "description": "SSE requires Redis; not configured",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -960,9 +1010,9 @@
           "401": {
             "description": "API key authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -970,9 +1020,9 @@
           "404": {
             "description": "Agent not found",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -980,9 +1030,9 @@
           "500": {
             "description": "Failed to sign active policy",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -1011,6 +1061,15 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -1037,9 +1096,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -1047,9 +1106,9 @@
           "403": {
             "description": "Caller lacks the Admin role",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -1057,9 +1116,9 @@
           "404": {
             "description": "Agent not found",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -1124,9 +1183,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -1134,9 +1193,9 @@
           "404": {
             "description": "Agent not found in caller's org",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -1162,6 +1221,15 @@
             "schema": {
               "type": "string",
               "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.",
+            "required": false,
+            "schema": {
+              "type": "string"
             }
           }
         ],
@@ -1189,9 +1257,9 @@
           "400": {
             "description": "Policy YAML failed validation",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -1199,9 +1267,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -1209,9 +1277,9 @@
           "403": {
             "description": "Caller lacks the Admin role",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -1219,9 +1287,9 @@
           "404": {
             "description": "Agent not found in caller's org",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -1266,9 +1334,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -1276,9 +1344,9 @@
           "404": {
             "description": "Agent has no active policy",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -1307,6 +1375,15 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -1333,9 +1410,9 @@
           "400": {
             "description": "Policy YAML failed validation",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -1343,9 +1420,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -1353,9 +1430,9 @@
           "404": {
             "description": "Agent not found in caller's org",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -1384,6 +1461,15 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -1410,9 +1496,9 @@
           "400": {
             "description": "Candidate YAML failed validation",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -1420,9 +1506,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -1430,9 +1516,9 @@
           "404": {
             "description": "Base version does not exist for this agent",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -1478,9 +1564,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -1488,9 +1574,9 @@
           "404": {
             "description": "No org policy and no active agent policy",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -1519,6 +1605,15 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -1545,9 +1640,9 @@
           "400": {
             "description": "Policy YAML failed validation, or `range` is unsupported",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -1555,9 +1650,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -1565,9 +1660,9 @@
           "404": {
             "description": "Agent not found in caller's org",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -1596,6 +1691,15 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -1622,9 +1726,9 @@
           "400": {
             "description": "Policy YAML failed validation, or test cases exceeded limits",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -1632,9 +1736,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -1642,9 +1746,9 @@
           "404": {
             "description": "Agent not found in caller's org",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -1699,9 +1803,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -1709,9 +1813,9 @@
           "404": {
             "description": "Policy version does not exist for this agent",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -1748,6 +1852,15 @@
               "type": "integer",
               "format": "int32"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -1774,9 +1887,9 @@
           "400": {
             "description": "Policy YAML failed validation",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -1784,9 +1897,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -1794,9 +1907,9 @@
           "403": {
             "description": "Caller lacks the Admin role",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -1804,9 +1917,9 @@
           "404": {
             "description": "Policy version does not exist for this agent",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -1814,9 +1927,9 @@
           "409": {
             "description": "Policy version is active and cannot be edited (create a new version instead)",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -1855,6 +1968,15 @@
               "type": "integer",
               "format": "int32"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -1871,9 +1993,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -1881,9 +2003,9 @@
           "403": {
             "description": "Caller lacks the Admin role",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -1891,9 +2013,9 @@
           "404": {
             "description": "Policy version does not exist for this agent",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -1922,6 +2044,15 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -1948,9 +2079,9 @@
           "400": {
             "description": "Invalid public key format",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -1958,9 +2089,9 @@
           "401": {
             "description": "API key authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -1968,9 +2099,9 @@
           "409": {
             "description": "Agent already has a different key registered",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -2080,9 +2211,9 @@
           "400": {
             "description": "Invalid filter (period, time range, cursor, or list bounds)",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -2090,9 +2221,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -2100,9 +2231,9 @@
           "403": {
             "description": "Caller lacks the Member role",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -2203,9 +2334,9 @@
           "400": {
             "description": "Invalid filter (period, time range, bucket, or list bounds)",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -2213,9 +2344,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -2223,9 +2354,9 @@
           "403": {
             "description": "Caller lacks the Member role",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -2317,9 +2448,9 @@
           "400": {
             "description": "Invalid `alert_state` filter",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -2327,9 +2458,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -2346,6 +2477,17 @@
           "alerts"
         ],
         "operationId": "create_alert",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -2370,9 +2512,9 @@
           "400": {
             "description": "Invalid alert configuration",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -2380,9 +2522,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -2390,9 +2532,9 @@
           "403": {
             "description": "Caller lacks the Member role",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -2400,9 +2542,9 @@
           "404": {
             "description": "Agent not found in caller's workspace",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -2431,6 +2573,15 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -2457,9 +2608,9 @@
           "400": {
             "description": "Invalid alert configuration",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -2467,9 +2618,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -2477,9 +2628,9 @@
           "403": {
             "description": "Caller lacks the Member role",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -2487,9 +2638,9 @@
           "404": {
             "description": "Alert rule not found",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -2516,6 +2667,15 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2532,9 +2692,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -2542,9 +2702,9 @@
           "403": {
             "description": "Caller lacks the Admin role",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -2552,9 +2712,9 @@
           "404": {
             "description": "Alert rule not found",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -2619,9 +2779,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -2650,6 +2810,15 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -2676,9 +2845,9 @@
           "400": {
             "description": "Invalid `until` timestamp or non-positive `duration_minutes`",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -2686,9 +2855,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -2696,9 +2865,9 @@
           "403": {
             "description": "Caller lacks the Member role",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -2706,9 +2875,9 @@
           "404": {
             "description": "Alert rule not found",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -2773,9 +2942,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -2804,6 +2973,15 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -2830,9 +3008,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -2840,9 +3018,9 @@
           "403": {
             "description": "Caller lacks the Member role",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -2850,9 +3028,9 @@
           "404": {
             "description": "Alert rule not found",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -2881,6 +3059,15 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2897,9 +3084,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -2907,9 +3094,9 @@
           "403": {
             "description": "Caller lacks the Member role",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -2917,9 +3104,9 @@
           "404": {
             "description": "Alert rule not found",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -3031,9 +3218,9 @@
           "400": {
             "description": "Invalid filter (e.g., `from` > `to`)",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -3041,9 +3228,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -3051,9 +3238,9 @@
           "402": {
             "description": "Plan does not include audit log access",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -3061,9 +3248,9 @@
           "403": {
             "description": "Caller lacks the Admin role",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -3071,9 +3258,9 @@
           "404": {
             "description": "Workspace not found",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -3130,9 +3317,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -3140,9 +3327,9 @@
           "402": {
             "description": "Plan does not include audit log access",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -3150,9 +3337,9 @@
           "403": {
             "description": "Caller lacks the Admin role",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -3160,9 +3347,9 @@
           "404": {
             "description": "Workspace not found",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -3181,6 +3368,17 @@
           "billing"
         ],
         "operationId": "create_checkout",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Stripe-hosted Checkout Session URL the client redirects to",
@@ -3195,9 +3393,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -3205,9 +3403,9 @@
           "403": {
             "description": "Caller lacks the Admin role",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -3215,9 +3413,9 @@
           "404": {
             "description": "Workspace not found",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -3225,9 +3423,9 @@
           "500": {
             "description": "Stripe is not configured or the upstream call failed",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -3246,6 +3444,17 @@
           "billing"
         ],
         "operationId": "create_portal",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Stripe Customer Portal URL the client redirects to",
@@ -3260,9 +3469,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -3270,9 +3479,9 @@
           "403": {
             "description": "Caller lacks the Admin role",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -3280,9 +3489,9 @@
           "404": {
             "description": "Workspace not found",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -3290,9 +3499,9 @@
           "500": {
             "description": "Stripe is not configured or the upstream call failed",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -3325,9 +3534,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -3335,9 +3544,9 @@
           "404": {
             "description": "Workspace not found",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -3395,9 +3604,9 @@
           "400": {
             "description": "Invalid time range",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -3405,9 +3614,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -3544,9 +3753,9 @@
           "400": {
             "description": "Invalid filter or cursor",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -3554,9 +3763,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -3602,9 +3811,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -3612,9 +3821,9 @@
           "404": {
             "description": "No event with this request_id in the caller's org",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -3680,9 +3889,9 @@
           "400": {
             "description": "Invalid time range",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -3690,9 +3899,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -3760,9 +3969,9 @@
           "400": {
             "description": "Invalid time range",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -3770,9 +3979,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -3827,9 +4036,9 @@
           "400": {
             "description": "Invalid time range",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -3837,9 +4046,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -3897,9 +4106,9 @@
           "400": {
             "description": "Invalid time range",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -3907,9 +4116,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -3964,9 +4173,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -3983,6 +4192,17 @@
           "keys"
         ],
         "operationId": "create_key",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -4007,9 +4227,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -4017,9 +4237,9 @@
           "402": {
             "description": "Plan limit exceeded",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -4027,9 +4247,9 @@
           "403": {
             "description": "Caller lacks the Admin role",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -4058,6 +4278,15 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -4074,9 +4303,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -4084,9 +4313,9 @@
           "403": {
             "description": "Caller lacks the Admin role",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -4094,9 +4323,9 @@
           "404": {
             "description": "Key not found",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -4104,9 +4333,9 @@
           "409": {
             "description": "Key is still active — call /revoke first",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -4135,6 +4364,15 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -4151,9 +4389,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -4161,9 +4399,9 @@
           "403": {
             "description": "Caller lacks the Admin role",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -4171,9 +4409,9 @@
           "404": {
             "description": "Key not found or already revoked",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -4228,9 +4466,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -4247,6 +4485,17 @@
           "org-policies"
         ],
         "operationId": "create_org_policy",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -4271,9 +4520,9 @@
           "400": {
             "description": "Policy YAML failed validation",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -4281,9 +4530,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -4291,9 +4540,9 @@
           "403": {
             "description": "Caller lacks the Admin role",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -4326,9 +4575,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -4336,9 +4585,9 @@
           "404": {
             "description": "No active org policy",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -4357,6 +4606,17 @@
           "org-policies"
         ],
         "operationId": "analyze_org_policy",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -4381,9 +4641,9 @@
           "400": {
             "description": "Policy YAML failed validation",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -4391,9 +4651,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -4430,9 +4690,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -4453,6 +4713,17 @@
         "summary": "Replay the candidate org policy against recent events from *every*\ninheriting agent in the workspace. Aggregates verdict counts and\nsurfaces the set of events whose verdict would change under the new\npolicy. Stateless — a fresh `RateLimiter` per event matches the\nper-agent replay semantics (treat `would_rate_limit` as approximate).",
         "description": "Any authenticated member can trigger this (viewer+). We enforce the\nsame org-scope gate as the other org-policies routes via `live_role`.",
         "operationId": "replay_org_policy",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -4477,9 +4748,9 @@
           "400": {
             "description": "Policy YAML failed validation, or `range` is unsupported",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -4487,9 +4758,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -4509,6 +4780,17 @@
         ],
         "summary": "Run inline policy tests against an org policy YAML. Stateless — the\nhandler validates + evaluates the candidate YAML directly via the core\ntest runner, identical to the agent-scoped `test_policy`. Gated to\nviewer+ because tests never mutate state. See\n`POST /v1/agents/:id/policies/test` for the analogous agent endpoint.",
         "operationId": "test_org_policy",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -4533,9 +4815,9 @@
           "400": {
             "description": "Policy YAML failed validation, or test cases exceeded limits",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -4543,9 +4825,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -4574,6 +4856,15 @@
               "type": "integer",
               "format": "int32"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -4590,9 +4881,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -4600,9 +4891,9 @@
           "403": {
             "description": "Caller lacks the Admin role",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -4610,9 +4901,9 @@
           "404": {
             "description": "Version does not exist for this org",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -4647,9 +4938,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -4668,6 +4959,17 @@
         "summary": "Create a new workspace owned by the caller.",
         "description": "Per-user cap of 5 free workspaces (Supabase pattern); paid\nworkspaces don't count against the cap. Sliding-window rate limit\nof 10 creates per hour per user via Redis (degrades open).\n\nReturns `org_count_exceeded` (400) when the free-org cap is hit\nand `org_rate_limited` (429) when the per-hour limit fires.",
         "operationId": "create_org",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -4692,9 +4994,9 @@
           "400": {
             "description": "Invalid name or per-user free-org cap exceeded (`org_count_exceeded`)",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -4702,9 +5004,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -4712,9 +5014,9 @@
           "429": {
             "description": "Per-user create-org rate limit exceeded",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -4744,6 +5046,15 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -4770,9 +5081,9 @@
           "400": {
             "description": "Invalid name (empty after trim or >100 chars)",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -4780,9 +5091,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -4790,9 +5101,9 @@
           "403": {
             "description": "Caller lacks the Admin role or is not a member",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -4800,9 +5111,9 @@
           "404": {
             "description": "Workspace not found",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -4830,6 +5141,15 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -4846,9 +5166,9 @@
           "400": {
             "description": "Workspace is the caller's last owned workspace (`cannot_delete_last_org`)",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -4856,9 +5176,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -4866,9 +5186,9 @@
           "403": {
             "description": "Caller lacks the Owner role or is not a member",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -4876,9 +5196,9 @@
           "404": {
             "description": "Workspace not found",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -4954,9 +5274,9 @@
           "400": {
             "description": "Invalid cursor or unknown status filter",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -4964,9 +5284,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -4974,9 +5294,9 @@
           "403": {
             "description": "Caller is not a member of the workspace",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -5005,6 +5325,15 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -5031,9 +5360,9 @@
           "400": {
             "description": "Invalid email or role",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -5041,9 +5370,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -5051,9 +5380,9 @@
           "402": {
             "description": "Plan member limit exceeded",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -5061,9 +5390,9 @@
           "403": {
             "description": "Caller lacks the Admin role or is not a member",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -5071,9 +5400,9 @@
           "404": {
             "description": "Workspace not found",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -5081,9 +5410,9 @@
           "409": {
             "description": "A pending invitation already exists for this email (`conflict_already_invited`)",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -5091,9 +5420,9 @@
           "429": {
             "description": "Per-workspace invitation rate limit exceeded",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -5134,6 +5463,15 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -5150,9 +5488,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -5160,9 +5498,9 @@
           "403": {
             "description": "Caller lacks the Admin role or is not a member",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -5170,9 +5508,9 @@
           "404": {
             "description": "Invitation not found in this workspace (`invitation_not_found`)",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -5180,9 +5518,9 @@
           "409": {
             "description": "Invitation is already in a terminal state (`invitation_invalid_state`)",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -5223,6 +5561,15 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -5239,9 +5586,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -5249,9 +5596,9 @@
           "403": {
             "description": "Caller lacks the Admin role or is not a member",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -5259,9 +5606,9 @@
           "404": {
             "description": "Invitation not found in this workspace (`invitation_not_found`)",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -5269,9 +5616,9 @@
           "409": {
             "description": "Invitation is already in a terminal state (`invitation_invalid_state`)",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -5317,9 +5664,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -5327,9 +5674,9 @@
           "403": {
             "description": "Caller is not a member of the workspace",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -5370,6 +5717,15 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -5386,9 +5742,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -5396,9 +5752,9 @@
           "403": {
             "description": "Caller lacks the Admin role or is not a member",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -5406,9 +5762,9 @@
           "404": {
             "description": "Membership not found, or the target is an owner (owners cannot be removed directly)",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -5449,6 +5805,15 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Opaque client-generated key (e.g. a UUID). Replaying the same key within 24h returns the original response without re-executing the mutation; a concurrent in-flight duplicate gets `409 conflict`. Scoped per workspace.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -5475,9 +5840,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -5485,9 +5850,9 @@
           "403": {
             "description": "Caller lacks the Admin role or is not a member",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -5495,9 +5860,9 @@
           "404": {
             "description": "Membership not found in this workspace",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -5505,9 +5870,9 @@
           "422": {
             "description": "Update would demote the last owner of the workspace",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -5543,9 +5908,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -5599,9 +5964,9 @@
           "400": {
             "description": "Unknown template, missing required parameter, or rendered YAML failed validation",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -5609,9 +5974,9 @@
           "401": {
             "description": "Authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -5646,10 +6011,24 @@
             "description": "Event processed (or duplicate / unhandled type — Stripe should not retry)"
           },
           "400": {
-            "description": "Body not UTF-8, unparseable, or signature verification failed"
+            "description": "Body not UTF-8, unparseable, or signature verification failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
           },
           "500": {
-            "description": "Internal error recording the event for idempotency"
+            "description": "Internal error recording the event for idempotency",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
           }
         },
         "security": []
@@ -5685,9 +6064,9 @@
           "400": {
             "description": "Invalid JSON body, oversized batch (>1000), invalid event, or invalid signature",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -5695,9 +6074,9 @@
           "401": {
             "description": "API key authentication required",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -5705,9 +6084,9 @@
           "429": {
             "description": "Per-org telemetry rate limit exceeded for the caller's plan tier",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ProblemDetails"
                 }
               }
             }
@@ -6460,14 +6839,15 @@
       },
       "AuditLogEntryWithUser": {
         "type": "object",
-        "description": "Audit log entry joined with user email/name for display.\n\nReturned from `GET /v1/audit-log` and\n`GET /v1/audit-log/{resource_type}/{resource_id}`.",
+        "description": "Audit log entry with the actor's display name when applicable.\n\nEach entry has both `actor_id` and `actor_kind` (mirrors the unified\n`Principal` model on the server). Dashboards branch on `actor_kind`\nto render attribution:\n\n- `\"user\"`    — `user_email` / `user_name` populated from a JOIN to `users`.\n- `\"api_key\"` — `actor_id` is the `api_keys.id`; render the key prefix.\n- `\"system\"`  — `actor_id` is null; show \"Checkrd platform\" / source attribution.\n\nReturned from `GET /v1/audit-log` and\n`GET /v1/audit-log/{resource_type}/{resource_id}`.",
         "required": [
           "id",
           "action",
           "resource_type",
           "resource_id",
           "details",
-          "created_at"
+          "created_at",
+          "actor_kind"
         ],
         "properties": {
           "id": {
@@ -6501,19 +6881,31 @@
             "type": "string",
             "format": "date-time"
           },
+          "actor_kind": {
+            "type": "string",
+            "description": "Closed-enum tag for which kind of principal performed the\naction: `\"user\"`, `\"api_key\"`, or `\"system\"`. The DB column has\na CHECK constraint on these values; if a new variant is added\nserver-side, update this doc and dashboards in lockstep."
+          },
+          "actor_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "`users.id` when `actor_kind == \"user\"`, `api_keys.id` when\n`actor_kind == \"api_key\"`, null when `actor_kind == \"system\"`."
+          },
           "user_email": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Email of the user who performed the action. Null for\nsystem-generated entries (e.g., SDK-driven public-key\nregistration with no user session)."
+            "description": "Email of the user who performed the action. Populated only when\n`actor_kind == \"user\"`."
           },
           "user_name": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Display name of the user who performed the action."
+            "description": "Display name of the user who performed the action. Populated\nonly when `actor_kind == \"user\"`."
           }
         }
       },
@@ -6600,7 +6992,7 @@
       },
       "ControlInit": {
         "type": "object",
-        "description": "Initial event payload pushed on SSE stream open. Sent before any\npubsub event so clients never need a separate poll to learn the\ncurrent state of the agent.",
+        "description": "Initial event payload pushed on SSE stream open. Sent before any\npubsub event so clients never need a separate poll to learn the\ncurrent state of the agent.\n\n**`policy_envelope` is required for self-bootstrap.** Without it,\na fresh SDK connection learns only the kill-switch state and waits\nfor a `policy_updated` event that only fires on policy *change* —\nso an SDK that starts up against an agent with an existing active\npolicy never enforces it. Mirroring the polling endpoint's payload\nhere closes that gap: every `init` event carries the same DSSE-\nsigned envelope the polling fallback returns, the SDK installs it\nthe moment SSE handshakes, and the rest of the stream is just\ndeltas.",
         "required": [
           "kill_switch_active"
         ],
@@ -6614,7 +7006,11 @@
               "string",
               "null"
             ],
-            "description": "SHA-256 of the active policy YAML, lowercase hex. `None` only\nwhen no active policy exists yet (brand-new agent before its\nfirst policy push)."
+            "description": "SHA-256 of the active policy YAML, lowercase hex. `None` only\nwhen no active policy exists yet (brand-new agent before its\nfirst policy push). Kept alongside `policy_envelope` for clients\nthat want to compare against a cached engine fingerprint and\nskip the install when nothing changed."
+          },
+          "policy_envelope": {
+            "type": "object",
+            "description": "DSSE-signed policy envelope, identical to the one returned by\n`GET /v1/agents/{agent_id}/control/state`. `None` when no\nactive policy exists yet. Always populated after the first\npublish — strong-from-the-ground-up means there is no unsigned\ndistribution path."
           }
         }
       },
@@ -6665,6 +7061,13 @@
           "kill_switch_active": {
             "type": "boolean",
             "description": "Whether the kill switch is currently engaged."
+          },
+          "active_policy_hash": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "SHA-256 of the active policy YAML, lowercase hex. Same value as\n`ControlInit.active_policy_hash` so the SDK's hash-based\nidempotency cache (OPA bundle / TUF \"don't re-apply unchanged\"\npattern) works identically across the SSE and poll paths.\n`None` when the agent has no active policy."
           },
           "policy_envelope": {
             "type": "object",
@@ -6753,7 +7156,7 @@
         "description": "`POST /v1/keys` request body.",
         "required": [
           "name",
-          "permissions"
+          "scope"
         ],
         "properties": {
           "name": {
@@ -6768,9 +7171,9 @@
             ],
             "description": "Optional free-form description."
           },
-          "permissions": {
+          "scope": {
             "type": "object",
-            "description": "Optional permission grant JSON. When omitted the key inherits\nfull org permissions (`{}`)."
+            "description": "Scope of the key. Stripe-style: `\"all\"` for unrestricted (only\nminted by `checkrd login` device flow); `\"read_only\"` for the\nread-everything preset; `\"restricted\"` with a per-resource\nmatrix for fine-grained access. Resources omitted from a\n`restricted` map default to no access.\n\nWire shape:\n- `{\"kind\": \"all\"}`\n- `{\"kind\": \"read_only\"}`\n- `{\"kind\": \"restricted\", \"resources\": {\"agents\": \"write\", \"policies\": \"read\"}}`"
           }
         }
       },
@@ -7095,52 +7498,6 @@
           }
         }
       },
-      "ErrorBody": {
-        "type": "object",
-        "description": "The body inside the Stripe-style `{ \"error\": { ... } }` envelope.\n\nDefined separately from `ApiError` (which is the runtime sum type)\nbecause OpenAPI describes the *wire shape* clients see, not the\ninternal Rust enum. Serializing `ApiError` always yields exactly\nthis shape — see the `into_response` impl below.",
-        "required": [
-          "type",
-          "code",
-          "message"
-        ],
-        "properties": {
-          "type": {
-            "type": "string",
-            "description": "Coarse-grained category. One of `authentication_error`,\n`permission_error`, `invalid_request_error`, `rate_limit_error`,\n`payment_required`, `not_found`, `idempotency_error`,\n`internal_error`, `bad_gateway`.",
-            "example": "invalid_request_error"
-          },
-          "code": {
-            "type": "string",
-            "description": "Machine-readable, fine-grained error code. See\n[`ErrorCode`] for the full enumeration.",
-            "example": "missing_required_field"
-          },
-          "message": {
-            "type": "string",
-            "description": "Human-readable message safe to surface to end users.",
-            "example": "Missing required field"
-          },
-          "param": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Optional pointer to the offending request parameter (for\n`invalid_request_error`).",
-            "example": "name"
-          }
-        }
-      },
-      "ErrorResponse": {
-        "type": "object",
-        "description": "Stripe-style error envelope returned for any non-2xx response.\n\nWire shape: `{ \"error\": { \"type\", \"code\", \"message\", \"param?\" } }`.\nEvery error response in the API conforms to this — clients can\ntype-narrow against it once and reuse across every endpoint.",
-        "required": [
-          "error"
-        ],
-        "properties": {
-          "error": {
-            "$ref": "#/components/schemas/ErrorBody"
-          }
-        }
-      },
       "EventUsage": {
         "type": "object",
         "description": "Monthly event usage. Separate type from `ResourceCount` because\nthe limit is `u64` (Free: 100K, Team: 1M, Enterprise: `u64::MAX`)\n— `ResourceCount`'s `u32` limit can't represent the unlimited\ntier.",
@@ -7158,6 +7515,26 @@
             "type": "integer",
             "format": "int64",
             "minimum": 0
+          }
+        }
+      },
+      "FieldError": {
+        "type": "object",
+        "description": "One field-level validation failure — an extension member of\n[`ProblemDetails`]'s `errors` array.\n\n`pointer` is a JSON Pointer (RFC 6901) into the request body, e.g.\n`/email` or `/rules/0/action`. Returning an array of these lets a single\nresponse surface *every* invalid field at once.",
+        "required": [
+          "pointer",
+          "detail"
+        ],
+        "properties": {
+          "pointer": {
+            "type": "string",
+            "description": "JSON Pointer (RFC 6901) locating the offending member of the request body.",
+            "example": "/email"
+          },
+          "detail": {
+            "type": "string",
+            "description": "Human-readable reason this field was rejected.",
+            "example": "must be a valid email address"
           }
         }
       },
@@ -8314,6 +8691,128 @@
             "type": "string",
             "description": "Stripe Customer Portal URL. Single-use, expires after the\nportal session ends. Always points to a Stripe-hosted page —\n`billing.stripe.com/...`.",
             "example": "https://billing.stripe.com/p/session/xxx"
+          }
+        }
+      },
+      "ProblemDetails": {
+        "type": "object",
+        "description": "RFC 9457 Problem Details object — the body of every non-2xx response.\n\n`type`/`title`/`status`/`detail`/`instance` are the RFC 9457 standard\nmembers; everything from `code` down is an extension member (RFC 9457\n§3.2). `code` is the stable, machine-readable identifier clients branch\non; `errors` carries per-field validation failures; the remaining typed\nextensions are populated only by the specific problem types that need them.\n\nBuilt exclusively from the [`ErrorCode`] registry via [`ProblemDetails::from_code`],\nso `type`, `title`, `status`, and `code` can never drift from each other.\n\nADR-009v2 (supersedes ADR-009): the wire format is RFC 9457\n`application/problem+json`, not the former Stripe-style `{\"error\":{…}}`\nenvelope. The house `code` (and the `errors[]` field-pointer array) ride as\nextension members (RFC 9457 §3.2), so no client loses information. Adopted\nin the pre-1.0 / zero-user window where the breaking shape change cost\nnothing.",
+        "required": [
+          "type",
+          "title",
+          "status",
+          "code"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Dereferenceable URI identifying the problem type (RFC 9457 §3.1.1).",
+            "example": "https://checkrd.io/errors/invalid_api_key"
+          },
+          "title": {
+            "type": "string",
+            "description": "Stable, short summary of the problem type (RFC 9457 §3.1.2).",
+            "example": "Invalid API key"
+          },
+          "status": {
+            "type": "integer",
+            "format": "int32",
+            "description": "HTTP status code, duplicated in-body for out-of-band use (RFC 9457 §3.1.3).",
+            "example": 401,
+            "minimum": 0
+          },
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable explanation specific to this occurrence (RFC 9457 §3.1.4)."
+          },
+          "instance": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "URI reference identifying this specific occurrence (RFC 9457 §3.1.5).\nStamped by the problem-normalization layer from the request path."
+          },
+          "code": {
+            "type": "string",
+            "description": "Stable, fine-grained, machine-readable error code. Clients branch on this.",
+            "example": "invalid_api_key"
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FieldError"
+            },
+            "description": "Per-field validation failures (RFC 6901 pointers). Omitted when empty."
+          },
+          "request_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Correlation id for this request (mirrors the `x-request-id` header).\nStamped by the problem-normalization layer."
+          },
+          "resource": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Billing: the resource whose plan limit was hit (`agents`, `api_keys`, …)."
+          },
+          "limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Billing: the limit value for the current plan.",
+            "minimum": 0
+          },
+          "current": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Billing: the caller's current usage.",
+            "minimum": 0
+          },
+          "feature": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Billing: the gated feature name."
+          },
+          "required_tier": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Billing: the tier required to unlock the feature or a higher limit."
+          },
+          "requested": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Versioning: the raw `Checkrd-Version` value the client sent."
+          },
+          "minimum_supported": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Versioning: the minimum supported API version."
+          },
+          "latest_supported": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Versioning: the latest supported API version."
           }
         }
       },

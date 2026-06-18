@@ -40,7 +40,7 @@ from checkrd._policy_state import (
 # the WASM core to verify it during these tests.
 _FAKE_ENVELOPE = json.dumps(
     {
-        "payloadType": "application/vnd.checkrd.policy-bundle+yaml",
+        "payloadType": "application/vnd.checkrd.policy-bundle+json",
         "payload": "ZHVtbXk=",
         "signatures": [{"keyid": "test", "sig": "AA"}],
     }

@@ -7,8 +7,8 @@ import httpx
 
 from ... import errors
 from ...client import AuthenticatedClient, Client
-from ...models.error_response import ErrorResponse
 from ...models.invitation_list_response import InvitationListResponse
+from ...models.problem_details import ProblemDetails
 from ...types import UNSET, Response, Unset
 
 
@@ -43,24 +43,24 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> ErrorResponse | InvitationListResponse | None:
+) -> InvitationListResponse | ProblemDetails | None:
     if response.status_code == 200:
         response_200 = InvitationListResponse.from_dict(response.json())
 
         return response_200
 
     if response.status_code == 400:
-        response_400 = ErrorResponse.from_dict(response.json())
+        response_400 = ProblemDetails.from_dict(response.json())
 
         return response_400
 
     if response.status_code == 401:
-        response_401 = ErrorResponse.from_dict(response.json())
+        response_401 = ProblemDetails.from_dict(response.json())
 
         return response_401
 
     if response.status_code == 403:
-        response_403 = ErrorResponse.from_dict(response.json())
+        response_403 = ProblemDetails.from_dict(response.json())
 
         return response_403
 
@@ -72,7 +72,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[ErrorResponse | InvitationListResponse]:
+) -> Response[InvitationListResponse | ProblemDetails]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -88,7 +88,7 @@ def sync_detailed(
     after: str | Unset = UNSET,
     limit: int | Unset = UNSET,
     status: str | Unset = UNSET,
-) -> Response[ErrorResponse | InvitationListResponse]:
+) -> Response[InvitationListResponse | ProblemDetails]:
     """List a workspace's invitations, newest first. Forward-only
     cursor pagination on `(created_at DESC, id DESC)`.
 
@@ -107,7 +107,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ErrorResponse | InvitationListResponse]
+        Response[InvitationListResponse | ProblemDetails]
     """
 
     kwargs = _get_kwargs(
@@ -131,7 +131,7 @@ def sync(
     after: str | Unset = UNSET,
     limit: int | Unset = UNSET,
     status: str | Unset = UNSET,
-) -> ErrorResponse | InvitationListResponse | None:
+) -> InvitationListResponse | ProblemDetails | None:
     """List a workspace's invitations, newest first. Forward-only
     cursor pagination on `(created_at DESC, id DESC)`.
 
@@ -150,7 +150,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ErrorResponse | InvitationListResponse
+        InvitationListResponse | ProblemDetails
     """
 
     return sync_detailed(
@@ -169,7 +169,7 @@ async def asyncio_detailed(
     after: str | Unset = UNSET,
     limit: int | Unset = UNSET,
     status: str | Unset = UNSET,
-) -> Response[ErrorResponse | InvitationListResponse]:
+) -> Response[InvitationListResponse | ProblemDetails]:
     """List a workspace's invitations, newest first. Forward-only
     cursor pagination on `(created_at DESC, id DESC)`.
 
@@ -188,7 +188,7 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ErrorResponse | InvitationListResponse]
+        Response[InvitationListResponse | ProblemDetails]
     """
 
     kwargs = _get_kwargs(
@@ -210,7 +210,7 @@ async def asyncio(
     after: str | Unset = UNSET,
     limit: int | Unset = UNSET,
     status: str | Unset = UNSET,
-) -> ErrorResponse | InvitationListResponse | None:
+) -> InvitationListResponse | ProblemDetails | None:
     """List a workspace's invitations, newest first. Forward-only
     cursor pagination on `(created_at DESC, id DESC)`.
 
@@ -229,7 +229,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ErrorResponse | InvitationListResponse
+        InvitationListResponse | ProblemDetails
     """
 
     return (

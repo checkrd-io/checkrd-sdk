@@ -5,7 +5,7 @@ import httpx
 
 from ... import errors
 from ...client import AuthenticatedClient, Client
-from ...models.error_response import ErrorResponse
+from ...models.problem_details import ProblemDetails
 from ...types import Response
 
 
@@ -19,13 +19,13 @@ def _get_kwargs() -> dict[str, Any]:
     return _kwargs
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Any | ErrorResponse | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Any | ProblemDetails | None:
     if response.status_code == 302:
         response_302 = cast(Any, None)
         return response_302
 
     if response.status_code == 500:
-        response_500 = ErrorResponse.from_dict(response.json())
+        response_500 = ProblemDetails.from_dict(response.json())
 
         return response_500
 
@@ -35,7 +35,9 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any | ErrorResponse]:
+def _build_response(
+    *, client: AuthenticatedClient | Client, response: httpx.Response
+) -> Response[Any | ProblemDetails]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -47,7 +49,7 @@ def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 def sync_detailed(
     *,
     client: AuthenticatedClient | Client,
-) -> Response[Any | ErrorResponse]:
+) -> Response[Any | ProblemDetails]:
     """Public — initiates the WorkOS OAuth login round-trip. No authentication required.
 
     Raises:
@@ -55,7 +57,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any | ErrorResponse]
+        Response[Any | ProblemDetails]
     """
 
     kwargs = _get_kwargs()
@@ -70,7 +72,7 @@ def sync_detailed(
 def sync(
     *,
     client: AuthenticatedClient | Client,
-) -> Any | ErrorResponse | None:
+) -> Any | ProblemDetails | None:
     """Public — initiates the WorkOS OAuth login round-trip. No authentication required.
 
     Raises:
@@ -78,7 +80,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Any | ErrorResponse
+        Any | ProblemDetails
     """
 
     return sync_detailed(
@@ -89,7 +91,7 @@ def sync(
 async def asyncio_detailed(
     *,
     client: AuthenticatedClient | Client,
-) -> Response[Any | ErrorResponse]:
+) -> Response[Any | ProblemDetails]:
     """Public — initiates the WorkOS OAuth login round-trip. No authentication required.
 
     Raises:
@@ -97,7 +99,7 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any | ErrorResponse]
+        Response[Any | ProblemDetails]
     """
 
     kwargs = _get_kwargs()
@@ -110,7 +112,7 @@ async def asyncio_detailed(
 async def asyncio(
     *,
     client: AuthenticatedClient | Client,
-) -> Any | ErrorResponse | None:
+) -> Any | ProblemDetails | None:
     """Public — initiates the WorkOS OAuth login round-trip. No authentication required.
 
     Raises:
@@ -118,7 +120,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Any | ErrorResponse
+        Any | ProblemDetails
     """
 
     return (

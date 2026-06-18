@@ -31,10 +31,18 @@ pub const TELEMETRY_BATCH_PAYLOAD_TYPE: &str = "application/vnd.checkrd.telemetr
 ///
 /// Distinct from `TELEMETRY_BATCH_PAYLOAD_TYPE` so the PAE prefix bytes
 /// differ — this makes a captured telemetry signature impossible to replay
-/// as a policy signature, even if the underlying YAML/JSON bytes happened
-/// to collide. The `vnd.*` form follows RFC 6838 §3.2 for vendor-specific
-/// media types.
-pub const POLICY_BUNDLE_PAYLOAD_TYPE: &str = "application/vnd.checkrd.policy-bundle+yaml";
+/// as a policy signature, even if the underlying bytes happened to collide.
+/// The `vnd.*` form follows RFC 6838 §3.2 for vendor-specific media types.
+///
+/// ADR-010v2 (supersedes ADR-010): the `+json` structured-syntax suffix
+/// (RFC 6839 §3.1) tells the truth about the wire bytes — the control plane
+/// signs the bundle's canonical JSON (`serde_json::to_vec`), not YAML. The
+/// earlier `+yaml` suffix was renamed in the pre-1.0 / zero-user window where
+/// a breaking change to the PAE-bound type costs nothing (it changes every
+/// signature, so SDK + control plane ship in one lockstep tag). The cross-type
+/// replay defense is preserved: the string stays distinct from every other
+/// payload type, so a signature still can't be replayed across types.
+pub const POLICY_BUNDLE_PAYLOAD_TYPE: &str = "application/vnd.checkrd.policy-bundle+json";
 
 /// DSSE envelope as it appears on the wire and in storage.
 ///
@@ -186,16 +194,24 @@ mod tests {
         assert!(policy_pae.starts_with(format!("DSSEv1 {expected_policy_len} ").as_bytes()));
     }
 
+    /// Every DSSE payload type the system signs. Add new types here (e.g. the
+    /// pricing bundle) so the pairwise cross-type-replay check covers them
+    /// automatically.
+    const ALL_PAYLOAD_TYPES: &[&str] = &[TELEMETRY_BATCH_PAYLOAD_TYPE, POLICY_BUNDLE_PAYLOAD_TYPE];
+
     #[test]
     fn payload_type_constants_are_distinct_and_well_formed() {
-        // Both follow RFC 6838 vnd.* tree convention. Distinctness is what
-        // gives us domain separation; the format check is a sanity gate
-        // against accidental edits.
-        assert_ne!(TELEMETRY_BATCH_PAYLOAD_TYPE, POLICY_BUNDLE_PAYLOAD_TYPE);
-        for ty in &[TELEMETRY_BATCH_PAYLOAD_TYPE, POLICY_BUNDLE_PAYLOAD_TYPE] {
-            assert!(ty.starts_with("application/vnd.checkrd."), "type: {ty}");
-            assert!(ty.contains('+'), "missing structured suffix: {ty}");
-            assert!(ty.is_ascii(), "media types must be ASCII: {ty}");
+        // Distinctness gives PAE domain separation (a signature over one type
+        // can't be replayed as another); the format check is a sanity gate
+        // against accidental edits. RFC 6838 vnd.* tree + RFC 6839 `+json`
+        // structured-syntax suffix (the signed bytes are canonical JSON).
+        for (i, a) in ALL_PAYLOAD_TYPES.iter().enumerate() {
+            assert!(a.starts_with("application/vnd.checkrd."), "type: {a}");
+            assert!(a.ends_with("+json"), "expected +json suffix: {a}");
+            assert!(a.is_ascii(), "media types must be ASCII: {a}");
+            for b in &ALL_PAYLOAD_TYPES[i + 1..] {
+                assert_ne!(a, b, "payload types must be pairwise distinct");
+            }
         }
     }
 

@@ -7,7 +7,6 @@ from uuid import UUID
 
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
-from dateutil.parser import isoparse
 
 from ..types import UNSET, Unset
 
@@ -126,7 +125,7 @@ class AlertNotificationEntry:
 
         attempt = d.pop("attempt")
 
-        created_at = isoparse(d.pop("created_at"))
+        created_at = datetime.datetime.fromisoformat(d.pop("created_at"))
 
         def _parse_error_message(data: object) -> None | str | Unset:
             if data is None:
@@ -145,7 +144,7 @@ class AlertNotificationEntry:
             try:
                 if not isinstance(data, str):
                     raise TypeError()
-                delivered_at_type_0 = isoparse(data)
+                delivered_at_type_0 = datetime.datetime.fromisoformat(data)
 
                 return delivered_at_type_0
             except (TypeError, ValueError, AttributeError, KeyError):

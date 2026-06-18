@@ -7,18 +7,21 @@ import httpx
 
 from ... import errors
 from ...client import AuthenticatedClient, Client
-from ...models.error_response import ErrorResponse
 from ...models.organization import Organization
+from ...models.problem_details import ProblemDetails
 from ...models.rename_org_request import RenameOrgRequest
-from ...types import Response
+from ...types import UNSET, Response, Unset
 
 
 def _get_kwargs(
     org_id: UUID,
     *,
     body: RenameOrgRequest,
+    idempotency_key: str | Unset = UNSET,
 ) -> dict[str, Any]:
     headers: dict[str, Any] = {}
+    if not isinstance(idempotency_key, Unset):
+        headers["Idempotency-Key"] = idempotency_key
 
     _kwargs: dict[str, Any] = {
         "method": "put",
@@ -37,29 +40,29 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> ErrorResponse | Organization | None:
+) -> Organization | ProblemDetails | None:
     if response.status_code == 200:
         response_200 = Organization.from_dict(response.json())
 
         return response_200
 
     if response.status_code == 400:
-        response_400 = ErrorResponse.from_dict(response.json())
+        response_400 = ProblemDetails.from_dict(response.json())
 
         return response_400
 
     if response.status_code == 401:
-        response_401 = ErrorResponse.from_dict(response.json())
+        response_401 = ProblemDetails.from_dict(response.json())
 
         return response_401
 
     if response.status_code == 403:
-        response_403 = ErrorResponse.from_dict(response.json())
+        response_403 = ProblemDetails.from_dict(response.json())
 
         return response_403
 
     if response.status_code == 404:
-        response_404 = ErrorResponse.from_dict(response.json())
+        response_404 = ProblemDetails.from_dict(response.json())
 
         return response_404
 
@@ -71,7 +74,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[ErrorResponse | Organization]:
+) -> Response[Organization | ProblemDetails]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -85,11 +88,13 @@ def sync_detailed(
     *,
     client: AuthenticatedClient,
     body: RenameOrgRequest,
-) -> Response[ErrorResponse | Organization]:
+    idempotency_key: str | Unset = UNSET,
+) -> Response[Organization | ProblemDetails]:
     """Rename a workspace. Requires the Admin role.
 
     Args:
         org_id (UUID):
+        idempotency_key (str | Unset):
         body (RenameOrgRequest): Request body for `PUT /v1/orgs/{org_id}` (rename). Same
             constraints
             as create.
@@ -99,12 +104,13 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ErrorResponse | Organization]
+        Response[Organization | ProblemDetails]
     """
 
     kwargs = _get_kwargs(
         org_id=org_id,
         body=body,
+        idempotency_key=idempotency_key,
     )
 
     response = client.get_httpx_client().request(
@@ -119,11 +125,13 @@ def sync(
     *,
     client: AuthenticatedClient,
     body: RenameOrgRequest,
-) -> ErrorResponse | Organization | None:
+    idempotency_key: str | Unset = UNSET,
+) -> Organization | ProblemDetails | None:
     """Rename a workspace. Requires the Admin role.
 
     Args:
         org_id (UUID):
+        idempotency_key (str | Unset):
         body (RenameOrgRequest): Request body for `PUT /v1/orgs/{org_id}` (rename). Same
             constraints
             as create.
@@ -133,13 +141,14 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ErrorResponse | Organization
+        Organization | ProblemDetails
     """
 
     return sync_detailed(
         org_id=org_id,
         client=client,
         body=body,
+        idempotency_key=idempotency_key,
     ).parsed
 
 
@@ -148,11 +157,13 @@ async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
     body: RenameOrgRequest,
-) -> Response[ErrorResponse | Organization]:
+    idempotency_key: str | Unset = UNSET,
+) -> Response[Organization | ProblemDetails]:
     """Rename a workspace. Requires the Admin role.
 
     Args:
         org_id (UUID):
+        idempotency_key (str | Unset):
         body (RenameOrgRequest): Request body for `PUT /v1/orgs/{org_id}` (rename). Same
             constraints
             as create.
@@ -162,12 +173,13 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ErrorResponse | Organization]
+        Response[Organization | ProblemDetails]
     """
 
     kwargs = _get_kwargs(
         org_id=org_id,
         body=body,
+        idempotency_key=idempotency_key,
     )
 
     response = await client.get_async_httpx_client().request(**kwargs)
@@ -180,11 +192,13 @@ async def asyncio(
     *,
     client: AuthenticatedClient,
     body: RenameOrgRequest,
-) -> ErrorResponse | Organization | None:
+    idempotency_key: str | Unset = UNSET,
+) -> Organization | ProblemDetails | None:
     """Rename a workspace. Requires the Admin role.
 
     Args:
         org_id (UUID):
+        idempotency_key (str | Unset):
         body (RenameOrgRequest): Request body for `PUT /v1/orgs/{org_id}` (rename). Same
             constraints
             as create.
@@ -194,7 +208,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ErrorResponse | Organization
+        Organization | ProblemDetails
     """
 
     return (
@@ -202,5 +216,6 @@ async def asyncio(
             org_id=org_id,
             client=client,
             body=body,
+            idempotency_key=idempotency_key,
         )
     ).parsed

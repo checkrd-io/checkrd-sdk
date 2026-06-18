@@ -5,8 +5,8 @@ import httpx
 
 from ... import errors
 from ...client import AuthenticatedClient, Client
-from ...models.error_response import ErrorResponse
 from ...models.org_stats import OrgStats
+from ...models.problem_details import ProblemDetails
 from ...types import UNSET, Response, Unset
 
 
@@ -35,19 +35,19 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> ErrorResponse | OrgStats | None:
+) -> OrgStats | ProblemDetails | None:
     if response.status_code == 200:
         response_200 = OrgStats.from_dict(response.json())
 
         return response_200
 
     if response.status_code == 400:
-        response_400 = ErrorResponse.from_dict(response.json())
+        response_400 = ProblemDetails.from_dict(response.json())
 
         return response_400
 
     if response.status_code == 401:
-        response_401 = ErrorResponse.from_dict(response.json())
+        response_401 = ProblemDetails.from_dict(response.json())
 
         return response_401
 
@@ -59,7 +59,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[ErrorResponse | OrgStats]:
+) -> Response[OrgStats | ProblemDetails]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -73,7 +73,7 @@ def sync_detailed(
     client: AuthenticatedClient,
     from_: str | Unset = UNSET,
     to: str | Unset = UNSET,
-) -> Response[ErrorResponse | OrgStats]:
+) -> Response[OrgStats | ProblemDetails]:
     """
     Args:
         from_ (str | Unset):
@@ -84,7 +84,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ErrorResponse | OrgStats]
+        Response[OrgStats | ProblemDetails]
     """
 
     kwargs = _get_kwargs(
@@ -104,7 +104,7 @@ def sync(
     client: AuthenticatedClient,
     from_: str | Unset = UNSET,
     to: str | Unset = UNSET,
-) -> ErrorResponse | OrgStats | None:
+) -> OrgStats | ProblemDetails | None:
     """
     Args:
         from_ (str | Unset):
@@ -115,7 +115,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ErrorResponse | OrgStats
+        OrgStats | ProblemDetails
     """
 
     return sync_detailed(
@@ -130,7 +130,7 @@ async def asyncio_detailed(
     client: AuthenticatedClient,
     from_: str | Unset = UNSET,
     to: str | Unset = UNSET,
-) -> Response[ErrorResponse | OrgStats]:
+) -> Response[OrgStats | ProblemDetails]:
     """
     Args:
         from_ (str | Unset):
@@ -141,7 +141,7 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ErrorResponse | OrgStats]
+        Response[OrgStats | ProblemDetails]
     """
 
     kwargs = _get_kwargs(
@@ -159,7 +159,7 @@ async def asyncio(
     client: AuthenticatedClient,
     from_: str | Unset = UNSET,
     to: str | Unset = UNSET,
-) -> ErrorResponse | OrgStats | None:
+) -> OrgStats | ProblemDetails | None:
     """
     Args:
         from_ (str | Unset):
@@ -170,7 +170,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ErrorResponse | OrgStats
+        OrgStats | ProblemDetails
     """
 
     return (

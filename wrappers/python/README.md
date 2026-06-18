@@ -581,9 +581,11 @@ The signing path is anchored against authoritative test vectors:
 
 If your `IdentityProvider` doesn't have a local private key (e.g. an external
 KMS / HSM provider where signing happens elsewhere), the batcher logs a
-one-shot warning and falls back to unsigned telemetry. The control plane's
-ingestion service can be configured for `off`, `warn`, or `required` signature
-modes via `TELEMETRY_SIGNATURE_MODE`, allowing safe rollout.
+one-shot warning and falls back to unsigned telemetry. Note that the control
+plane's ingestion service **always requires** a valid RFC 9421 signature —
+there is no off/warn mode — so unsigned batches are rejected (HTTP 401). An
+external-KMS setup must therefore sign through its provider, or its telemetry
+will not be ingested.
 
 ## Security
 
