@@ -27,15 +27,17 @@ import {
   healthy,
   init,
   initAsync,
-  instrumentAnthropic,
-  instrumentOpenAI,
   shutdown,
-  uninstrumentAnthropic,
-  uninstrumentOpenAI,
   wrapAsync,
   type HealthReport,
   type InitAsyncOptions,
   type InitOptions,
+} from "./_runtime.js";
+import {
+  instrumentAnthropic,
+  instrumentOpenAI,
+  uninstrumentAnthropic,
+  uninstrumentOpenAI,
 } from "./index.js";
 import { maybeContext } from "./_state.js";
 import { CheckrdInitError } from "./exceptions.js";

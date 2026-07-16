@@ -18,7 +18,8 @@
 
 import type { FetchFn } from "../transports/fetch.js";
 import { isCheckrdPolicyDenied } from "../exceptions.js";
-import { initAsync, shutdown, type InitAsyncOptions } from "../index.js";
+import { initAsync, shutdown, wrapAsync, type InitAsyncOptions } from "../_runtime.js";
+import { policyDeniedProblem, PROBLEM_JSON_CONTENT_TYPE } from "./_problem.js";
 
 /** Minimum shape of Cloudflare's `ExecutionContext`. */
 export interface CloudflareExecutionContext {
@@ -118,9 +119,10 @@ export function withCheckrd<TEnv extends Record<string, unknown>>(
       const attempt = (async () => {
         await initAsync(opts);
         // The initAsync path stashes a wrapped fetch in the global
-        // context; we surface it via wrap() to keep the per-request
-        // shape consistent with Hono / Next.
-        const { wrapAsync } = await import("../index.js");
+        // context; we surface it via wrapAsync() to keep the
+        // per-request shape consistent with Hono / Next. Imported
+        // statically from the lean runtime (not the umbrella index)
+        // so the Worker bundle never pulls the vendor instrumentors.
         return wrapAsync(undefined, opts);
       })();
       // If init throws, clear the cache so the next request retries
@@ -141,17 +143,12 @@ export function withCheckrd<TEnv extends Record<string, unknown>>(
       response = await handler(request, env, ctx, checkrdFetch);
     } catch (err) {
       if (isCheckrdPolicyDenied(err)) {
-        response = Response.json(
-          {
-            error: {
-              type: "policy_denied",
-              message: err.reason,
-              request_id: err.requestId,
-              dashboard_url: err.dashboardUrl ?? null,
-            },
-          },
-          { status: 403 },
-        );
+        // RFC 9457 problem+json. Build the Response by hand so the
+        // Content-Type is the problem media type, not `application/json`.
+        response = new Response(JSON.stringify(policyDeniedProblem(err)), {
+          status: 403,
+          headers: { "Content-Type": PROBLEM_JSON_CONTENT_TYPE },
+        });
       } else {
         throw err;
       }

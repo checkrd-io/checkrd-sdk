@@ -54,6 +54,13 @@ def make_test_sink():
 
 
 def sample_event(**overrides):
+    # Telemetry events carry the GenAI semconv attributes under their
+    # OTel-spec dotted names (the transport stamps ``gen_ai.provider.name``
+    # / ``gen_ai.operation.name``; the opt-in body extractor adds
+    # ``gen_ai.request.model`` / ``gen_ai.usage.*``). Framework adapters
+    # (LangChain, OpenAI Agents) instead write the flat ``gen_ai_system``
+    # wire-schema family and may enqueue straight to a span sink — that
+    # path is covered by ``test_enqueue_flat_wire_keys_from_adapter``.
     event = {
         "request_id": "req-001",
         "agent_id": "550e8400-e29b-41d4-a716-446655440000",
@@ -67,10 +74,11 @@ def sample_event(**overrides):
         "span_name": "POST api.anthropic.com",
         "span_kind": "CLIENT",
         "span_status_code": "OK",
-        "gen_ai_system": "anthropic",
-        "gen_ai_model": "claude-sonnet-4-20250514",
-        "gen_ai_input_tokens": 1500,
-        "gen_ai_output_tokens": 350,
+        "gen_ai.provider.name": "anthropic",
+        "gen_ai.operation.name": "chat",
+        "gen_ai.request.model": "claude-sonnet-4-20250514",
+        "gen_ai.usage.input_tokens": 1500,
+        "gen_ai.usage.output_tokens": 350,
     }
     event.update(overrides)
     return event
@@ -86,7 +94,11 @@ class TestOtlpSink:
         assert span.name == "POST api.anthropic.com"
         attrs = dict(span.attributes)
         assert attrs["http.request.method"] == "POST"
-        assert attrs["gen_ai.system"] == "anthropic"
+        # Emits the current OTel GenAI provider attribute, NOT the
+        # deprecated ``gen_ai.system``.
+        assert attrs["gen_ai.provider.name"] == "anthropic"
+        assert "gen_ai.system" not in attrs
+        assert attrs["gen_ai.operation.name"] == "chat"
         assert attrs["gen_ai.request.model"] == "claude-sonnet-4-20250514"
         assert attrs["gen_ai.usage.input_tokens"] == 1500
         assert attrs["gen_ai.usage.output_tokens"] == 350
@@ -153,4 +165,46 @@ class TestOtlpSink:
 
         attrs = dict(exporter.spans[0].attributes)
         assert "gen_ai.system" not in attrs
+        assert "gen_ai.provider.name" not in attrs
         assert "gen_ai.request.model" not in attrs
+
+    def test_enqueue_flat_wire_keys_from_adapter(self):
+        """Flat wire-schema GenAI keys (the LangChain / OpenAI Agents
+        adapters write ``gen_ai_system`` / ``gen_ai_model`` / token keys)
+        still map onto the modern OTel attribute names when an adapter
+        handler is constructed with ``sink=OtlpSink(...)``. The deprecated
+        ``gen_ai_system`` alias resolves to ``gen_ai.provider.name``; the
+        deprecated attribute name itself is never emitted."""
+        sink, exporter = make_test_sink()
+        sink.enqueue(
+            {
+                "method": "POST",
+                "url_host": "llm.langchain",
+                "url_path": "/chat_model/gpt-4o",
+                "status_code": 200,
+                "span_status_code": "OK",
+                # Flat keys, exactly as the LangChain adapter writes them.
+                "gen_ai_system": "openai",
+                "gen_ai_model": "gpt-4o",
+                "gen_ai_input_tokens": 1200,
+                "gen_ai_output_tokens": 300,
+            }
+        )
+
+        attrs = dict(exporter.spans[0].attributes)
+        assert attrs["gen_ai.provider.name"] == "openai"
+        assert "gen_ai.system" not in attrs
+        assert attrs["gen_ai.request.model"] == "gpt-4o"
+        assert attrs["gen_ai.usage.input_tokens"] == 1200
+        assert attrs["gen_ai.usage.output_tokens"] == 300
+
+    def test_dotted_key_takes_precedence_over_flat_alias(self):
+        """When both the dotted OTel-spec key and the flat alias are
+        present, the dotted key wins — one emitted value, never dual."""
+        sink, exporter = make_test_sink()
+        # sample_event already carries gen_ai.provider.name = "anthropic".
+        sink.enqueue(sample_event(gen_ai_system="openai"))
+
+        attrs = dict(exporter.spans[0].attributes)
+        assert attrs["gen_ai.provider.name"] == "anthropic"
+        assert "gen_ai.system" not in attrs

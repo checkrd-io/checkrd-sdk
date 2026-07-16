@@ -34,6 +34,25 @@ struct EngineState {
     /// installed yet" from "policy installed at version 0", which the
     /// version counter alone cannot.
     signed_policy_installed: bool,
+    /// Highest pricing bundle version this engine has installed since
+    /// startup. The exact analogue of `last_policy_version` for the cost-
+    /// metering path (M-3): a tampered price table is an integrity attack
+    /// on money, so the pricing bundle inherits the same monotonic rollback
+    /// defense — bundles with `version <= last_pricing_version` are rejected
+    /// (FFI `-21`). The wrapper persists this value and feeds it back via
+    /// `set_initial_pricing_version` after restart.
+    last_pricing_version: u64,
+    /// Whether any signed pricing bundle has been installed via
+    /// `reload_pricing_signed` on this engine instance. Mirrors
+    /// `signed_policy_installed`: the first signed bundle is the bootstrap
+    /// baseline (any version accepted), every install after that is gated by
+    /// the strict-greater rule against `last_pricing_version`.
+    signed_pricing_installed: bool,
+    /// The verified pricing bundle `settle_usage` (M-4) reads to compute each
+    /// call's cost. `None` until the first signed bundle is installed; while
+    /// `None`, `settle_usage` returns `pricing_status = "disabled"` (metering
+    /// not configured) rather than guessing a price.
+    active_pricing_bundle: Option<checkrd_shared::PricingBundle>,
 }
 
 // WASM isolation guarantee: In wasm32-wasip1 (singlethread: true), thread_local!
@@ -86,13 +105,13 @@ pub extern "C" fn dealloc(ptr: *mut u8, len: u32) {
 // future-skew) and the one-shot `set_initial_policy_version` lockout.
 
 /// Init / reload succeeded.
-const FFI_OK: i32 = 0;
-/// Policy JSON failed to parse.
-const FFI_PARSE_ERROR: i32 = -1;
+pub(crate) const FFI_OK: i32 = 0;
+/// Policy / pricing JSON failed to parse.
+pub(crate) const FFI_PARSE_ERROR: i32 = -1;
 /// Input bytes were not valid UTF-8.
 const FFI_INVALID_UTF8: i32 = -2;
-/// Private key bytes were invalid (not 32 bytes).
-const FFI_INVALID_KEY: i32 = -3;
+/// Private key (or trusted-keys JSON) bytes were invalid.
+pub(crate) const FFI_INVALID_KEY: i32 = -3;
 
 // --- reload_policy_signed error codes ---
 
@@ -107,8 +126,9 @@ const FFI_POLICY_UNKNOWN_OR_NO_SIGNER: i32 = -6;
 const FFI_POLICY_KEY_NOT_IN_VALIDITY_WINDOW: i32 = -7;
 /// The verified payload did not parse as a `PolicyBundle` JSON document.
 const FFI_POLICY_VERIFIED_PAYLOAD_INVALID: i32 = -8;
-/// The engine was not initialized via `init()` before the call.
-const FFI_POLICY_ENGINE_NOT_INITIALIZED: i32 = -9;
+/// The engine was not initialized via `init()` before the call. Shared by the
+/// policy and pricing reload paths (both require an initialized engine).
+pub(crate) const FFI_POLICY_ENGINE_NOT_INITIALIZED: i32 = -9;
 /// `PolicyBundle.schema_version` did not match the version this build understands.
 const FFI_POLICY_SCHEMA_VERSION_MISMATCH: i32 = -10;
 /// `bundle.version <= last_policy_version` — rollback / replay defense.
@@ -125,6 +145,45 @@ const FFI_POLICY_BUNDLE_IN_FUTURE: i32 = -13;
 /// `set_initial_policy_version` was called when `last_policy_version != 0`
 /// — the in-process counter is the source of truth once it's been set.
 const FFI_POLICY_VERSION_ALREADY_SET: i32 = -14;
+
+// --- reload_pricing_signed error codes (M-3, TDD §4.3) ---
+//
+// A faithful clone of the -4..-14 policy reload surface for the pricing
+// bundle. A tampered price table is an integrity attack on *money*, so cost
+// metering inherits the same DSSE verify -> schema -> monotonic -> staleness
+// -> future-skew gauntlet and gets its own distinct codes so wrappers and
+// metrics can label a pricing failure separately from a policy failure. The
+// TDD's §4.3 list runs -15..-23; -24 is the pricing analogue of the policy
+// path's -14 one-shot lockout, required by the `set_initial_pricing_version`
+// export in §11/§4.4 — the spec list stops at -23 but the export needs an
+// "already set" code, so -24 closes that gap.
+
+/// DSSE envelope payload type did not match the expected
+/// `application/vnd.checkrd.pricing-bundle+json` — cross-type replay defense.
+pub(crate) const FFI_PRICING_PAYLOAD_TYPE_MISMATCH: i32 = -15;
+/// Ed25519 signature verification failed (or envelope encoding malformed).
+pub(crate) const FFI_PRICING_SIGNATURE_INVALID: i32 = -16;
+/// No trusted key matched the envelope's `keyid`, or no signatures present.
+pub(crate) const FFI_PRICING_UNKNOWN_OR_NO_SIGNER: i32 = -17;
+/// The matching trusted key is outside its `valid_from..valid_until` window.
+pub(crate) const FFI_PRICING_KEY_NOT_IN_VALIDITY_WINDOW: i32 = -18;
+/// The verified payload did not parse as a `PricingBundle` JSON document.
+pub(crate) const FFI_PRICING_VERIFIED_PAYLOAD_INVALID: i32 = -19;
+/// `PricingBundle.schema_version` did not match the version this build understands.
+pub(crate) const FFI_PRICING_SCHEMA_VERSION_MISMATCH: i32 = -20;
+/// `bundle.version <= last_pricing_version` — rollback / replay defense.
+/// Same TUF monotonic rule the policy path uses (FFI `-11`).
+pub(crate) const FFI_PRICING_VERSION_NOT_MONOTONIC: i32 = -21;
+/// `now - bundle.signed_at > max_age_secs` — bundle is stale (replay defense).
+pub(crate) const FFI_PRICING_BUNDLE_TOO_OLD: i32 = -22;
+/// `bundle.signed_at > now + clock_skew` — bundle is future-dated beyond
+/// the accepted clock skew window.
+pub(crate) const FFI_PRICING_BUNDLE_IN_FUTURE: i32 = -23;
+/// `set_initial_pricing_version` was called when a signed pricing bundle has
+/// already been installed this process — the in-process counter is the source
+/// of truth once set. The pricing analogue of `FFI_POLICY_VERSION_ALREADY_SET`
+/// (`-14`); see the note above on why this extends the TDD's §4.3 list to -24.
+pub(crate) const FFI_PRICING_VERSION_ALREADY_SET: i32 = -24;
 
 // --- Helper: read string from WASM memory ---
 
@@ -230,22 +289,42 @@ pub extern "C" fn init(
 
     ENGINE.with(|cell| {
         let mut state = cell.borrow_mut();
-        // Preserve rate limiter, kill switch, AND policy version state across
-        // re-initialization to prevent bypass via repeated init() calls. The
-        // policy version high water mark is the rollback-attack defense — an
-        // attacker who could reset it via init() would defeat the protection.
-        // `signed_policy_installed` is similarly preserved so a re-init can't
-        // re-open the bootstrap acceptance window.
-        let (rate_limiter, kill_switch, last_policy_version, signed_policy_installed) =
-            match state.take() {
-                Some(prev) => (
-                    prev.rate_limiter,
-                    prev.kill_switch,
-                    prev.last_policy_version,
-                    prev.signed_policy_installed,
-                ),
-                None => (RateLimiter::new(), KillSwitch::new(), 0, false),
-            };
+        // Preserve rate limiter, kill switch, AND policy/pricing version state
+        // across re-initialization to prevent bypass via repeated init() calls.
+        // Each version high water mark is a rollback-attack defense — an
+        // attacker who could reset one via init() would defeat the protection.
+        // The `signed_*_installed` flags are similarly preserved so a re-init
+        // can't re-open a bootstrap acceptance window. The verified pricing
+        // bundle is carried across too: re-init swaps the policy, not the
+        // independently-signed price table the metering path reads.
+        let (
+            rate_limiter,
+            kill_switch,
+            last_policy_version,
+            signed_policy_installed,
+            last_pricing_version,
+            signed_pricing_installed,
+            active_pricing_bundle,
+        ) = match state.take() {
+            Some(prev) => (
+                prev.rate_limiter,
+                prev.kill_switch,
+                prev.last_policy_version,
+                prev.signed_policy_installed,
+                prev.last_pricing_version,
+                prev.signed_pricing_installed,
+                prev.active_pricing_bundle,
+            ),
+            None => (
+                RateLimiter::new(),
+                KillSwitch::new(),
+                0,
+                false,
+                0,
+                false,
+                None,
+            ),
+        };
         *state = Some(EngineState {
             kill_switch,
             policy,
@@ -253,6 +332,9 @@ pub extern "C" fn init(
             identity,
             last_policy_version,
             signed_policy_installed,
+            last_pricing_version,
+            signed_pricing_installed,
+            active_pricing_bundle,
         });
     });
 
@@ -268,7 +350,7 @@ pub extern "C" fn init(
 pub extern "C" fn generate_keypair() -> u64 {
     let (private, public) = crate::identity::generate_keypair();
     let mut buf = Vec::with_capacity(64);
-    buf.extend_from_slice(&private);
+    buf.extend_from_slice(private.as_slice());
     buf.extend_from_slice(&public);
     write_bytes(&buf)
 }
@@ -846,6 +928,224 @@ pub(crate) fn reload_policy_signed_internal(
     })
 }
 
+// --- Cost metering: signed pricing bundle FFI (M-3 / M-4) ---
+//
+// These four exports mirror the policy bundle stack one-for-one. The pricing
+// bundle is the price table the core meters spend against; like the policy
+// bundle it is DSSE-signed end-to-end and carries monotonic version +
+// freshness metadata inside the signed bytes. Keeping the surfaces identical
+// (verify -> schema -> monotonic -> staleness -> future-skew, plus a one-shot
+// version restore and a settle entrypoint) means the same audited reasoning
+// covers money integrity that covers policy integrity.
+
+/// Hot-reload the pricing bundle from a signed DSSE envelope (M-3).
+///
+/// The exact analogue of [`reload_policy_signed`] for the cost-metering price
+/// table. Verifies the envelope against the supplied trust list under the
+/// pricing payload type, parses the verified payload as a `PricingBundle`,
+/// runs the schema / monotonic / freshness / future-skew gauntlet, and on
+/// success stores the bundle as the active price table `settle_usage` reads.
+/// On any failure the existing bundle (if any) is left in place — the engine
+/// never installs an unverified price table.
+///
+/// # Inputs
+///
+/// Identical in shape to [`reload_policy_signed`]: the DSSE envelope JSON, a
+/// JSON array of `TrustedKey`, the host Unix timestamp, and the maximum
+/// accepted bundle age in seconds (production passes 86400).
+///
+/// # Returns
+///
+/// - [`FFI_OK`] (`0`) on success (pricing bundle installed)
+/// - [`FFI_PARSE_ERROR`] (`-1`) on envelope JSON parse error
+/// - [`FFI_INVALID_UTF8`] (`-2`) on invalid UTF-8 in any input
+/// - [`FFI_INVALID_KEY`] (`-3`) on trusted_keys JSON parse error
+/// - [`FFI_PRICING_PAYLOAD_TYPE_MISMATCH`] (`-15`) on payload type mismatch (cross-type replay attempt)
+/// - [`FFI_PRICING_SIGNATURE_INVALID`] (`-16`) on signature verification failure (tampered envelope or malformed encoding)
+/// - [`FFI_PRICING_UNKNOWN_OR_NO_SIGNER`] (`-17`) on no trusted key matching the envelope's keyid (unknown signer or no signatures)
+/// - [`FFI_PRICING_KEY_NOT_IN_VALIDITY_WINDOW`] (`-18`) on signing key not within validity window (expired or not-yet-valid)
+/// - [`FFI_PRICING_VERIFIED_PAYLOAD_INVALID`] (`-19`) on pricing bundle parse error after verification succeeds
+/// - [`FFI_POLICY_ENGINE_NOT_INITIALIZED`] (`-9`) on engine not initialized
+/// - [`FFI_PRICING_SCHEMA_VERSION_MISMATCH`] (`-20`) on pricing bundle schema version mismatch
+/// - [`FFI_PRICING_VERSION_NOT_MONOTONIC`] (`-21`) on rollback attempt (bundle.version <= last_pricing_version)
+/// - [`FFI_PRICING_BUNDLE_TOO_OLD`] (`-22`) on stale bundle (now - bundle.signed_at > max_age_secs)
+/// - [`FFI_PRICING_BUNDLE_IN_FUTURE`] (`-23`) on future-dated bundle (bundle.signed_at > now + clock_skew)
+#[no_mangle]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+pub extern "C" fn reload_pricing_signed(
+    envelope_json_ptr: *const u8,
+    envelope_json_len: u32,
+    trusted_keys_json_ptr: *const u8,
+    trusted_keys_json_len: u32,
+    now_unix_secs: u64,
+    max_age_secs: u64,
+) -> i32 {
+    let envelope_json = match unsafe { read_str(envelope_json_ptr, envelope_json_len) } {
+        Ok(s) => s,
+        Err(_) => return FFI_INVALID_UTF8,
+    };
+    let trusted_keys_json = match unsafe { read_str(trusted_keys_json_ptr, trusted_keys_json_len) }
+    {
+        Ok(s) => s,
+        Err(_) => return FFI_INVALID_UTF8,
+    };
+    crate::pricing::reload_pricing_signed_internal(
+        envelope_json,
+        trusted_keys_json,
+        now_unix_secs,
+        max_age_secs,
+    )
+}
+
+/// Get the highest pricing bundle version this engine has installed.
+///
+/// The pricing analogue of [`get_active_policy_version`]: the wrapper persists
+/// this value and feeds it back via [`set_initial_pricing_version`] after a
+/// restart so the rollback-attack defense on the price table survives process
+/// restarts.
+#[no_mangle]
+pub extern "C" fn get_active_pricing_version() -> u64 {
+    ENGINE.with(|cell| {
+        cell.borrow()
+            .as_ref()
+            .map(|s| s.last_pricing_version)
+            .unwrap_or(0)
+    })
+}
+
+/// Restore the persisted pricing bundle version high water mark.
+///
+/// The pricing analogue of [`set_initial_policy_version`]. Called by the
+/// wrapper exactly once after [`init`] and BEFORE any signed pricing reload, to
+/// feed back the value persisted to disk on the previous process. Without it,
+/// an attacker who can restart the SDK process resets `last_pricing_version` to
+/// 0 and replays an old, signed-but-stale price table.
+///
+/// # Strict semantics
+///
+/// Identical to the policy path: succeeds only when no signed pricing bundle
+/// has been installed this process (one-shot restore-from-persistence), and the
+/// restored version can thereafter only increase via the monotonic
+/// [`reload_pricing_signed`] path.
+///
+/// # Returns
+///
+/// - [`FFI_OK`] (`0`) on success
+/// - [`FFI_POLICY_ENGINE_NOT_INITIALIZED`] (`-9`) if the engine is not initialized
+/// - [`FFI_PRICING_VERSION_ALREADY_SET`] (`-24`) if a signed pricing bundle has
+///   already been installed this process (must not be overwritten)
+#[no_mangle]
+pub extern "C" fn set_initial_pricing_version(version: u64) -> i32 {
+    ENGINE.with(|cell| {
+        let mut state = cell.borrow_mut();
+        match state.as_mut() {
+            None => FFI_POLICY_ENGINE_NOT_INITIALIZED,
+            Some(s) if s.signed_pricing_installed => FFI_PRICING_VERSION_ALREADY_SET,
+            Some(s) => {
+                s.last_pricing_version = version;
+                // Restoring a persisted version is a continuation of an earlier
+                // bootstrap, not a fresh boot. Mark the engine as already-
+                // installed so the bootstrap acceptance window stays closed.
+                s.signed_pricing_installed = true;
+                FFI_OK
+            }
+        }
+    })
+}
+
+/// Compute the cost of one completed LLM call from the active pricing bundle
+/// and the call's normalized token usage (M-4).
+///
+/// The wrapper extracts and normalizes usage from the provider response, then
+/// calls this with the canonical JSON. `request_id` is carried for
+/// logging/correlation only — it does not affect the computed cost. Returns a
+/// packed `u64` (ptr << 32 | len) pointing to a UTF-8 `SettleResult` JSON the
+/// wrapper attaches to the telemetry event before it is signed.
+///
+/// Fail-open metering: a missing price table yields `pricing_status =
+/// "disabled"` and an unknown model yields `"unpriced_model"`; neither blocks
+/// the call. See [`crate::pricing::settle_usage_internal`] for the SKU
+/// resolution and cost arithmetic.
+#[no_mangle]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+pub extern "C" fn settle_usage(
+    request_id_ptr: *const u8,
+    request_id_len: u32,
+    usage_json_ptr: *const u8,
+    usage_json_len: u32,
+) -> u64 {
+    // `request_id` is correlation-only and `usage_json` falls back to all-zero
+    // usage on bad UTF-8, so a decode failure degrades to an empty string
+    // rather than erroring — settle is fail-open by contract.
+    let request_id = unsafe { read_str(request_id_ptr, request_id_len) }.unwrap_or_default();
+    let usage_json = unsafe { read_str(usage_json_ptr, usage_json_len) }.unwrap_or_default();
+    let result = crate::pricing::settle_usage_internal(request_id, usage_json);
+    write_result(&result)
+}
+
+/// Install an already-verified, schema- and freshness-checked pricing bundle,
+/// applying the monotonic rollback gate atomically with the store.
+///
+/// Factored out of [`crate::pricing::reload_pricing_signed_internal`] (which
+/// owns the verify / schema / freshness checks) because `EngineState` and the
+/// `ENGINE` thread-local are private to this module. The monotonic check lives
+/// INSIDE the `borrow_mut` so it is atomic with the install + version bump —
+/// the exact structure the policy path uses (see `reload_policy_signed_internal`).
+///
+/// Returns [`FFI_OK`] on install, [`FFI_PRICING_VERSION_NOT_MONOTONIC`] (`-21`)
+/// on a rollback attempt, or [`FFI_POLICY_ENGINE_NOT_INITIALIZED`] (`-9`) if
+/// the engine is not initialized.
+pub(crate) fn install_verified_pricing_bundle(bundle: checkrd_shared::PricingBundle) -> i32 {
+    ENGINE.with(|cell| {
+        if let Some(state) = cell.borrow_mut().as_mut() {
+            // Bootstrap: the first signed bundle from a trusted key is the
+            // baseline regardless of version (OPA bundle-first-fetch). After
+            // that, the strict-greater rule is the rollback/replay defense.
+            // Idempotent re-installs of unchanged bundles are filtered at the
+            // SDK wrapper's (version, hash) cache before the FFI call.
+            if state.signed_pricing_installed && bundle.version <= state.last_pricing_version {
+                return FFI_PRICING_VERSION_NOT_MONOTONIC;
+            }
+            state.last_pricing_version = bundle.version;
+            state.signed_pricing_installed = true;
+            state.active_pricing_bundle = Some(bundle);
+            FFI_OK
+        } else {
+            FFI_POLICY_ENGINE_NOT_INITIALIZED
+        }
+    })
+}
+
+/// Run `f` against the engine's active pricing bundle (`None` when no bundle is
+/// installed or the engine is uninitialized) and return its result.
+///
+/// The read seam [`crate::pricing::settle_usage_internal`] uses so the cost
+/// arithmetic can live in `pricing.rs` while the `ENGINE` thread-local stays
+/// encapsulated here. Borrows immutably — `settle_usage` never mutates engine
+/// state.
+pub(crate) fn with_active_pricing_bundle<R>(
+    f: impl FnOnce(Option<&checkrd_shared::PricingBundle>) -> R,
+) -> R {
+    ENGINE.with(|cell| {
+        let state = cell.borrow();
+        f(state
+            .as_ref()
+            .and_then(|s| s.active_pricing_bundle.as_ref()))
+    })
+}
+
+/// Tear the engine thread-local down to its uninitialized state. Test-only,
+/// crate-visible so sibling modules' tests (e.g. `crate::pricing`) that share
+/// the same native `ENGINE` thread-local can assert the "engine not
+/// initialized" branches. Production code never resets the engine — `init`
+/// preserves the security-relevant state.
+#[cfg(test)]
+pub(crate) fn reset_engine_for_test() {
+    ENGINE.with(|cell| {
+        *cell.borrow_mut() = None;
+    });
+}
+
 /// Hot-reload policy without reinitializing.
 ///
 /// Returns:
@@ -923,17 +1223,37 @@ mod tests {
 
         ENGINE.with(|cell| {
             let mut state = cell.borrow_mut();
-            // Mirror production init(): preserve rate limiter, kill switch, policy version, and install flag.
-            let (rate_limiter, kill_switch, last_policy_version, signed_policy_installed) =
-                match state.take() {
-                    Some(prev) => (
-                        prev.rate_limiter,
-                        prev.kill_switch,
-                        prev.last_policy_version,
-                        prev.signed_policy_installed,
-                    ),
-                    None => (RateLimiter::new(), KillSwitch::new(), 0, false),
-                };
+            // Mirror production init(): preserve rate limiter, kill switch,
+            // policy + pricing version high water marks, install flags, and the
+            // verified pricing bundle.
+            let (
+                rate_limiter,
+                kill_switch,
+                last_policy_version,
+                signed_policy_installed,
+                last_pricing_version,
+                signed_pricing_installed,
+                active_pricing_bundle,
+            ) = match state.take() {
+                Some(prev) => (
+                    prev.rate_limiter,
+                    prev.kill_switch,
+                    prev.last_policy_version,
+                    prev.signed_policy_installed,
+                    prev.last_pricing_version,
+                    prev.signed_pricing_installed,
+                    prev.active_pricing_bundle,
+                ),
+                None => (
+                    RateLimiter::new(),
+                    KillSwitch::new(),
+                    0,
+                    false,
+                    0,
+                    false,
+                    None,
+                ),
+            };
             *state = Some(EngineState {
                 kill_switch,
                 policy,
@@ -941,6 +1261,9 @@ mod tests {
                 identity: Identity::anonymous("test-agent", "test-agent"),
                 last_policy_version,
                 signed_policy_installed,
+                last_pricing_version,
+                signed_pricing_installed,
+                active_pricing_bundle,
             });
         });
     }
@@ -1674,7 +1997,8 @@ mod tests {
         // Unpack and verify the signature is valid Ed25519
         // (on native 64-bit the packed ptr is truncated, so we verify via
         // the internal function instead)
-        let id = crate::identity::Identity::from_key_bytes("test-agent", &private).unwrap();
+        let id =
+            crate::identity::Identity::from_key_bytes("test-agent", private.as_slice()).unwrap();
         let sig = id.sign(payload);
         assert_eq!(sig.len(), 64);
         assert!(
@@ -1768,7 +2092,8 @@ mod tests {
         assert_ne!(packed, 0, "sign with empty payload should succeed");
 
         // Verify the signature is correct via internal path
-        let id = crate::identity::Identity::from_key_bytes("test-agent", &private).unwrap();
+        let id =
+            crate::identity::Identity::from_key_bytes("test-agent", private.as_slice()).unwrap();
         let sig = id.sign(b"");
         assert!(crate::identity::verify(b"", &sig, &public).unwrap());
     }

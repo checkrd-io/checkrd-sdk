@@ -18,11 +18,16 @@ import {
   handleControlEvent,
   type ControlEngine,
   type PolicyUpdateOptions,
+  type PricingUpdateOptions,
 } from "./control.js";
 import type { CircuitBreaker } from "./_circuit_breaker.js";
 import { APIUserAbortError } from "./exceptions.js";
 import { platformHeaders } from "./_platform.js";
-import { trustedPolicyKeysJson, warnIfMisconfigured } from "./_trust.js";
+import {
+  trustedPolicyKeysJson,
+  trustedPricingKeysJson,
+  warnIfMisconfigured,
+} from "./_trust.js";
 import { VERSION } from "./_version.js";
 import type { Logger } from "./_logger.js";
 
@@ -84,6 +89,21 @@ export interface ReceiverOptions {
    */
   policyUpdate?: PolicyUpdateOptions | null;
   /**
+   * Wires the DSSE-signed PRICING-bundle install path on ``init`` /
+   * ``pricing_updated`` SSE events and the poll fallback (cost metering,
+   * M-14). When omitted, the receiver defaults to
+   * {@link trustedPricingKeysJson} as the trust-list loader and a 24-hour
+   * freshness window — the pricing analogue of {@link policyUpdate}, but
+   * against the STRUCTURALLY SEPARATE pricing trust anchor.
+   *
+   * Unlike the policy path, this one is FAIL-OPEN: a rejected or stale
+   * price table leaves the previous table in place and never blocks the
+   * host, so disabling it only turns cost metering dark — it never
+   * affects enforcement. Set ``pricingUpdate: null`` to disable it (the
+   * receiver warns-and-drops ``pricing_updated`` events).
+   */
+  pricingUpdate?: PricingUpdateOptions | null;
+  /**
    * Shared circuit breaker — typically the same instance the
    * {@link import("./batcher.js").TelemetryBatcher} owns. When the
    * breaker is open, the receiver skips its SSE reconnect attempt
@@ -141,6 +161,7 @@ export class ControlReceiver {
   private readonly readTimeoutMs: number;
   private readonly apiVersion: string;
   private readonly policyUpdate: PolicyUpdateOptions | null;
+  private readonly pricingUpdate: PricingUpdateOptions | null;
   private readonly circuitBreaker: CircuitBreaker | undefined;
 
   private abort: AbortController | null = null;
@@ -180,6 +201,25 @@ export class ControlReceiver {
    */
   private lastInstalledHash: string | null = null;
 
+  /**
+   * Hash of the pricing bundle currently installed by this receiver —
+   * `null` until the first successful install. The cost-metering analogue
+   * of {@link lastInstalledHash}, seeded from `active_pricing_hash` /
+   * the `pricing_updated` event `hash`. Used by `handleControlEvent` (via
+   * the per-call `pricingUpdate.getLastHash` getter wired in
+   * {@link withPricingHashCache}) to skip the WASM `reload_pricing_signed`
+   * call when an SSE/poll path re-delivers the same active price table —
+   * without it the core's strict-greater monotonic check rejects the
+   * idempotent replay on every reconnect or poll.
+   *
+   * In-memory only, exactly like the policy hash. The Python SDK persists
+   * the pricing *version* to `~/.checkrd/pricing_state.json` and re-seeds
+   * it via `set_initial_pricing_version` on startup; the same pluggable-
+   * store story applies here (see {@link lastInstalledHash}). Until that
+   * lands, JS receivers re-meter from the first `init` after restart.
+   */
+  private lastInstalledPricingHash: string | null = null;
+
   constructor(opts: ReceiverOptions) {
     this.controlPlaneUrl = opts.controlPlaneUrl.replace(/\/$/, "");
     this.apiKey = opts.apiKey;
@@ -208,6 +248,22 @@ export class ControlReceiver {
     } else {
       this.policyUpdate = {
         loadTrustedKeys: () => trustedPolicyKeysJson(opts.logger),
+      };
+    }
+    // Default the pricing-install path ON, exactly like the policy path
+    // — but against the SEPARATE pricing trust anchor. Callers who want
+    // cost metering disabled pass ``pricingUpdate: null``. Mirrors the
+    // Python SDK, where the receiver always installs signed price tables
+    // through ``_apply_pricing_update``; both wrappers must run the same
+    // fail-open freshness/rollback checks so a JS-only deployment doesn't
+    // silently diverge on how it meters cost.
+    if (opts.pricingUpdate === null) {
+      this.pricingUpdate = null;
+    } else if (opts.pricingUpdate !== undefined) {
+      this.pricingUpdate = opts.pricingUpdate;
+    } else {
+      this.pricingUpdate = {
+        loadTrustedKeys: () => trustedPricingKeysJson(opts.logger),
       };
     }
     this.circuitBreaker = opts.circuitBreaker;
@@ -372,6 +428,7 @@ export class ControlReceiver {
           event.data,
           logger,
           this.withHashCache(this.policyUpdate),
+          this.withPricingHashCache(this.pricingUpdate),
         );
       }
     } finally {
@@ -394,9 +451,17 @@ export class ControlReceiver {
       kill_switch_active?: unknown;
       active_policy_hash?: unknown;
       policy_envelope?: unknown;
+      active_pricing_hash?: unknown;
+      pricing_envelope?: unknown;
     };
     const active = Boolean(parsed.kill_switch_active);
     this.engine.setKillSwitch(active);
+    const logger = this.logger
+      ? {
+          warn: this.logger.warn.bind(this.logger),
+          error: this.logger.error.bind(this.logger),
+        }
+      : undefined;
     // Install signed policy from poll fallback when present. Same
     // `handleControlEvent` dispatcher as SSE so verification + hash-
     // cache idempotency run identically across paths. The synthesized
@@ -408,18 +473,32 @@ export class ControlReceiver {
         policy_envelope: envelope,
         active_policy_hash: parsed.active_policy_hash,
       });
-      const logger = this.logger
-        ? {
-            warn: this.logger.warn.bind(this.logger),
-            error: this.logger.error.bind(this.logger),
-          }
-        : undefined;
       handleControlEvent(
         this.engine,
         "policy_updated",
         synthesized,
         logger,
         this.withHashCache(this.policyUpdate),
+        this.withPricingHashCache(this.pricingUpdate),
+      );
+    }
+    // Install the signed price table from the poll fallback too (M-14),
+    // so edge / browser SDKs that can't hold an SSE stream meter cost
+    // identically. Synthesized as a `pricing_updated` event so the
+    // fail-open install path is shared across SSE, init, and poll.
+    const pricingEnvelope = parsed.pricing_envelope;
+    if (pricingEnvelope !== undefined && pricingEnvelope !== null) {
+      const synthesized = JSON.stringify({
+        pricing_envelope: pricingEnvelope,
+        active_pricing_hash: parsed.active_pricing_hash,
+      });
+      handleControlEvent(
+        this.engine,
+        "pricing_updated",
+        synthesized,
+        logger,
+        this.withHashCache(this.policyUpdate),
+        this.withPricingHashCache(this.pricingUpdate),
       );
     }
   }
@@ -440,6 +519,29 @@ export class ControlReceiver {
       getLastHash: () => this.lastInstalledHash,
       onInstalled: async (version, hash) => {
         this.lastInstalledHash = hash;
+        if (base.onInstalled) {
+          await base.onInstalled(version, hash);
+        }
+      },
+    };
+  }
+
+  /**
+   * Pricing analogue of {@link withHashCache}: binds `getLastHash` +
+   * `onInstalled` to this receiver's in-memory PRICING hash cache. Called
+   * per-event so the closure always reads the current value. Returns
+   * `undefined` when the pricing-install path is disabled
+   * (`pricingUpdate: null`).
+   */
+  private withPricingHashCache(
+    base: PricingUpdateOptions | null,
+  ): PricingUpdateOptions | undefined {
+    if (base === null) return undefined;
+    return {
+      ...base,
+      getLastHash: () => this.lastInstalledPricingHash,
+      onInstalled: async (version, hash) => {
+        this.lastInstalledPricingHash = hash;
         if (base.onInstalled) {
           await base.onInstalled(version, hash);
         }

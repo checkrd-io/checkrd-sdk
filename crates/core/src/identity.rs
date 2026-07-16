@@ -7,6 +7,7 @@
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use rand_core::OsRng;
 use thiserror::Error;
+use zeroize::Zeroizing;
 
 /// Ed25519 private/public key length in bytes.
 pub const KEY_LEN: usize = 32;
@@ -122,9 +123,13 @@ impl Identity {
 
     /// Get the 32-byte private key, or `None` for anonymous identities.
     ///
-    /// The wrapper uses this to persist the key to disk.
-    pub fn private_key_bytes(&self) -> Option<[u8; KEY_LEN]> {
-        self.signing_key.as_ref().map(|k| k.to_bytes())
+    /// The wrapper uses this to persist the key to disk. The bytes are wrapped
+    /// in [`Zeroizing`] so this secret copy is wiped from memory when the caller
+    /// drops it, rather than lingering on the heap/stack.
+    pub fn private_key_bytes(&self) -> Option<Zeroizing<[u8; KEY_LEN]>> {
+        self.signing_key
+            .as_ref()
+            .map(|k| Zeroizing::new(k.to_bytes()))
     }
 
     /// Service identity (the agent type, e.g., "Sales Agent").
@@ -167,10 +172,13 @@ pub fn verify(
 }
 
 /// Generate a new Ed25519 keypair, returning `(private_key, public_key)`.
-pub fn generate_keypair() -> ([u8; KEY_LEN], [u8; KEY_LEN]) {
+///
+/// The private key is wrapped in [`Zeroizing`] so the secret copy is wiped from
+/// memory when the caller drops it. The public key is not secret.
+pub fn generate_keypair() -> (Zeroizing<[u8; KEY_LEN]>, [u8; KEY_LEN]) {
     let signing_key = SigningKey::generate(&mut OsRng);
     (
-        signing_key.to_bytes(),
+        Zeroizing::new(signing_key.to_bytes()),
         signing_key.verifying_key().to_bytes(),
     )
 }
@@ -207,7 +215,7 @@ mod tests {
     fn from_key_bytes_round_trip() {
         let original = Identity::generate("svc-1");
         let private = original.private_key_bytes().unwrap();
-        let restored = Identity::from_key_bytes("svc-1", &private).unwrap();
+        let restored = Identity::from_key_bytes("svc-1", private.as_slice()).unwrap();
 
         assert_eq!(original.public_key_bytes(), restored.public_key_bytes());
         assert_eq!(original.instance_id(), restored.instance_id());
@@ -224,7 +232,9 @@ mod tests {
     fn instance_id_override() {
         let id = Identity::generate("svc-1");
         let private = id.private_key_bytes().unwrap();
-        let custom = Identity::from_key_bytes_with_id("svc-1", &private, "kms-derived-id").unwrap();
+        let custom =
+            Identity::from_key_bytes_with_id("svc-1", private.as_slice(), "kms-derived-id")
+                .unwrap();
         assert_eq!(custom.instance_id(), "kms-derived-id");
         assert_eq!(custom.service_id(), "svc-1");
         assert!(custom.has_key()); // still has signing capability
@@ -323,7 +333,7 @@ mod tests {
     fn instance_id_stable_for_same_key() {
         let id = Identity::generate("svc-1");
         let private = id.private_key_bytes().unwrap();
-        let restored = Identity::from_key_bytes("svc-1", &private).unwrap();
+        let restored = Identity::from_key_bytes("svc-1", private.as_slice()).unwrap();
         assert_eq!(id.instance_id(), restored.instance_id());
     }
 
@@ -382,7 +392,7 @@ mod tests {
     #[test]
     fn generate_keypair_produces_valid_pair() {
         let (private, public) = generate_keypair();
-        let id = Identity::from_key_bytes("svc", &private).unwrap();
+        let id = Identity::from_key_bytes("svc", private.as_slice()).unwrap();
         assert_eq!(id.public_key_bytes().unwrap(), public);
     }
 

@@ -4,6 +4,7 @@ pub mod interface;
 pub mod killswitch;
 pub mod logger;
 pub mod policy;
+pub mod pricing;
 pub mod ratelimit;
 // `util` is `pub` (was private prior to the CLI's `dev` command
 // landing) so native Rust consumers like `checkrd-cli` can construct

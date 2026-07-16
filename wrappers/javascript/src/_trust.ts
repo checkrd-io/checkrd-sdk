@@ -74,6 +74,44 @@ const PRODUCTION_TRUSTED_KEYS: readonly TrustedKey[] = [
   },
 ];
 
+// ===========================================================================
+// SECURITY-CRITICAL: purpose-scoped pricing trust anchor (TUF per-role keys)
+// ===========================================================================
+//
+// Pricing bundles get a STRUCTURALLY SEPARATE trust list from policy
+// bundles — a parallel array, NOT a `purpose` field on the policy list and
+// NOT an append to it. This is TUF-style per-role key separation: the key
+// material that may sign a *price table* is disjoint from the key material
+// that may sign a *policy*, so a pricing-signing key can NEVER verify a
+// policy bundle and a policy-signing key can NEVER verify a price table.
+//
+// This is defense-in-depth ON TOP OF the DSSE PAE payload-type binding
+// (`application/vnd.checkrd.pricing-bundle+json` vs
+// `application/vnd.checkrd.policy-bundle+json`). Even if a future bug let a
+// payload-type be confused, the two trust lists sharing no keyid means a
+// signature minted by one role's key still fails to verify under the other
+// role's list. A tampered price table is an integrity attack on MONEY, so
+// it gets the strongest separation the codebase has.
+//
+// Disjointness is an invariant enforced by tests (`tests/pricing_trust.test.ts`):
+// `PRICING_TRUSTED_KEYS` and `PRODUCTION_TRUSTED_KEYS` MUST share no keyid,
+// and a pricing-key-signed envelope fed to `reload_policy_signed` (and the
+// reverse) MUST be rejected.
+//
+// Empty during pre-1.0 development, exactly like the policy list above. The
+// CI publish guard (`scripts/verify-trust-roots.mjs`) verifies BOTH lists so
+// an empty pricing list does not silently pass once pricing releases are
+// gated. Populated by the bootstrap ceremony before the first signed pricing
+// release; rotation uses the same overlap pattern (KEY-CUSTODY.md).
+const PRICING_TRUSTED_KEYS: readonly TrustedKey[] = [
+  // Intentionally empty pre-first-pricing-release. When populated, the
+  // private half lives in AWS Secrets Manager under a DISTINCT secret from
+  // the policy-signing key (`checkrd/prod/pricing-signing-key`, never the
+  // policy key) so the two roles cannot share key material even at the HSM
+  // level. The CI guard blocks a production pricing release while this is
+  // empty.
+];
+
 // Substring identifying a production-shaped control plane URL. Used by
 // `productionTrustStatus` to decide whether an empty trust list is
 // benign (dev/test) or a release blocker (production target).
@@ -143,6 +181,62 @@ export function trustedPolicyKeysJson(logger?: Logger): string {
     }
   }
   return JSON.stringify(PRODUCTION_TRUSTED_KEYS);
+}
+
+/**
+ * Return the list of trusted PRICING-signing keys, JSON-encoded for the
+ * WASM core's ``reload_pricing_signed`` FFI export. The pricing analogue of
+ * {@link trustedPolicyKeysJson} — but a STRUCTURALLY SEPARATE trust anchor.
+ *
+ * SECURITY: this MUST only ever be passed to ``reload_pricing_signed``,
+ * never ``reload_policy_signed``. The two lists are disjoint by design (TUF
+ * per-role key separation): feeding the pricing list to the policy verifier
+ * — or a pricing-key-signed envelope to the policy verifier — is rejected,
+ * which is the whole point of keeping them apart.
+ *
+ * Override discipline is identical to the policy path, but on a SEPARATE
+ * env var so a dev pricing key can be pinned without touching the policy
+ * trust list (and vice versa):
+ *   - ``CHECKRD_PRICING_TRUST_OVERRIDE_JSON`` AND
+ *     ``CHECKRD_ALLOW_TRUST_OVERRIDE=1`` must BOTH be set to use the
+ *     override. A single compromised env var is not enough.
+ *   - An override of an empty array is honored but logged loudly — every
+ *     subsequent signed pricing update will be rejected.
+ */
+export function trustedPricingKeysJson(logger?: Logger): string {
+  const override = readEnv("CHECKRD_PRICING_TRUST_OVERRIDE_JSON");
+  if (override !== undefined && override.length > 0) {
+    const gate = readEnv("CHECKRD_ALLOW_TRUST_OVERRIDE") ?? "";
+    if (gate !== "1" && gate !== "true" && gate !== "yes") {
+      logger?.warn(
+        "CHECKRD_PRICING_TRUST_OVERRIDE_JSON is set but " +
+          "CHECKRD_ALLOW_TRUST_OVERRIDE is not '1'. Ignoring override.",
+      );
+      return JSON.stringify(PRICING_TRUSTED_KEYS);
+    }
+    try {
+      const parsed: unknown = JSON.parse(override);
+      if (Array.isArray(parsed)) {
+        if (parsed.length === 0) {
+          logger?.warn(
+            "checkrd pricing trust override is an empty list — all signed " +
+              "pricing updates will be rejected.",
+          );
+        }
+        logger?.warn(
+          `checkrd: using ${parsed.length.toString()} pricing trust-override ` +
+            "key(s) instead of production keys. DO NOT use in production.",
+        );
+        return JSON.stringify(parsed);
+      }
+    } catch {
+      logger?.warn(
+        "CHECKRD_PRICING_TRUST_OVERRIDE_JSON is not valid JSON; " +
+          "falling back to production pricing keys.",
+      );
+    }
+  }
+  return JSON.stringify(PRICING_TRUSTED_KEYS);
 }
 
 // Module-level guard so {@link warnIfMisconfigured} fires at most once

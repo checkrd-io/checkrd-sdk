@@ -23,6 +23,12 @@
  */
 
 import { fetchWithRetry } from "./_retry.js";
+import { stampGenAiAttributes } from "./_genai_semconv.js";
+import {
+  MetricsAccumulator,
+  accumulatorToOtlpMetricsJson,
+  recordEventMetrics,
+} from "./_otlp_metrics.js";
 import type { Logger } from "./_logger.js";
 import { scrubTelemetryEvent } from "./_sensitive.js";
 import type { TelemetryEvent, TelemetrySink } from "./sinks.js";
@@ -70,6 +76,7 @@ const SPAN_KIND_CLIENT = 3;
  */
 export class OtlpSink implements TelemetrySink {
   private readonly endpoint: string;
+  private readonly metricsEndpoint: string;
   private readonly headers: Record<string, string>;
   private readonly serviceName: string;
   private readonly maxBatchSize: number;
@@ -79,12 +86,16 @@ export class OtlpSink implements TelemetrySink {
   private readonly fetchImpl: typeof fetch;
 
   private buffer: TelemetryEvent[] = [];
+  // Cumulative GenAI metric histograms. Recorded on every `enqueue` and
+  // re-exported (running totals, CUMULATIVE temporality) on every flush.
+  private readonly metrics = new MetricsAccumulator();
   private flushTimer: ReturnType<typeof setInterval> | null = null;
   private stopped = false;
   private inFlight: Promise<void> | null = null;
 
   constructor(opts: OtlpSinkOptions) {
-    this.endpoint = normaliseEndpoint(opts.endpoint);
+    this.endpoint = normaliseEndpoint(opts.endpoint, "traces");
+    this.metricsEndpoint = normaliseEndpoint(opts.endpoint, "metrics");
     this.headers = {
       "Content-Type": "application/json",
       ...(opts.headers ?? {}),
@@ -114,29 +125,39 @@ export class OtlpSink implements TelemetrySink {
     // data. Cost: one recursive pass + one URL parse per event (the
     // fast-path in `scrubUrl` skips URL parsing when no `?` is present,
     // which covers most telemetry events).
-    this.buffer.push(scrubTelemetryEvent(event));
+    const scrubbed = scrubTelemetryEvent(event);
+    this.buffer.push(scrubbed);
+    // Fold the event into the GenAI metric histograms. `recordEventMetrics`
+    // is total (never throws), so a malformed event that would break the
+    // metric path can never take down the host's API call. Metrics ride the
+    // scrubbed event: dimensions are the low-cardinality GenAI attributes
+    // (provider / operation / model / token.type), never bodies or PII.
+    recordEventMetrics(this.metrics, scrubbed);
     if (this.buffer.length >= this.maxBatchSize) {
       void this.flush();
     }
   }
 
   /**
-   * Flush the current buffer to the OTLP endpoint. Serialises concurrent
-   * calls: if a flush is already in flight, subsequent calls await it
-   * rather than interleaving POSTs (which would scramble span ordering
-   * at observability back-ends that sort by arrival time).
+   * Flush buffered spans (to `/v1/traces`) and the GenAI metric histograms
+   * (to `/v1/metrics`) to the OTLP endpoint. Serialises concurrent calls: if
+   * a flush is already in flight, subsequent calls await it rather than
+   * interleaving POSTs (which would scramble span ordering at observability
+   * back-ends that sort by arrival time).
+   *
+   * Metrics use CUMULATIVE temporality, so the accumulator is NOT reset — each
+   * flush re-exports the running totals. Metrics are exported whenever there
+   * is anything recorded, even if no spans are buffered (e.g. a periodic
+   * flush after a batch already went out, or a `close()` with an empty span
+   * buffer).
    */
   async flush(): Promise<void> {
     if (this.inFlight) {
       await this.inFlight;
       return;
     }
-    if (this.buffer.length === 0) return;
-    const batch = this.buffer;
-    this.buffer = [];
-
-    const payload = eventsToOtlpJson(batch, this.serviceName);
-    this.inFlight = this.doFlush(payload, batch.length);
+    if (this.buffer.length === 0 && this.metrics.isEmpty()) return;
+    this.inFlight = this.doFlush();
     try {
       await this.inFlight;
     } finally {
@@ -144,9 +165,43 @@ export class OtlpSink implements TelemetrySink {
     }
   }
 
-  private async doFlush(payload: string, size: number): Promise<void> {
+  private async doFlush(): Promise<void> {
+    // Spans first (buffered, one-shot), then metrics (cumulative re-export).
+    if (this.buffer.length > 0) {
+      const batch = this.buffer;
+      this.buffer = [];
+      await this.post(
+        this.endpoint,
+        eventsToOtlpJson(batch, this.serviceName),
+        "traces",
+        batch.length,
+      );
+    }
+    if (!this.metrics.isEmpty()) {
+      await this.post(
+        this.metricsEndpoint,
+        accumulatorToOtlpMetricsJson(this.metrics, this.serviceName, OTEL_SCHEMA_URL),
+        "metrics",
+        // Total data points across both instruments — a cheap size proxy for logs.
+        this.metrics.series("token.usage").length +
+          this.metrics.series("operation.duration").length,
+      );
+    }
+  }
+
+  /**
+   * POST one OTLP payload with the shared retry contract. A rejection or
+   * network failure surfaces only through the logger — an observability
+   * export must never throw into the host's request path.
+   */
+  private async post(
+    url: string,
+    payload: string,
+    signal: "traces" | "metrics",
+    size: number,
+  ): Promise<void> {
     try {
-      const res = await fetchWithRetry(this.endpoint, {
+      const res = await fetchWithRetry(url, {
         method: "POST",
         headers: this.headers,
         body: payload,
@@ -157,12 +212,13 @@ export class OtlpSink implements TelemetrySink {
       });
       if (!res.ok) {
         this.logger?.warn("checkrd: OtlpSink flush rejected", {
+          signal,
           status: res.status,
           size,
         });
       }
     } catch (err) {
-      this.logger?.warn("checkrd: OtlpSink flush failed", { err, size });
+      this.logger?.warn("checkrd: OtlpSink flush failed", { signal, err, size });
     }
   }
 
@@ -177,19 +233,38 @@ export class OtlpSink implements TelemetrySink {
   }
 }
 
-/** Append `/v1/traces` if the caller passed a bare endpoint URL. */
-function normaliseEndpoint(endpoint: string): string {
+/**
+ * Resolve the per-signal OTLP/HTTP endpoint (`/v1/traces` or `/v1/metrics`)
+ * from the caller's base URL.
+ *
+ * Mirrors the OTel SDK / collector convention: a bare host gets the standard
+ * `/v1/<signal>` suffix. A URL that already carries a signal path is
+ * respected — but the sink emits BOTH signals from one endpoint, so if the
+ * caller pinned `.../v1/traces` we swap the trailing signal segment to derive
+ * the metrics URL (and vice-versa). This keeps a Honeycomb-style
+ * `https://api.honeycomb.io/v1/traces` config working for metrics without a
+ * second option.
+ */
+function normaliseEndpoint(endpoint: string, signal: "traces" | "metrics"): string {
   const trimmed = endpoint.replace(/\/$/, "");
-  if (/\/v\d+\/traces$/.test(trimmed)) return trimmed;
-  return `${trimmed}/v1/traces`;
+  // Already ends in `/v{n}/{traces|metrics}` — rewrite the signal segment.
+  if (/\/v\d+\/(traces|metrics)$/.test(trimmed)) {
+    return trimmed.replace(/\/(traces|metrics)$/, `/${signal}`);
+  }
+  return `${trimmed}/v1/${signal}`;
 }
 
 /**
  * OpenTelemetry GenAI semantic-conventions version this SDK emits. Pinned
  * explicitly so collectors know which convention the gen_ai.* attributes
- * follow; emitted as the OTLP `schemaUrl`. Migration posture is switch-over
- * (emit the latest attribute names) — never dual-emit. Keep in lockstep with
- * the gen_ai.* attributes in `eventToSpan`.
+ * follow; emitted as the OTLP `schemaUrl`. We emit the latest (semconv
+ * 1.41.x) GenAI attribute names unconditionally; the deprecated
+ * `gen_ai.system` is deliberately not emitted (switch-over, never
+ * dual-emit). `OTEL_SEMCONV_STABILITY_OPT_IN=gen_ai_latest_experimental`
+ * is a no-op for our manually-stamped attributes because we are already
+ * on the latest. The attribute list itself lives in `_genai_semconv.ts`,
+ * shared with `OtelSpanSink` so the two paths cannot drift — keep this
+ * version pinned in lockstep with that list.
  */
 const OTEL_SCHEMA_URL = "https://opentelemetry.io/schemas/1.41.0";
 
@@ -279,15 +354,22 @@ function eventToSpan(event: TelemetryEvent): OtlpSpan {
   if (statusCode !== undefined) pushIntAttr(attributes, "http.response.status_code", statusCode);
   if (latencyMs > 0) pushDoubleAttr(attributes, "checkrd.latency_ms", latencyMs);
 
-  // GenAI attributes — pinned via OTEL_SCHEMA_URL (switch-over, no dual-emit).
-  const genAiSystem = readString(event, "gen_ai_system");
-  if (genAiSystem !== undefined) pushAttr(attributes, "gen_ai.system", genAiSystem);
-  const genAiModel = readString(event, "gen_ai_model");
-  if (genAiModel !== undefined) pushAttr(attributes, "gen_ai.request.model", genAiModel);
-  const inputTokens = readNumber(event, "gen_ai_input_tokens");
-  if (inputTokens !== undefined) pushIntAttr(attributes, "gen_ai.usage.input_tokens", inputTokens);
-  const outputTokens = readNumber(event, "gen_ai_output_tokens");
-  if (outputTokens !== undefined) pushIntAttr(attributes, "gen_ai.usage.output_tokens", outputTokens);
+  // GenAI attributes — names pinned via OTEL_SCHEMA_URL (switch-over, no
+  // dual-emit). The mapping (latest semconv names + the dotted/flat event
+  // keys they read) is shared with `OtelSpanSink` via `_genai_semconv.ts`
+  // so the two sinks can never diverge. We emit `gen_ai.provider.name`,
+  // not the deprecated `gen_ai.system`.
+  stampGenAiAttributes(event, {
+    setString: (key, value) => {
+      pushAttr(attributes, key, value);
+    },
+    setNumber: (key, value) => {
+      pushIntAttr(attributes, key, value);
+    },
+    setBoolean: (key, value) => {
+      pushBoolAttr(attributes, key, value);
+    },
+  });
 
   // Checkrd-specific attributes.
   const agentId = readString(event, "agent_id");
@@ -339,6 +421,10 @@ function pushIntAttr(out: OtlpAttribute[], key: string, value: number): void {
 
 function pushDoubleAttr(out: OtlpAttribute[], key: string, value: number): void {
   out.push({ key, value: { doubleValue: value } });
+}
+
+function pushBoolAttr(out: OtlpAttribute[], key: string, value: boolean): void {
+  out.push({ key, value: { boolValue: value } });
 }
 
 /** Generate `n` cryptographically random bytes as lowercase hex. */

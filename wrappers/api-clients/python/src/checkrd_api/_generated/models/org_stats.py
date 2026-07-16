@@ -28,6 +28,10 @@ class OrgStats:
             active_agents (int): Distinct agents that emitted at least one event in the window.
             total_agents (int): Total agents in the workspace (active + idle, excluding soft-deleted).
                 Sourced from Aurora, not ClickHouse.
+            total_cost_micros (int): M-16: total core-computed spend in the window, integer micro-USD.
+                Divide by 1_000_000 for USD. 0 when no events were priced.
+            priced_calls (int): M-16: events settled against a pricing bundle (`pricing_status='priced'`).
+                `priced_calls / total_calls` is the %-priced coverage KPI.
     """
 
     total_calls: int
@@ -40,6 +44,8 @@ class OrgStats:
     p99_latency_ms: int
     active_agents: int
     total_agents: int
+    total_cost_micros: int
+    priced_calls: int
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -63,6 +69,10 @@ class OrgStats:
 
         total_agents = self.total_agents
 
+        total_cost_micros = self.total_cost_micros
+
+        priced_calls = self.priced_calls
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
@@ -77,6 +87,8 @@ class OrgStats:
                 "p99_latency_ms": p99_latency_ms,
                 "active_agents": active_agents,
                 "total_agents": total_agents,
+                "total_cost_micros": total_cost_micros,
+                "priced_calls": priced_calls,
             }
         )
 
@@ -105,6 +117,10 @@ class OrgStats:
 
         total_agents = d.pop("total_agents")
 
+        total_cost_micros = d.pop("total_cost_micros")
+
+        priced_calls = d.pop("priced_calls")
+
         org_stats = cls(
             total_calls=total_calls,
             allowed_calls=allowed_calls,
@@ -116,6 +132,8 @@ class OrgStats:
             p99_latency_ms=p99_latency_ms,
             active_agents=active_agents,
             total_agents=total_agents,
+            total_cost_micros=total_cost_micros,
+            priced_calls=priced_calls,
         )
 
         org_stats.additional_properties = d

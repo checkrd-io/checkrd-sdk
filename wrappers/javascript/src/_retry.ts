@@ -263,9 +263,9 @@ async function parseErrorBody(response: Response): Promise<{
     } & import("./exceptions.js").APIErrorBody;
     const body = root.error ?? root;
     const message =
-      body?.detail ??
-      body?.title ??
-      body?.message ??
+      body.detail ??
+      body.title ??
+      body.message ??
       `HTTP ${response.status.toString()} ${response.statusText}: ${text.slice(0, 200)}`;
     return { body, message };
   } catch {

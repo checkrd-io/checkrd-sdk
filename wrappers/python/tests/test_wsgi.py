@@ -64,17 +64,22 @@ class TestCheckrdWSGIMiddleware:
         assert status == "200 OK"
         assert body == b"hello"
 
-    def test_translates_policy_deny_to_403_json(self) -> None:
+    def test_translates_policy_deny_to_403_problem_json(self) -> None:
         wrapped = CheckrdWSGIMiddleware(_deny_app)
         status, headers, body = _drive(wrapped)
         assert status == "403 Forbidden"
         header_dict = dict(headers)
-        assert header_dict["Content-Type"] == "application/json"
+        assert header_dict["Content-Type"] == "application/problem+json"
+        # RFC 9457 flat document — no nested ``error`` envelope.
         payload = json.loads(body)
-        assert payload["error"]["type"] == "policy_denied"
-        assert payload["error"]["request_id"] == "req_xyz"
-        assert payload["error"]["dashboard_url"] == "https://dash/e/xyz"
-        assert payload["error"]["docs_url"].startswith("https://checkrd.io/errors/")
+        assert "error" not in payload
+        assert payload["type"] == "https://checkrd.io/errors/policy_denied"
+        assert payload["title"] == "Request denied by policy"
+        assert payload["status"] == 403
+        assert payload["detail"] == "blocked"
+        assert payload["code"] == "policy_denied"
+        assert payload["request_id"] == "req_xyz"
+        assert payload["dashboard_url"] == "https://dash/e/xyz"
 
     def test_re_raises_when_response_already_started(self) -> None:
         # If a handler raises AFTER calling start_response (rare but
@@ -106,7 +111,7 @@ class TestWrapWsgi:
         # When the deny exception's own dashboard_url is set, that
         # wins; the override only fills in when the exception didn't
         # carry one. Verify with a separate app that omits it.
-        assert payload["error"]["dashboard_url"] == "https://dash/e/xyz"
+        assert payload["dashboard_url"] == "https://dash/e/xyz"
 
         def deny_no_dashboard(
             environ: dict[str, Any],
@@ -117,4 +122,4 @@ class TestWrapWsgi:
         wrapped2 = wrap_wsgi(deny_no_dashboard, dashboard_url="https://dash/")
         _s, _h, body2 = _drive(wrapped2)
         payload2 = json.loads(body2)
-        assert payload2["error"]["dashboard_url"] == "https://dash/"
+        assert payload2["dashboard_url"] == "https://dash/"

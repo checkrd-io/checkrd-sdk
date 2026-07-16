@@ -23,6 +23,8 @@ class TimeseriesBucket:
             allowed (int):
             denied (int):
             error (int):
+            cost_micros (int): M-16: summed core-computed cost in this bucket, integer micro-USD.
+            priced (int): M-16: events in this bucket settled against a bundle (`pricing_status='priced'`).
     """
 
     bucket: datetime.datetime
@@ -30,6 +32,8 @@ class TimeseriesBucket:
     allowed: int
     denied: int
     error: int
+    cost_micros: int
+    priced: int
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -43,6 +47,10 @@ class TimeseriesBucket:
 
         error = self.error
 
+        cost_micros = self.cost_micros
+
+        priced = self.priced
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
@@ -52,6 +60,8 @@ class TimeseriesBucket:
                 "allowed": allowed,
                 "denied": denied,
                 "error": error,
+                "cost_micros": cost_micros,
+                "priced": priced,
             }
         )
 
@@ -70,12 +80,18 @@ class TimeseriesBucket:
 
         error = d.pop("error")
 
+        cost_micros = d.pop("cost_micros")
+
+        priced = d.pop("priced")
+
         timeseries_bucket = cls(
             bucket=bucket,
             total=total,
             allowed=allowed,
             denied=denied,
             error=error,
+            cost_micros=cost_micros,
+            priced=priced,
         )
 
         timeseries_bucket.additional_properties = d

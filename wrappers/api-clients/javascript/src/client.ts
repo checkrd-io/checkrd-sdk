@@ -22,6 +22,7 @@ import {
   APIConnectionError,
   APITimeoutError,
   makeStatusError,
+  type ErrorBody,
 } from "./errors.js";
 import { Page, PagePromise, type PaginatedBody } from "./pagination.js";
 import { Agents } from "./resources/agents.js";
@@ -189,9 +190,15 @@ export class Checkrd {
           await this.sleep(this.retryDelayMs(attempt));
           continue;
         }
-        let body: { error?: { message: string; code?: string; param?: string; type?: string } } | undefined;
+        // The control plane returns a flat RFC 9457 problem+json body —
+        // the whole JSON object *is* the problem document (no nested
+        // `error` envelope). Degrade gracefully when the body is
+        // non-JSON or empty (e.g. an LB 502): pass `undefined` so
+        // `makeStatusError` falls back to an `HTTP <status>` message
+        // rather than throwing while building the error.
+        let body: ErrorBody | undefined;
         try {
-          body = (await response.json()) as typeof body;
+          body = (await response.json()) as ErrorBody;
         } catch {
           body = undefined;
         }

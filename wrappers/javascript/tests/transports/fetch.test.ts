@@ -14,6 +14,19 @@ function fakeFetch(): typeof fetch {
     }) as unknown as typeof fetch;
 }
 
+/**
+ * A real engine whose `evaluate()` throws — simulates a request-time
+ * WASM fault (corrupt policy hot-swap, sandbox OOM, wasmtime trap).
+ * Used to exercise the transport's fail-open / fail-closed contract.
+ */
+function throwingEngine(): WasmEngine {
+  const engine = new WasmEngine(ALLOW_ALL, "test");
+  engine.evaluate = () => {
+    throw new Error("wasmtime trap: simulated engine fault");
+  };
+  return engine;
+}
+
 describe("wrapFetch — happy path", () => {
   it("forwards the request when policy allows", async () => {
     const engine = new WasmEngine(ALLOW_ALL, "test");
@@ -159,5 +172,83 @@ describe("wrapFetch — body handling", () => {
     await expect(
       f("https://example.com/", { method: "POST", body: emojiPayload }),
     ).rejects.toMatchObject({ reason: "body exceeds 1MB inspection limit" });
+  });
+});
+
+describe("wrapFetch — engine fault (fail-open contract)", () => {
+  it("permissive mode passes the upstream response through on engine fault", async () => {
+    const base = vi.fn(
+      async () => new Response("upstream-ok", { status: 201 }),
+    ) as unknown as typeof fetch;
+    const f = wrapFetch(base, {
+      engine: throwingEngine(),
+      enforce: true,
+      agentId: "test",
+      securityMode: "permissive",
+    });
+    // The caller's real API call must succeed — a request-time engine
+    // fault is swallowed and the request forwarded (fail open).
+    const res = await f("https://example.com/", { method: "POST" });
+    expect(res.status).toBe(201);
+    expect(await res.text()).toBe("upstream-ok");
+    expect(base).toHaveBeenCalledOnce();
+  });
+
+  it("strict mode denies on engine fault (fail closed) without hitting upstream", async () => {
+    const base = fakeFetch();
+    const f = wrapFetch(base, {
+      engine: throwingEngine(),
+      enforce: true,
+      agentId: "test",
+      securityMode: "strict",
+    });
+    await expect(f("https://example.com/")).rejects.toBeInstanceOf(CheckrdPolicyDenied);
+    // The upstream must NEVER be hit when we fail closed.
+    expect(base).not.toHaveBeenCalled();
+  });
+
+  it("defaults to strict — engine fault under enforce denies", async () => {
+    const base = fakeFetch();
+    // No securityMode passed: the default is "strict".
+    const f = wrapFetch(base, { engine: throwingEngine(), enforce: true, agentId: "test" });
+    await expect(f("https://example.com/")).rejects.toBeInstanceOf(CheckrdPolicyDenied);
+    expect(base).not.toHaveBeenCalled();
+  });
+
+  it("observe-only (enforce=false) fails open even under strict on engine fault", async () => {
+    const base = vi.fn(
+      async () => new Response("ok", { status: 200 }),
+    ) as unknown as typeof fetch;
+    const f = wrapFetch(base, {
+      engine: throwingEngine(),
+      enforce: false,
+      agentId: "test",
+      securityMode: "strict",
+    });
+    // Observe-only never blocks the caller — a fault forwards the
+    // request rather than raising, mirroring the deny-path behaviour.
+    const res = await f("https://example.com/");
+    expect(res.status).toBe(200);
+    expect(base).toHaveBeenCalledOnce();
+  });
+
+  it("logs a warning when it fails open on engine fault", async () => {
+    const warn = vi.fn();
+    const logger = { debug: vi.fn(), info: vi.fn(), warn, error: vi.fn() };
+    const base = vi.fn(
+      async () => new Response("ok", { status: 200 }),
+    ) as unknown as typeof fetch;
+    const f = wrapFetch(base, {
+      engine: throwingEngine(),
+      enforce: true,
+      agentId: "test",
+      securityMode: "permissive",
+      logger,
+    });
+    await f("https://example.com/");
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("policy engine error"),
+      expect.objectContaining({ url: "https://example.com/" }),
+    );
   });
 });

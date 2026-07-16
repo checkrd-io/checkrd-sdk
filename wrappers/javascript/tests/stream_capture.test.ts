@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   captureStreamTokens,
+  captureUsageFromFrames,
   teeResponseForTokens,
   vendorForUrl,
   type StreamVendor,
@@ -171,5 +172,120 @@ describe("teeResponseForTokens", () => {
     })).not.toThrow();
     // suppress unused-var lint noise
     void vi;
+  });
+});
+
+// ---------------------------------------------------------------------------
+// M-11: cache/reasoning detail counters + untallied-on-abandonment, on
+// the LIVE `captureStreamTokens` path (the pure seam is covered by
+// `stream_capture_fixtures.test.ts` / `stream_capture_properties.test.ts`).
+// ---------------------------------------------------------------------------
+
+describe("captureStreamTokens — M-11 OTel usage attrs", () => {
+  it("OpenAI: emits cache_read + reasoning detail counters (native inclusive)", async () => {
+    const body =
+      `data: {"choices":[{"delta":{"content":"hi"}}]}\n\n` +
+      `data: {"choices":[],"usage":{"prompt_tokens":1000,"completion_tokens":500,"prompt_tokens_details":{"cached_tokens":800},"completion_tokens_details":{"reasoning_tokens":200}}}\n\n` +
+      `data: [DONE]\n\n`;
+    const sink = makeSink();
+    await captureStreamTokens(streamFromString(body), {
+      vendor: "openai",
+      requestId: "req-m11-oa",
+      url: "https://api.openai.com/v1/chat/completions",
+      method: "POST",
+      agentId: "agent-1",
+      sink,
+      startMs: Date.now(),
+    });
+    const ev = sink.calls[0]!;
+    expect(ev["input_tokens"]).toBe(1000);
+    expect(ev["output_tokens"]).toBe(500);
+    expect(ev["gen_ai.usage.input_tokens"]).toBe(1000);
+    expect(ev["gen_ai.usage.output_tokens"]).toBe(500);
+    expect(ev["gen_ai.usage.cache_read.input_tokens"]).toBe(800);
+    expect(ev["gen_ai.usage.reasoning.output_tokens"]).toBe(200);
+    expect(ev["pricing_status"]).toBeUndefined();
+  });
+
+  it("Anthropic: normalizes input to inclusive (300+1000+200=1500) and emits cache attrs", async () => {
+    const body =
+      `event: message_start\ndata: {"type":"message_start","message":{"usage":{"input_tokens":300,"output_tokens":1,"cache_read_input_tokens":1000,"cache_creation_input_tokens":200}}}\n\n` +
+      `event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hi"}}\n\n` +
+      `event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":350}}\n\n` +
+      `event: message_stop\ndata: {"type":"message_stop"}\n\n`;
+    const sink = makeSink();
+    await captureStreamTokens(streamFromString(body), {
+      vendor: "anthropic",
+      requestId: "req-m11-an",
+      url: "https://api.anthropic.com/v1/messages",
+      method: "POST",
+      agentId: "agent-1",
+      sink,
+      startMs: Date.now(),
+    });
+    const ev = sink.calls[0]!;
+    // Flat field mirrors the inclusive (billed) total, not the raw 300.
+    expect(ev["input_tokens"]).toBe(1500);
+    expect(ev["output_tokens"]).toBe(350);
+    expect(ev["gen_ai.usage.input_tokens"]).toBe(1500);
+    expect(ev["gen_ai.usage.output_tokens"]).toBe(350);
+    expect(ev["gen_ai.usage.cache_read.input_tokens"]).toBe(1000);
+    expect(ev["gen_ai.usage.cache_creation.input_tokens"]).toBe(200);
+  });
+});
+
+describe("captureStreamTokens — M-11 untallied on abandonment", () => {
+  it("OpenAI: stream ends before include_usage frame => untallied, null usage, no attrs", async () => {
+    // DELIBERATE behavior change: the old tap emitted whatever partial
+    // usage it had. The engine never estimates (TDD §4.2), so an
+    // abandoned stream now yields null usage + pricing_status=untallied.
+    const body =
+      `data: {"choices":[{"delta":{"content":"par"}}]}\n\n` +
+      `data: {"choices":[{"delta":{"content":"tial"}}]}\n\n`;
+    const sink = makeSink();
+    await captureStreamTokens(streamFromString(body), {
+      vendor: "openai",
+      requestId: "req-m11-abandon-oa",
+      url: "https://api.openai.com/v1/chat/completions",
+      method: "POST",
+      agentId: "agent-1",
+      sink,
+      startMs: Date.now(),
+    });
+    const ev = sink.calls[0]!;
+    expect(ev["pricing_status"]).toBe("untallied");
+    expect(ev["input_tokens"]).toBeNull();
+    expect(ev["output_tokens"]).toBeNull();
+    expect(ev["gen_ai.usage.input_tokens"]).toBeUndefined();
+  });
+
+  it("Anthropic: message_start but no terminal message_delta => untallied (input not leaked)", async () => {
+    const body =
+      `event: message_start\ndata: {"type":"message_start","message":{"usage":{"input_tokens":300,"output_tokens":1}}}\n\n` +
+      `event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"par"}}\n\n`;
+    const sink = makeSink();
+    await captureStreamTokens(streamFromString(body), {
+      vendor: "anthropic",
+      requestId: "req-m11-abandon-an",
+      url: "https://api.anthropic.com/v1/messages",
+      method: "POST",
+      agentId: "agent-1",
+      sink,
+      startMs: Date.now(),
+    });
+    const ev = sink.calls[0]!;
+    expect(ev["pricing_status"]).toBe("untallied");
+    expect(ev["input_tokens"]).toBeNull();
+    expect(ev["gen_ai.usage.input_tokens"]).toBeUndefined();
+  });
+
+  it("captureUsageFromFrames mirrors the live path for the abandoned OpenAI shape", () => {
+    const r = captureUsageFromFrames(
+      "openai",
+      [`data: {"choices":[{"delta":{"content":"x"}}]}\n\n`],
+      true,
+    );
+    expect(r.usageAttrs).toEqual({});
+    expect(r.pricingStatus).toBe("untallied");
   });
 });

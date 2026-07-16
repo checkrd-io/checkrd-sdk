@@ -24,10 +24,87 @@ import type { Logger } from "./_logger.js";
 /** Vendor label for a captured stream. */
 export type StreamVendor = "openai" | "anthropic" | "unknown";
 
-/** Usage numbers extracted from a stream. */
-export interface StreamUsage {
-  input_tokens: number | null;
-  output_tokens: number | null;
+// OTel GenAI usage attribute keys. These MUST match `_genai_body.ts`
+// (the body extractor) and the Python streaming tap byte-for-byte —
+// they are the cross-runtime wire contract, pinned by the language-
+// neutral fixtures in `schemas/genai-fixtures/streaming/`.
+const ATTR_INPUT_TOKENS = "gen_ai.usage.input_tokens";
+const ATTR_OUTPUT_TOKENS = "gen_ai.usage.output_tokens";
+const ATTR_CACHE_READ = "gen_ai.usage.cache_read.input_tokens";
+const ATTR_CACHE_CREATION = "gen_ai.usage.cache_creation.input_tokens";
+const ATTR_REASONING = "gen_ai.usage.reasoning.output_tokens";
+
+/**
+ * Pricing-settlement status carried on a `stream_completion` event.
+ *
+ * `"untallied"` means the stream ended without a terminal usage frame
+ * (client disconnect / truncation). The engine never estimates usage
+ * for an abandoned stream (TDD §4.2) — the pre-flight reserve is
+ * released on settle-timeout instead. Tallied streams omit this field.
+ */
+export type PricingStatus = "untallied";
+
+/**
+ * Outcome of feeding an ordered set of SSE frames to the usage tap.
+ *
+ * `usageAttrs` is keyed by the OTel `gen_ai.usage.*` dotted names (same
+ * keys the body extractor emits). It is **empty** when the stream was
+ * abandoned before its terminal usage frame; in that case
+ * `pricingStatus` is `"untallied"`. A fully-tallied stream omits
+ * `pricingStatus`.
+ */
+export interface StreamCaptureResult {
+  usageAttrs: Record<string, number>;
+  pricingStatus?: PricingStatus;
+}
+
+/**
+ * Mutable accumulator for the streaming usage tap.
+ *
+ * The tap is a strict pass-through: it inspects only terminal/metadata
+ * frames and never buffers content frames. This state records the raw
+ * provider counts as they arrive plus whether the *terminal* usage
+ * frame was seen — OpenAI's `include_usage` chunk, or Anthropic's final
+ * `message_delta` carrying `output_tokens`. Absence of that frame is
+ * what distinguishes an abandoned stream (→ `untallied`) from a
+ * complete one, so we track it explicitly rather than inferring from
+ * whatever partial numbers happen to be present.
+ */
+interface StreamUsageState {
+  /** OpenAI `prompt_tokens` / `input_tokens`, or Anthropic raw `input_tokens` (cache-exclusive). */
+  rawInput: number | null;
+  /** OpenAI `completion_tokens` / Anthropic cumulative `output_tokens`. */
+  output: number | null;
+  /** `prompt_tokens_details.cached_tokens` (OpenAI) / `cache_read_input_tokens` (Anthropic). */
+  cacheRead: number | null;
+  /** Anthropic `cache_creation_input_tokens` (OpenAI has no equivalent). */
+  cacheCreation: number | null;
+  /** `completion_tokens_details.reasoning_tokens` (OpenAI). */
+  reasoning: number | null;
+  /** Whether the terminal usage frame arrived. Gates tallied-vs-untallied. */
+  terminalSeen: boolean;
+  /** Most recent finish/stop reason, for the emitted event. */
+  finishReason: string | null;
+  /**
+   * Whether `rawInput` EXCLUDES cache and so must be normalized to the
+   * inclusive total at finalize. Anthropic's `message_start` input is
+   * cache-exclusive (→ true); OpenAI's `prompt_tokens` already includes
+   * cached tokens (→ false). Set when the input count is recorded.
+   */
+  inputExcludesCache: boolean;
+}
+
+function newUsageState(): StreamUsageState {
+  return {
+    rawInput: null,
+    output: null,
+    cacheRead: null,
+    cacheCreation: null,
+    reasoning: null,
+    terminalSeen: false,
+    finishReason: null,
+    inputExcludesCache: false,
+  };
 }
 
 /** Options for {@link captureStreamTokens}. */
@@ -235,6 +312,12 @@ export function resetStreamCaptureBudgetForTests(): void {
 /**
  * Consume one half of a teed SSE stream and emit a final telemetry
  * event with input/output token counts. Returns when the stream ends.
+ *
+ * Abandonment handling: if the stream ends without its terminal usage
+ * frame (client disconnect, truncation, buffer/budget abort) the event
+ * carries no token attributes and is flagged `pricing_status =
+ * "untallied"`. The tap never estimates — it reports only what the
+ * provider's terminal frame actually stated.
  */
 export async function captureStreamTokens(
   stream: ReadableStream<Uint8Array>,
@@ -245,8 +328,11 @@ export async function captureStreamTokens(
   let buffer = "";
   let eventName = "message";
   let dataLines: string[] = [];
-  const usage: StreamUsage = { input_tokens: null, output_tokens: null };
-  let finishReason: string | null = null;
+  const state = newUsageState();
+  // `complete` flips false the moment the read loop bails early (buffer
+  // overflow / hostile upstream). A clean `done` leaves it true; the
+  // terminal-frame check below still decides tallied-vs-untallied.
+  let complete = true;
 
   try {
     for (;;) {
@@ -257,6 +343,7 @@ export async function captureStreamTokens(
         opts.logger?.warn("stream capture aborted: buffer exceeds limit", {
           limit: MAX_STREAM_EVENT_BYTES,
         });
+        complete = false;
         break;
       }
       let boundary = buffer.indexOf("\n");
@@ -267,12 +354,7 @@ export async function captureStreamTokens(
         if (line.length === 0) {
           // Dispatch buffered event
           if (dataLines.length > 0) {
-            const payload = dataLines.join("\n");
-            if (payload !== "[DONE]") {
-              applyEventToUsage(eventName, payload, opts.vendor, usage, (fr) => {
-                finishReason = fr;
-              });
-            }
+            applyFrame(opts.vendor, eventName, dataLines.join("\n"), state);
           }
           eventName = "message";
           dataLines = [];
@@ -288,13 +370,14 @@ export async function captureStreamTokens(
     }
     // Dispatch any trailing event that wasn't terminated by a blank line.
     if (dataLines.length > 0) {
-      const payload = dataLines.join("\n");
-      if (payload !== "[DONE]") {
-        applyEventToUsage(eventName, payload, opts.vendor, usage, (fr) => {
-          finishReason = fr;
-        });
-      }
+      applyFrame(opts.vendor, eventName, dataLines.join("\n"), state);
     }
+  } catch (err) {
+    // A read error mid-stream is an abandonment, not a tally. Surface
+    // the partial as untallied rather than letting whatever counts we
+    // saw masquerade as final.
+    complete = false;
+    opts.logger?.debug("stream capture read error", { err });
   } finally {
     try {
       reader.releaseLock();
@@ -303,6 +386,8 @@ export async function captureStreamTokens(
     }
   }
 
+  const { usageAttrs, pricingStatus } = finalizeUsage(state, complete);
+
   const event: TelemetryEvent = {
     event_type: "stream_completion",
     request_id: opts.requestId,
@@ -310,21 +395,105 @@ export async function captureStreamTokens(
     method: opts.method,
     url: opts.url,
     vendor: opts.vendor,
-    input_tokens: usage.input_tokens,
-    output_tokens: usage.output_tokens,
-    finish_reason: finishReason,
+    finish_reason: state.finishReason,
     latency_ms: Math.max(0, Date.now() - opts.startMs),
   };
+  // Token attributes are emitted ONLY for a tallied stream. An
+  // abandoned stream carries no estimate; it is flagged instead. Both
+  // flat (`input_tokens`) and OTel-dotted (`gen_ai.usage.*`) keys are
+  // attached so downstream flatten/semconv paths each find their shape.
+  // The flat fields mirror the dotted attrs — i.e. the Anthropic-
+  // normalized inclusive input, NOT the raw cache-exclusive count — so
+  // the two never disagree about the billed total.
+  if (pricingStatus === undefined) {
+    event.input_tokens = usageAttrs[ATTR_INPUT_TOKENS] ?? null;
+    event.output_tokens = usageAttrs[ATTR_OUTPUT_TOKENS] ?? null;
+    Object.assign(event, usageAttrs);
+  } else {
+    event.input_tokens = null;
+    event.output_tokens = null;
+    event.pricing_status = pricingStatus;
+  }
   opts.sink.enqueue(event);
 }
 
-function applyEventToUsage(
+/**
+ * Pure usage tap, driveable from raw SSE frame strings.
+ *
+ * Feeds `frames` (each a complete SSE wire frame, in order — exactly
+ * what the live tap sees off the socket) through the same vendor state
+ * machine `captureStreamTokens` uses, then returns the OTel usage
+ * attributes (Anthropic normalized to inclusive input) plus the
+ * pricing status.
+ *
+ * `complete === false` forces `untallied` even if a terminal frame is
+ * present, modelling a caller that observed a hard truncation. When
+ * `complete` is true the result is tallied iff the terminal usage frame
+ * arrived. Never throws on malformed frames — bad JSON is skipped.
+ *
+ * This is the fixture-testable seam (`schemas/genai-fixtures/streaming/`):
+ * both SDKs must produce identical `usageAttrs` / `pricingStatus`
+ * frame-for-frame.
+ */
+export function captureUsageFromFrames(
+  vendor: StreamVendor,
+  frames: readonly string[],
+  complete: boolean,
+): StreamCaptureResult {
+  const state = newUsageState();
+  for (const frame of frames) {
+    applyRawFrame(vendor, frame, state);
+  }
+  return finalizeUsage(state, complete);
+}
+
+/**
+ * Parse one raw SSE frame (possibly multi-line, with an `event:` tag and
+ * one or more `data:` lines) and fold it into `state`. Tolerant of CRLF,
+ * comment lines, and the OpenAI `[DONE]` sentinel. Never throws.
+ */
+function applyRawFrame(
+  vendor: StreamVendor,
+  frame: string,
+  state: StreamUsageState,
+): void {
+  let eventName = "message";
+  const dataLines: string[] = [];
+  for (let line of frame.split("\n")) {
+    if (line.endsWith("\r")) line = line.slice(0, -1);
+    if (line.length === 0) {
+      // Blank line = event boundary. Flush what we have, reset.
+      if (dataLines.length > 0) {
+        applyFrame(vendor, eventName, dataLines.join("\n"), state);
+        dataLines.length = 0;
+      }
+      eventName = "message";
+    } else if (line.startsWith(":")) {
+      // comment
+    } else if (line.startsWith("event:")) {
+      eventName = line.slice(6).trimStart();
+    } else if (line.startsWith("data:")) {
+      dataLines.push(line.slice(5).trimStart());
+    }
+  }
+  if (dataLines.length > 0) {
+    applyFrame(vendor, eventName, dataLines.join("\n"), state);
+  }
+}
+
+/**
+ * Fold one dispatched SSE event (its name + joined `data` payload) into
+ * the usage accumulator. The `[DONE]` sentinel is a no-op; malformed
+ * JSON is skipped. Shared by the live reader and the pure frame driver
+ * so both paths produce identical state.
+ */
+function applyFrame(
+  vendor: StreamVendor,
   eventName: string,
   payload: string,
-  vendor: StreamVendor,
-  usage: StreamUsage,
-  setFinishReason: (reason: string) => void,
+  state: StreamUsageState,
 ): void {
+  if (payload === "[DONE]") return;
   let parsed: unknown;
   try {
     parsed = JSON.parse(payload);
@@ -332,30 +501,41 @@ function applyEventToUsage(
     return;
   }
   if (vendor === "openai") {
-    applyOpenAIEvent(parsed, usage, setFinishReason);
+    applyOpenAIEvent(parsed, state);
   } else if (vendor === "anthropic") {
-    applyAnthropicEvent(eventName, parsed, usage, setFinishReason);
+    applyAnthropicEvent(eventName, parsed, state);
   }
 }
 
-function applyOpenAIEvent(
-  payload: unknown,
-  usage: StreamUsage,
-  setFinishReason: (reason: string) => void,
-): void {
+function applyOpenAIEvent(payload: unknown, state: StreamUsageState): void {
   if (!isPlainObject(payload)) return;
   const u = payload.usage;
   if (isPlainObject(u)) {
-    if (typeof u.prompt_tokens === "number") usage.input_tokens = u.prompt_tokens;
-    if (typeof u.input_tokens === "number") usage.input_tokens = u.input_tokens;
-    if (typeof u.completion_tokens === "number") usage.output_tokens = u.completion_tokens;
-    if (typeof u.output_tokens === "number") usage.output_tokens = u.output_tokens;
+    // The presence of a `usage` object on an OpenAI chunk is the
+    // terminal `include_usage` frame — what makes the stream tallied.
+    const input = asInt(u.prompt_tokens) ?? asInt(u.input_tokens);
+    if (input !== undefined) state.rawInput = input;
+    const output = asInt(u.completion_tokens) ?? asInt(u.output_tokens);
+    if (output !== undefined) state.output = output;
+    // Detail counters are native-inclusive (cached ⊆ prompt,
+    // reasoning ⊆ completion) — emitted as-is, no normalization.
+    const promptDetails = asObject(u.prompt_tokens_details);
+    if (promptDetails !== null) {
+      const cached = asInt(promptDetails.cached_tokens);
+      if (cached !== undefined) state.cacheRead = cached;
+    }
+    const completionDetails = asObject(u.completion_tokens_details);
+    if (completionDetails !== null) {
+      const reasoning = asInt(completionDetails.reasoning_tokens);
+      if (reasoning !== undefined) state.reasoning = reasoning;
+    }
+    state.terminalSeen = true;
   }
   const choices = payload.choices;
   if (Array.isArray(choices) && choices.length > 0) {
     const first: unknown = choices[0];
     if (isPlainObject(first) && typeof first.finish_reason === "string") {
-      setFinishReason(first.finish_reason);
+      state.finishReason = first.finish_reason;
     }
   }
 }
@@ -363,32 +543,115 @@ function applyOpenAIEvent(
 function applyAnthropicEvent(
   eventName: string,
   payload: unknown,
-  usage: StreamUsage,
-  setFinishReason: (reason: string) => void,
+  state: StreamUsageState,
 ): void {
   if (!isPlainObject(payload)) return;
   if (eventName === "message_start") {
+    // Input usage (cache-exclusive) + cache counters land here. This is
+    // NOT the terminal frame — output is finalized later in
+    // `message_delta`, so seeing only `message_start` leaves the stream
+    // untallied.
     const message = payload.message;
     if (isPlainObject(message)) {
       const u = message.usage;
-      if (isPlainObject(u) && typeof u.input_tokens === "number") {
-        usage.input_tokens = u.input_tokens;
+      if (isPlainObject(u)) {
+        const input = asInt(u.input_tokens);
+        if (input !== undefined) {
+          state.rawInput = input;
+          // Anthropic's input_tokens excludes cache — normalize at finalize.
+          state.inputExcludesCache = true;
+        }
+        const cacheRead = asInt(u.cache_read_input_tokens);
+        if (cacheRead !== undefined) state.cacheRead = cacheRead;
+        const cacheCreation = asInt(u.cache_creation_input_tokens);
+        if (cacheCreation !== undefined) state.cacheCreation = cacheCreation;
       }
     }
   } else if (eventName === "message_delta") {
     const u = payload.usage;
-    if (isPlainObject(u) && typeof u.output_tokens === "number") {
-      usage.output_tokens = u.output_tokens;
+    if (isPlainObject(u)) {
+      const output = asInt(u.output_tokens);
+      if (output !== undefined) {
+        state.output = output;
+        // The final `message_delta` carrying cumulative output is the
+        // terminal usage frame for Anthropic.
+        state.terminalSeen = true;
+      }
     }
     const delta = payload.delta;
     if (isPlainObject(delta) && typeof delta.stop_reason === "string") {
-      setFinishReason(delta.stop_reason);
+      state.finishReason = delta.stop_reason;
     }
   }
 }
 
+/**
+ * Collapse the accumulated state into the emitted usage attributes plus
+ * pricing status, applying the Anthropic inclusive-input normalization.
+ *
+ * Tallied iff the terminal usage frame arrived AND the caller did not
+ * signal a hard truncation (`complete === false`). An untallied stream
+ * yields an empty `usageAttrs` and `pricingStatus = "untallied"` — the
+ * engine never estimates.
+ */
+function finalizeUsage(
+  state: StreamUsageState,
+  complete: boolean,
+): StreamCaptureResult {
+  if (!complete || !state.terminalSeen) {
+    return { usageAttrs: {}, pricingStatus: "untallied" };
+  }
+  const attrs: Record<string, number> = {};
+  if (state.rawInput !== null) {
+    // Anthropic's `input_tokens` EXCLUDES cache; normalize to the
+    // inclusive total (input + cache_read + cache_creation) so the
+    // invariant `cache_read + cache_creation <= input` holds and the
+    // core's `settle_usage` netting reproduces the invoice — identical
+    // to `_genai_body.ts`. OpenAI's `prompt_tokens` is ALREADY inclusive
+    // (cached ⊆ prompt), so it passes through untouched. The
+    // `inputExcludesCache` flag, set per vendor when the count is read,
+    // is what keeps OpenAI from double-counting its cached tokens.
+    attrs[ATTR_INPUT_TOKENS] = state.inputExcludesCache
+      ? state.rawInput + (state.cacheRead ?? 0) + (state.cacheCreation ?? 0)
+      : state.rawInput;
+  }
+  if (state.output !== null) {
+    attrs[ATTR_OUTPUT_TOKENS] = state.output;
+  }
+  if (state.cacheRead !== null) {
+    attrs[ATTR_CACHE_READ] = state.cacheRead;
+  }
+  if (state.cacheCreation !== null) {
+    attrs[ATTR_CACHE_CREATION] = state.cacheCreation;
+  }
+  if (state.reasoning !== null) {
+    attrs[ATTR_REASONING] = state.reasoning;
+  }
+  return { usageAttrs: attrs };
+}
+
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+/** Read a nested `Record`, else `null`. Mirrors `_genai_body.ts`. */
+function asObject(value: unknown): Record<string, unknown> | null {
+  if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return null;
+}
+
+/**
+ * Return the value if it is a JSON integer, else `undefined`. Matches
+ * `_genai_body.ts`'s `asInt` — booleans are excluded (not `number`),
+ * floats/strings/NaN are skipped rather than coerced.
+ */
+function asInt(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isInteger(value)) {
+    return value;
+  }
+  return undefined;
 }
 
 /** Classify a request URL to pick the right SSE parser. */

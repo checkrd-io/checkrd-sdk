@@ -25,6 +25,11 @@ base64 = { workspace = true }
 # guaranteeing linear-time evaluation (no backtracking, no ReDoS).
 # Pure-compute, wasm32-wasip1 friendly.
 regex = "1"
+# zeroize wipes secret-key byte copies (`Identity::private_key_bytes`,
+# `generate_keypair`) from memory on drop. Already in the tree via
+# ed25519-dalek's `zeroize` feature; taken as a direct dep so the identity
+# API can hand back `Zeroizing<[u8; 32]>`. Pure-compute, wasm32-wasip1 friendly.
+zeroize = "1"
 
 [features]
 # Compliance / cryptographic-conformance test suites. Skipped by default to

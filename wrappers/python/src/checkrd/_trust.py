@@ -89,6 +89,40 @@ _PRODUCTION_TRUSTED_KEYS: list[dict[str, Any]] = [
     },
 ]
 
+# Production trusted *pricing* keys — STRUCTURALLY SEPARATE trust anchor.
+#
+# SECURITY (TUF-style per-role key separation): the price table is signed by a
+# DIFFERENT control-plane key than the policy bundle, and this is a DISJOINT
+# parallel list — deliberately NOT a `purpose` field on the policy list and NOT
+# an append to `_PRODUCTION_TRUSTED_KEYS`. A pricing key must NEVER be a valid
+# signer for a policy bundle, and vice versa. This is defense-in-depth BEYOND
+# the DSSE PAE payload-type binding the WASM core already enforces: even if the
+# payload-type gate ever regressed, a pricing signer still could not appear in
+# the policy trust list (and vice versa) because the two lists never merge.
+#
+# `trusted_pricing_keys()` is fed ONLY to `WasmEngine.reload_pricing_signed`;
+# `trusted_policy_keys()` ONLY to `WasmEngine.reload_policy_signed`. The
+# invariant is enforced at the call sites and tested structurally in
+# `test_pricing_cross_purpose`.
+#
+# Empty during pre-1.0 development, exactly like `_PRODUCTION_TRUSTED_KEYS` was:
+# the real pricing public key (public half of `checkrd/prod/pricing-signing-key`
+# in AWS Secrets Manager) is pinned here before the first signed pricing
+# release. The CI pre-publish guard (`policy trust-status`) treats an empty
+# production pricing list against a production endpoint as a ship-blocker, the
+# same as the policy list — see `production_pricing_trust_status`.
+#
+# Format: list of dicts matching crates/core/src/dsse_verify.rs::TrustedKey
+# (identical shape to the policy list — same struct on the verifier side, a
+# DIFFERENT trust root on the wire).
+_PRICING_TRUSTED_KEYS: list[dict[str, Any]] = [
+    # Intentionally empty until the first signed pricing release. Pin the
+    # pricing control-plane public key here (NOT in _PRODUCTION_TRUSTED_KEYS)
+    # before shipping signed price tables. Rotating follows the same overlap-
+    # window runbook as the policy key (KEY-CUSTODY.md), independently of the
+    # policy key's rotation.
+]
+
 # Substring identifying a production-shaped control plane URL. Used by
 # `production_trust_status` to decide whether an empty trust list is
 # benign (dev/test) or a release-blocker (production target).
@@ -147,6 +181,58 @@ def trusted_policy_keys() -> list[dict[str, Any]]:
                 "JSON. Falling back to production keys."
             )
     return list(_PRODUCTION_TRUSTED_KEYS)
+
+
+def trusted_pricing_keys() -> list[dict[str, Any]]:
+    """Return the list of trusted *pricing* signing keys.
+
+    The cost-metering analogue of :func:`trusted_policy_keys`, reading the
+    PARALLEL, purpose-scoped trust root :data:`_PRICING_TRUSTED_KEYS` — never
+    the policy list. The override env var is its own dedicated variable
+    (``CHECKRD_PRICING_TRUST_OVERRIDE_JSON``) so a dev pricing key cannot be
+    confused with a dev policy key, but it reuses the SAME
+    ``CHECKRD_ALLOW_TRUST_OVERRIDE=1`` double-gate.
+
+    SECURITY INVARIANT (tested in ``test_pricing_cross_purpose``): the list
+    returned here is fed ONLY to :meth:`WasmEngine.reload_pricing_signed`. It
+    must never be merged with, or substituted for,
+    :func:`trusted_policy_keys` — a pricing key is structurally incapable of
+    signing a policy bundle the SDK will install, and vice versa.
+
+    The double-gate (override JSON present AND
+    ``CHECKRD_ALLOW_TRUST_OVERRIDE=1``) prevents accidental or malicious trust
+    override in production — a single compromised env var is not enough.
+    """
+    override = os.environ.get("CHECKRD_PRICING_TRUST_OVERRIDE_JSON")
+    if override:
+        gate = os.environ.get("CHECKRD_ALLOW_TRUST_OVERRIDE", "")
+        if gate not in ("1", "true", "yes"):
+            _logger.warning(
+                "checkrd: CHECKRD_PRICING_TRUST_OVERRIDE_JSON is set but "
+                "CHECKRD_ALLOW_TRUST_OVERRIDE is not '1'. Ignoring override. "
+                "Both env vars must be set to override trusted pricing keys."
+            )
+            return list(_PRICING_TRUSTED_KEYS)
+        try:
+            parsed = json.loads(override)
+            if isinstance(parsed, list):
+                if not parsed:
+                    _logger.warning(
+                        "checkrd: pricing trust override is an empty list — all "
+                        "signed pricing updates will be rejected."
+                    )
+                _logger.warning(
+                    "checkrd: using %d pricing trust-override key(s) instead of "
+                    "production keys. DO NOT use this in production.",
+                    len(parsed),
+                )
+                return parsed
+        except json.JSONDecodeError:
+            _logger.warning(
+                "checkrd: CHECKRD_PRICING_TRUST_OVERRIDE_JSON is not valid "
+                "JSON. Falling back to production pricing keys."
+            )
+    return list(_PRICING_TRUSTED_KEYS)
 
 
 # Module-level guard so :func:`warn_if_misconfigured` fires at most once per
@@ -214,6 +300,61 @@ def production_trust_status(
         "set CHECKRD_POLICY_TRUST_OVERRIDE_JSON to a dev key to verify "
         "signed bundles, or run scripts/generate-policy-signing-key.py "
         "to bootstrap a production key.",
+    )
+
+
+def production_pricing_trust_status(
+    *,
+    base_url: Optional[str] = None,
+    env: Optional[Mapping[str, str]] = None,
+) -> tuple[TrustStatusLevel, str]:
+    """Diagnose the *pricing* trust-list configuration for the environment.
+
+    The cost-metering analogue of :func:`production_trust_status`, reading the
+    parallel pricing trust root and the dedicated
+    ``CHECKRD_PRICING_TRUST_OVERRIDE_JSON`` override (same
+    ``CHECKRD_ALLOW_TRUST_OVERRIDE=1`` gate). Used by the
+    ``checkrd policy trust-status`` CI guard so a release that signs price
+    tables is blocked when the production pricing list is empty against a
+    production endpoint — exactly the policy list's ship-blocker logic.
+
+    Returns the same four :data:`TrustStatusLevel` values, scoped to pricing.
+    """
+    env = os.environ if env is None else env
+    override = env.get("CHECKRD_PRICING_TRUST_OVERRIDE_JSON", "")
+    gate = env.get("CHECKRD_ALLOW_TRUST_OVERRIDE", "")
+    override_active = bool(override) and gate in ("1", "true", "yes")
+
+    if override_active:
+        return (
+            "override",
+            "pricing trust list override active via "
+            "CHECKRD_PRICING_TRUST_OVERRIDE_JSON. Acceptable for dev/test; "
+            "never set in production.",
+        )
+
+    if _PRICING_TRUSTED_KEYS:
+        return (
+            "ok",
+            f"production pricing trust list contains {len(_PRICING_TRUSTED_KEYS)} "
+            "key(s). Signed pricing updates will be verified against this list.",
+        )
+
+    if base_url and _PRODUCTION_HOST_MARKER in base_url:
+        return (
+            "empty_production",
+            "production pricing trust list is empty AND the control plane URL "
+            f"({base_url!r}) targets a production endpoint. Every signed "
+            "pricing update will be rejected. Pin the pricing public key into "
+            "_PRICING_TRUSTED_KEYS before shipping signed price tables.",
+        )
+
+    return (
+        "empty_dev",
+        "production pricing trust list is empty. Acceptable for local "
+        "development; set CHECKRD_PRICING_TRUST_OVERRIDE_JSON to a dev key to "
+        "verify signed pricing bundles, or pin a production pricing key before "
+        "the first signed pricing release.",
     )
 
 

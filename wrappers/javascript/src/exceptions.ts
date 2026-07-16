@@ -7,7 +7,8 @@
  *   CheckrdError                            // root — every Checkrd error
  *   ├── CheckrdInitError                    // SDK init (WASM, policy, key)
  *   ├── CheckrdPolicyDenied                 // WASM engine denied a request
- *   ├── PolicySignatureError                // DSSE bundle rejected
+ *   ├── PolicySignatureError                // DSSE policy bundle rejected
+ *   ├── PricingSignatureError               // DSSE pricing bundle rejected
  *   └── APIError                            // control-plane HTTP error
  *       ├── APIStatusError                  // 4xx/5xx with a response body
  *       │   ├── BadRequestError             // 400
@@ -67,6 +68,29 @@ export const FFI_ERROR_REASONS: Record<number, string> = {
   [-12]: "bundle_too_old",
   [-13]: "bundle_in_future",
   [-14]: "policy_version_already_set",
+};
+
+/**
+ * Pricing-bundle FFI error code → stable string label. The pricing reload
+ * surface (`reload_pricing_signed`, FFI `-15`..`-24`) is a faithful clone
+ * of the policy reload surface above, offset by -11, so cost-metering
+ * failures can be labelled separately from policy failures in logs and
+ * metrics (TDD §4.3). The labels themselves match the policy ones — the
+ * *meaning* of "signature_invalid" is identical; only the numeric code and
+ * the metric dimension differ. Mirrors `_PRICING_FFI_ERROR_REASONS` in the
+ * Python wrapper.
+ */
+export const PRICING_FFI_ERROR_REASONS: Record<number, string> = {
+  [-15]: "payload_type_mismatch",
+  [-16]: "signature_invalid",
+  [-17]: "unknown_or_no_signer",
+  [-18]: "key_not_in_validity_window",
+  [-19]: "verified_payload_invalid",
+  [-20]: "schema_version_mismatch",
+  [-21]: "bundle_version_not_monotonic",
+  [-22]: "bundle_too_old",
+  [-23]: "bundle_in_future",
+  [-24]: "pricing_version_already_set",
 };
 
 /** Base URL for per-code documentation. Mirrors Stripe's ``doc_url``. */
@@ -190,6 +214,30 @@ export class PolicySignatureError extends CheckrdError {
     this.ffiCode = ffiCode;
     this.reason = reason;
     Object.setPrototypeOf(this, PolicySignatureError.prototype);
+  }
+}
+
+/**
+ * Raised when a signed *pricing* bundle fails verification. Structurally
+ * identical to {@link PolicySignatureError} but carries the pricing FFI
+ * code range (`-15`..`-24`) and resolves its label from
+ * {@link PRICING_FFI_ERROR_REASONS}, so a cost-metering rejection is never
+ * conflated with a policy rejection in logs, metrics, or catch blocks.
+ */
+export class PricingSignatureError extends CheckrdError {
+  /** The raw pricing-reload FFI error code from the WASM core (negative). */
+  readonly ffiCode: number;
+  /** Stable string label for ``ffiCode`` (e.g. ``signature_invalid``). */
+  readonly reason: string;
+
+  constructor(ffiCode: number, detail?: string) {
+    const reason =
+      PRICING_FFI_ERROR_REASONS[ffiCode] ?? `unknown_ffi_code_${ffiCode.toString()}`;
+    super(detail ? `${reason}: ${detail}` : reason, reason);
+    this.name = "PricingSignatureError";
+    this.ffiCode = ffiCode;
+    this.reason = reason;
+    Object.setPrototypeOf(this, PricingSignatureError.prototype);
   }
 }
 

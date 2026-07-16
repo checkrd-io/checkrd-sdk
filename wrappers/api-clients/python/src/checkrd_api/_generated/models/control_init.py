@@ -10,6 +10,7 @@ from ..types import UNSET, Unset
 
 if TYPE_CHECKING:
     from ..models.control_init_policy_envelope import ControlInitPolicyEnvelope
+    from ..models.control_init_pricing_envelope import ControlInitPricingEnvelope
 
 
 T = TypeVar("T", bound="ControlInit")
@@ -44,11 +45,24 @@ class ControlInit:
                 active policy exists yet. Always populated after the first
                 publish — strong-from-the-ground-up means there is no unsigned
                 distribution path.
+            active_pricing_hash (None | str | Unset): SHA-256 of the active pricing bundle, lowercase hex. The price-table
+                analogue of `active_policy_hash` — lets a reconnecting SDK skip the
+                pricing install when nothing changed. `None` until a pricing bundle is
+                active (M-14 wires the catalog storage that populates it; M-13 ships
+                the wire field and the signing channel).
+            pricing_envelope (ControlInitPricingEnvelope | Unset): DSSE-signed pricing envelope (`PricingBundle` payload
+                type), identical
+                to the one returned by `GET /v1/agents/{agent_id}/control/state`. The
+                price-table analogue of `policy_envelope`; the SDK verifies it in-WASM
+                against its pinned trust list before installing. `None` until a pricing
+                catalog exists (M-14).
     """
 
     kill_switch_active: bool
     active_policy_hash: None | str | Unset = UNSET
     policy_envelope: ControlInitPolicyEnvelope | Unset = UNSET
+    active_pricing_hash: None | str | Unset = UNSET
+    pricing_envelope: ControlInitPricingEnvelope | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -64,6 +78,16 @@ class ControlInit:
         if not isinstance(self.policy_envelope, Unset):
             policy_envelope = self.policy_envelope.to_dict()
 
+        active_pricing_hash: None | str | Unset
+        if isinstance(self.active_pricing_hash, Unset):
+            active_pricing_hash = UNSET
+        else:
+            active_pricing_hash = self.active_pricing_hash
+
+        pricing_envelope: dict[str, Any] | Unset = UNSET
+        if not isinstance(self.pricing_envelope, Unset):
+            pricing_envelope = self.pricing_envelope.to_dict()
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
@@ -75,12 +99,17 @@ class ControlInit:
             field_dict["active_policy_hash"] = active_policy_hash
         if policy_envelope is not UNSET:
             field_dict["policy_envelope"] = policy_envelope
+        if active_pricing_hash is not UNSET:
+            field_dict["active_pricing_hash"] = active_pricing_hash
+        if pricing_envelope is not UNSET:
+            field_dict["pricing_envelope"] = pricing_envelope
 
         return field_dict
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         from ..models.control_init_policy_envelope import ControlInitPolicyEnvelope
+        from ..models.control_init_pricing_envelope import ControlInitPricingEnvelope
 
         d = dict(src_dict)
         kill_switch_active = d.pop("kill_switch_active")
@@ -101,10 +130,28 @@ class ControlInit:
         else:
             policy_envelope = ControlInitPolicyEnvelope.from_dict(_policy_envelope)
 
+        def _parse_active_pricing_hash(data: object) -> None | str | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(None | str | Unset, data)
+
+        active_pricing_hash = _parse_active_pricing_hash(d.pop("active_pricing_hash", UNSET))
+
+        _pricing_envelope = d.pop("pricing_envelope", UNSET)
+        pricing_envelope: ControlInitPricingEnvelope | Unset
+        if isinstance(_pricing_envelope, Unset):
+            pricing_envelope = UNSET
+        else:
+            pricing_envelope = ControlInitPricingEnvelope.from_dict(_pricing_envelope)
+
         control_init = cls(
             kill_switch_active=kill_switch_active,
             active_policy_hash=active_policy_hash,
             policy_envelope=policy_envelope,
+            active_pricing_hash=active_pricing_hash,
+            pricing_envelope=pricing_envelope,
         )
 
         control_init.additional_properties = d

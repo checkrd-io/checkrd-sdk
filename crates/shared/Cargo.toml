@@ -25,6 +25,10 @@ typeshare = { workspace = true }
 
 [dev-dependencies]
 uuid = { version = "1", features = ["serde", "v4"] }
+# proptest drives the money-math property tests in `cost` (round-half-up
+# determinism, saturate-not-panic, order-independent batch sums). Mirrors the
+# direct `proptest = "1"` dev-dep in crates/core.
+proptest = "1"
 
 [package.metadata.dist]
 # Internal workspace crate, not a release artifact. Suppresses

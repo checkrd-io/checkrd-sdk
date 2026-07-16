@@ -80,6 +80,29 @@ pub enum Resource {
     Orgs,
 }
 
+impl Resource {
+    /// Every resource variant, in declaration order.
+    ///
+    /// Used by [`ApiKeyScope::contains`] to compare two scopes
+    /// resource-by-resource. Keep in sync with the enum: the
+    /// `resource_all_is_exhaustive` test binds every variant in an
+    /// exhaustive match, so adding a variant without adding it here (and
+    /// there) fails to compile.
+    pub const ALL: [Resource; 11] = [
+        Resource::Agents,
+        Resource::Policies,
+        Resource::OrgPolicies,
+        Resource::Templates,
+        Resource::Keys,
+        Resource::Alerts,
+        Resource::Events,
+        Resource::Audit,
+        Resource::Dashboard,
+        Resource::Billing,
+        Resource::Orgs,
+    ];
+}
+
 /// Access level per resource. Ordered: `None < Read < Write` so a
 /// `permits()` check is a single `<=`.
 ///
@@ -152,6 +175,37 @@ impl ApiKeyScope {
                 .copied()
                 .unwrap_or(AccessLevel::None),
         }
+    }
+
+    /// Does `self` fully contain `other` — i.e. is `other` a subset of
+    /// `self`?
+    ///
+    /// True iff, for **every** resource, the access level `self` grants
+    /// is at least what `other` grants. Because access levels are
+    /// ordered (`None < Read < Write`), this is a per-resource `>=`
+    /// across the full [`Resource::ALL`] set.
+    ///
+    /// This is the anti-privilege-escalation primitive: when an API-key
+    /// principal mints a new key, the control plane requires
+    /// `presenting_key.scope.contains(&new_scope)` so a key can never
+    /// grant more than it holds. Mirrors AWS IAM's permissions-boundary
+    /// rule and Stripe restricted keys — a credential cannot escalate
+    /// itself.
+    ///
+    /// Note the asymmetry this correctly captures: [`Self::All`]
+    /// contains everything; a [`Self::Restricted`] scope contains
+    /// [`Self::ReadOnly`] only if it grants at least `Read` on *every*
+    /// resource (since `ReadOnly` can read all of them).
+    pub fn contains(&self, other: &ApiKeyScope) -> bool {
+        // Fast path: `All` grants `Write` everywhere, so it is a
+        // superset of any scope. (The general check below also returns
+        // true here; this just skips the iteration.)
+        if matches!(self, Self::All) {
+            return true;
+        }
+        Resource::ALL
+            .iter()
+            .all(|&r| self.granted(r) >= other.granted(r))
     }
 }
 
@@ -232,5 +286,125 @@ mod tests {
         assert!(AccessLevel::None < AccessLevel::Read);
         assert!(AccessLevel::Read < AccessLevel::Write);
         assert!(AccessLevel::Write > AccessLevel::None);
+    }
+
+    // -- Resource::ALL exhaustiveness --
+
+    #[test]
+    fn resource_all_is_exhaustive() {
+        // Compile-time guard: binding every variant in an exhaustive
+        // match means adding a `Resource` variant without adding it to
+        // `Resource::ALL` fails to compile here. `contains` relies on
+        // `ALL` covering every resource, so an omission would silently
+        // allow scope escalation on the missing resource.
+        for r in Resource::ALL {
+            match r {
+                Resource::Agents
+                | Resource::Policies
+                | Resource::OrgPolicies
+                | Resource::Templates
+                | Resource::Keys
+                | Resource::Alerts
+                | Resource::Events
+                | Resource::Audit
+                | Resource::Dashboard
+                | Resource::Billing
+                | Resource::Orgs => {}
+            }
+        }
+        // No duplicates.
+        let mut seen = std::collections::BTreeSet::new();
+        for r in Resource::ALL {
+            assert!(seen.insert(r), "duplicate {r:?} in Resource::ALL");
+        }
+    }
+
+    // -- ApiKeyScope::contains (anti-escalation subset check) --
+
+    #[test]
+    fn all_contains_everything() {
+        let all = ApiKeyScope::All;
+        assert!(all.contains(&ApiKeyScope::All));
+        assert!(all.contains(&ApiKeyScope::ReadOnly));
+        assert!(all.contains(&restricted(&[(Resource::Keys, AccessLevel::Write)])));
+        assert!(all.contains(&restricted(&[])));
+    }
+
+    #[test]
+    fn only_all_contains_all() {
+        // No lesser scope can mint an unrestricted `All` key.
+        assert!(!ApiKeyScope::ReadOnly.contains(&ApiKeyScope::All));
+        assert!(!restricted(&[(Resource::Agents, AccessLevel::Write)]).contains(&ApiKeyScope::All));
+    }
+
+    #[test]
+    fn read_only_contains_read_subsets_only() {
+        let ro = ApiKeyScope::ReadOnly;
+        assert!(ro.contains(&ApiKeyScope::ReadOnly));
+        // A restricted scope asking only for reads is a subset.
+        assert!(ro.contains(&restricted(&[
+            (Resource::Agents, AccessLevel::Read),
+            (Resource::Billing, AccessLevel::Read),
+        ])));
+        // But any write escalates beyond read-only → not contained.
+        assert!(!ro.contains(&restricted(&[(Resource::Agents, AccessLevel::Write)])));
+    }
+
+    #[test]
+    fn restricted_contains_narrower_restricted() {
+        // presenting: agents:write, policies:read
+        let presenting = restricted(&[
+            (Resource::Agents, AccessLevel::Write),
+            (Resource::Policies, AccessLevel::Read),
+        ]);
+        // Subsets it can mint:
+        assert!(presenting.contains(&restricted(&[(Resource::Agents, AccessLevel::Read)])));
+        assert!(presenting.contains(&restricted(&[(Resource::Agents, AccessLevel::Write)])));
+        assert!(presenting.contains(&restricted(&[(Resource::Policies, AccessLevel::Read)])));
+        assert!(presenting.contains(&restricted(&[]))); // empty scope grants nothing
+        assert!(presenting.contains(&presenting.clone()));
+
+        // Escalations it must NOT mint:
+        // policies:write (only holds policies:read)
+        assert!(!presenting.contains(&restricted(&[(Resource::Policies, AccessLevel::Write)])));
+        // keys:read (holds nothing on keys — the privilege-escalation
+        // adjacent resource, so deny-by-default matters most here)
+        assert!(!presenting.contains(&restricted(&[(Resource::Keys, AccessLevel::Read)])));
+        // read-only spans every resource; presenting doesn't cover all
+        assert!(!presenting.contains(&ApiKeyScope::ReadOnly));
+    }
+
+    #[test]
+    fn restricted_covering_all_resources_contains_read_only() {
+        // Edge case the per-resource `>=` check gets right: a Restricted
+        // scope that grants at least Read on EVERY resource does contain
+        // ReadOnly (which reads all of them).
+        let everything_read: ApiKeyScope = ApiKeyScope::Restricted {
+            resources: Resource::ALL
+                .iter()
+                .map(|&r| (r, AccessLevel::Read))
+                .collect(),
+        };
+        assert!(everything_read.contains(&ApiKeyScope::ReadOnly));
+        // Dropping one resource breaks containment.
+        let missing_one: ApiKeyScope = ApiKeyScope::Restricted {
+            resources: Resource::ALL
+                .iter()
+                .filter(|&&r| r != Resource::Orgs)
+                .map(|&r| (r, AccessLevel::Read))
+                .collect(),
+        };
+        assert!(!missing_one.contains(&ApiKeyScope::ReadOnly));
+    }
+
+    #[test]
+    fn contains_is_reflexive_for_each_form() {
+        for s in [
+            ApiKeyScope::All,
+            ApiKeyScope::ReadOnly,
+            restricted(&[(Resource::Agents, AccessLevel::Write)]),
+        ] {
+            assert!(s.contains(&s.clone()), "{s:?} must contain itself");
+        }
     }
 }

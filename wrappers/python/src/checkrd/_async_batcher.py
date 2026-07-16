@@ -170,12 +170,62 @@ class AsyncTelemetryBatcher:
             self._owns_client = False
 
         self._task: Optional[asyncio.Task[None]] = None
+        # The event loop the worker task (and the asyncio primitives) are
+        # bound to. Tracked so a lazy start can detect a loop change — a
+        # post-fork child, or a second ``asyncio.run`` in the same
+        # process — and rebind cleanly instead of awaiting a Task/Event
+        # owned by a now-dead loop.
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
 
     def start(self) -> None:
-        """Spawn the background worker task. Idempotent."""
-        if self._task is not None and not self._task.done():
+        """Spawn the background flush loop. Idempotent; lazy.
+
+        Called from :meth:`enqueue` rather than the constructor because
+        the constructor routinely runs *outside* any event loop — an
+        async app builds its Checkrd client before ``asyncio.run`` in
+        plenty of real layouts, and ``asyncio.get_event_loop()`` is
+        deprecated for exactly that "no running loop" case. ``enqueue``
+        on the async transport path always runs inside the loop, so that
+        is the safe place to spawn the worker.
+
+        Cases handled:
+          * **No running loop yet** — nothing to spawn onto; return and
+            let the next in-loop ``enqueue`` start it. The buffer keeps
+            filling meanwhile; nothing is lost.
+          * **Already started on this loop** — no-op.
+          * **Loop changed** (post-fork child, or a second
+            ``asyncio.run`` in the same process) — the inherited Task,
+            Event, and Lock belong to a dead loop and can't be awaited
+            here. Rebind: drop the stale buffer (the parent/previous loop
+            owns those events and flushes them itself, so re-sending would
+            duplicate), re-create the primitives against the current
+            loop, and spawn a fresh worker. This is the async analogue of
+            the thread batcher's ``_reinit_after_fork``. The
+            ``os.register_at_fork`` WeakSet mechanism is thread-oriented —
+            an at-fork handler runs outside any loop and so cannot create
+            a Task — which is why the async batcher rebinds lazily here
+            instead of registering in ``_LIVE_BATCHERS``.
+        """
+        if self._stopped:
             return
-        loop = asyncio.get_event_loop()
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # Not inside an event loop yet. Can't spawn the worker; the
+            # buffer fills and the next enqueue inside a loop starts it.
+            return
+        if self._task is not None and self._loop is loop and not self._task.done():
+            return
+        if self._loop is not None and self._loop is not loop:
+            # Loop changed under us. Drop the inherited buffer so we don't
+            # double-send events the previous loop owns, and reset the
+            # byte accountant alongside it. Re-create the primitives so
+            # the fresh worker awaits objects bound to THIS loop.
+            self._buffer = []
+            self._queue_bytes = 0
+            self._flush_event = asyncio.Event()
+            self._lock = asyncio.Lock()
+        self._loop = loop
         self._task = loop.create_task(
             self._run(),
             name="checkrd-telemetry-batcher",
@@ -188,10 +238,21 @@ class AsyncTelemetryBatcher:
         both sync and async code paths in the transport layer. Thread
         safety is implicit — asyncio is single-threaded per event loop.
 
+        Lazy-starts the background flush loop on the first in-loop call
+        so periodic flushing runs whether or not the caller uses
+        ``async with`` / ``aclose()``. Without it the loop would only
+        ever drain on an explicit ``flush()`` / ``stop()``, so a
+        long-running async service would buffer up to ``max_queue_bytes``
+        and then silently drop every subsequent event.
+
         ``before_send`` runs first when configured. See
         :class:`TelemetryBatcher.enqueue` for the contract — same
         semantics, same Sentry-pattern hook.
         """
+        # Lazy-start: enqueue on the async transport path always runs
+        # inside the event loop, so this is the safe place to spawn the
+        # worker. Idempotent and cheap once running.
+        self.start()
         if self._before_send is not None:
             try:
                 hint: dict[str, object] = {
@@ -247,10 +308,15 @@ class AsyncTelemetryBatcher:
             )
 
     async def flush(self) -> None:
-        """Flush the current buffer immediately."""
-        events = self._drain()
-        if events:
-            await self._send(events)
+        """Flush the current buffer immediately.
+
+        Routes through :meth:`_drain_and_send` so the same top-level
+        poison guard that protects the background loop also protects
+        this path — a non-serializable ``before_send`` value flushed
+        here (including from ``stop()``'s final drain) is accounted as a
+        drop, never raised out of ``flush()`` / ``aclose()``.
+        """
+        await self._drain_and_send()
 
     async def stop(self) -> None:
         """Stop the worker task and flush remaining events.
@@ -310,6 +376,35 @@ class AsyncTelemetryBatcher:
             "pending": len(self._buffer),
         }
 
+    async def _drain_and_send(self) -> None:
+        """Drain the buffer and send it under the top-level poison guard.
+
+        Shared by the background :meth:`_run` loop and the :meth:`flush`
+        / :meth:`stop` final-flush path so both are protected identically.
+        ``_send`` flattens + ``json.dumps``es + signs the batch before any
+        of its own handlers run, so a non-serializable event (a
+        ``before_send`` that stamped a ``set`` / ``datetime``) or a
+        signing trap would otherwise escape — killing the worker task in
+        ``_run``, or raising out of ``aclose()`` in ``stop``. Catch it,
+        account the drop, and carry on. ``asyncio.CancelledError`` is a
+        ``BaseException`` on 3.10+, so ``stop()``'s cancel still
+        propagates cleanly past this ``except Exception``.
+        """
+        events = self._drain()
+        if not events:
+            return
+        try:
+            await self._send(events)
+        except Exception:
+            dropped = len(events)
+            self._events_dropped_send_error += dropped
+            logger.exception(
+                "checkrd: async telemetry send raised unexpectedly; "
+                "dropping %d events and continuing",
+                dropped,
+            )
+            self._notify_drop("send_error", dropped)
+
     async def _run(self) -> None:
         """Background loop: wait for flush trigger or interval, then drain."""
         while not self._stopped:
@@ -321,9 +416,7 @@ class AsyncTelemetryBatcher:
             except asyncio.TimeoutError:
                 pass
             self._flush_event.clear()
-            events = self._drain()
-            if events:
-                await self._send(events)
+            await self._drain_and_send()
 
     def _drain(self) -> list[dict[str, Any]]:
         if not self._buffer:

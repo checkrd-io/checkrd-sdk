@@ -74,6 +74,29 @@ ENV_DASHBOARD_URL = "CHECKRD_DASHBOARD_URL"
 #: logs a per-request evaluation trace at DEBUG level.
 ENV_DEBUG = "CHECKRD_DEBUG"
 
+#: Environment variable to enable cost metering (M-12). When truthy, AND a
+#: signed pricing bundle is installed (active pricing version > 0), the SDK
+#: settles each completed call against the in-WASM price table and stamps the
+#: ``cost_usd_micros`` / ``currency`` / ``pricing_bundle_version`` /
+#: ``pricing_status`` fields onto the telemetry event before it is signed.
+#: **Default OFF** — the entire settle path is inert when this is unset and no
+#: ``cost_metering=True`` was passed to the client (feature-flag default-off,
+#: TDD §4.7). Mirrors the opt-in shape of ``CHECKRD_EXTRACT_GENAI_BODY``.
+ENV_COST_METERING = "CHECKRD_COST_METERING"
+
+#: Environment variable to enable body-derived GenAI attribute extraction on the
+#: httpx transport (P1-15). When truthy, the transport parses the response body
+#: (non-streaming) or taps the SSE stream (streaming) to extract the OTel
+#: ``gen_ai.usage.*`` token COUNTS + model — never prompts or completions — and
+#: stamps them on the telemetry event so cost metering has usage to settle.
+#: **Default OFF** — matches the ``extractGenaiBodyAttrs`` default in the JS SDK
+#: and the "zero data processor" posture: with the flag unset the transport does
+#: no body/stream inspection at all (zero overhead, zero PII surface), exactly as
+#: before this feature. Structurally PII-safe when on: only counts + model leave
+#: the process (the ``checkrd._genai_body`` / ``checkrd._stream_capture``
+#: contract), never body content.
+ENV_EXTRACT_GENAI_BODY = "CHECKRD_EXTRACT_GENAI_BODY"
+
 #: Environment variable to allow non-HTTPS control-plane URLs
 #: (e.g. ``http://localhost:8080``). Explicit opt-in for local development.
 #: **Never set this in production** — API keys and signed telemetry would be
@@ -247,6 +270,18 @@ class Settings:
     #: a known-good API shape across rollouts. Empty string means
     #: "follow the server default" (which in practice is the latest).
     api_version: str = ""
+    #: Cost metering (M-12). ``True`` enables the extract→settle→cost-field
+    #: path on the telemetry batcher; ``False`` (the default) keeps it inert.
+    #: Resolved from the explicit ``cost_metering=`` arg, else
+    #: :data:`ENV_COST_METERING`, else ``False``.
+    cost_metering: bool = False
+    #: Body-derived GenAI extraction (P1-15). ``True`` lets the httpx transport
+    #: read token COUNTS + model from the response body / SSE stream and stamp
+    #: them on telemetry (feeding cost metering). ``False`` (the default) keeps
+    #: the transport free of any body/stream inspection. Resolved from the
+    #: explicit ``extract_genai_body_attrs=`` arg, else
+    #: :data:`ENV_EXTRACT_GENAI_BODY`, else ``False``.
+    extract_genai_body_attrs: bool = False
 
     @property
     def has_control_plane(self) -> bool:
@@ -275,6 +310,8 @@ def resolve(
     debug: bool = False,
     security_mode: Optional[SecurityMode] = None,
     api_version: Optional[str] = None,
+    cost_metering: Optional[bool] = None,
+    extract_genai_body_attrs: Optional[bool] = None,
     env: Optional[Mapping[str, str]] = None,
 ) -> Settings:
     """Resolve SDK settings from explicit args, environment, and derived defaults.
@@ -352,6 +389,25 @@ def resolve(
     else:
         resolved_api_version = environ.get(ENV_API_VERSION, "")
 
+    # Cost metering opt-in (M-12). Explicit arg > env > default (off).
+    # An unrecognized env value resolves to off — a typo can never silently
+    # turn metering on, matching the fail-safe default-off posture.
+    if cost_metering is not None:
+        resolved_cost_metering = cost_metering
+    else:
+        resolved_cost_metering = _parse_bool(environ.get(ENV_COST_METERING)) or False
+
+    # Body-derived GenAI extraction opt-in (P1-15). Explicit arg > env >
+    # default (off). Same fail-safe default-off posture as cost metering: an
+    # unrecognized env value resolves to off, so a typo can never silently turn
+    # on body/stream inspection.
+    if extract_genai_body_attrs is not None:
+        resolved_extract_genai_body = extract_genai_body_attrs
+    else:
+        resolved_extract_genai_body = (
+            _parse_bool(environ.get(ENV_EXTRACT_GENAI_BODY)) or False
+        )
+
     return Settings(
         agent_id=resolved_agent_id,
         api_key=resolved_api_key,
@@ -362,6 +418,8 @@ def resolve(
         debug=resolved_debug,
         security_mode=resolved_security_mode,
         api_version=resolved_api_version,
+        cost_metering=resolved_cost_metering,
+        extract_genai_body_attrs=resolved_extract_genai_body,
     )
 
 

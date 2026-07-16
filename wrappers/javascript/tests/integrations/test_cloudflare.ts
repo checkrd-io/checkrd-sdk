@@ -97,7 +97,7 @@ describe("withCheckrd", () => {
     expect(optionsFn).toHaveBeenCalledTimes(2);
   });
 
-  it("maps a CheckrdPolicyDenied thrown by the handler to 403", async () => {
+  it("maps a CheckrdPolicyDenied thrown by the handler to 403 problem+json", async () => {
     const handler = async (): Promise<Response> => {
       throw new CheckrdPolicyDenied({
         reason: "blocked",
@@ -108,8 +108,17 @@ describe("withCheckrd", () => {
     const wrapped = withCheckrd(handler, () => ({ policy: ALLOW_ALL, agentId: "w", wasm: wasmBytes }));
     const res = await wrapped(new Request("http://w/"), {} as Record<string, unknown>, stubCtx());
     expect(res.status).toBe(403);
-    const body = await res.json() as { error: { type: string } };
-    expect(body.error.type).toBe("policy_denied");
+    expect(res.headers.get("content-type")).toBe("application/problem+json");
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.type).toBe("https://checkrd.io/errors/policy_denied");
+    expect(body.title).toBe("Request denied by policy");
+    expect(body.status).toBe(403);
+    expect(body.detail).toBe("blocked");
+    expect(body.code).toBe("policy_denied");
+    expect(body.request_id).toBe("req_w");
+    // dashboardUrl was not supplied → null, but the key is still present.
+    expect(body.dashboard_url).toBeNull();
+    expect(body).not.toHaveProperty("error");
   });
 
   it("registers a waitUntil for the post-response telemetry flush", async () => {

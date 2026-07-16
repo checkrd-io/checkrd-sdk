@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "checkrd-pricing-bundle",
+  "title": "Checkrd Pricing Bundle",
+  "description": "Signed, versioned list-price bundle the WASM core verifies and uses to compute per-call cost (TDD App. E). Distributed as the payload of a DSSE envelope with payloadType application/vnd.checkrd.pricing-bundle+json.",
+  "type": "object",
+  "required": ["schema_version", "version", "signed_at", "rounding", "skus"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Bundle wrapper format version. The verifier rejects unknown versions (FFI -20)."
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Monotonically increasing bundle version; rollback to a lower version is rejected (FFI -21)."
+    },
+    "signed_at": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Unix seconds at signing time; stale (> max_age) or future-dated bundles are rejected (FFI -22 / -23)."
+    },
+    "rounding": { "$ref": "#/$defs/rounding" },
+    "skus": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/priceSku" },
+      "description": "Priced models. Resolution is most-specific glob wins; tie -> newest effective_from; no match -> unpriced_model."
+    }
+  },
+  "$defs": {
+    "rounding": {
+      "type": "string",
+      "enum": ["half_up"],
+      "description": "Rounding mode applied per line item so independent implementations reproduce identical signed cost (ADR-003)."
+    },
+    "priceUnit": {
+      "type": "string",
+      "enum": ["per_1m_tokens"],
+      "description": "Unit the per-unit prices are quoted in. v1 prices are per 1,000,000 tokens."
+    },
+    "priceSource": {
+      "type": "string",
+      "enum": ["list", "org"],
+      "description": "list = published list price; org = org-negotiated overlay (wins via merge precedence)."
+    },
+    "priceSku": {
+      "type": "object",
+      "required": [
+        "sku_id",
+        "provider",
+        "model_match",
+        "unit",
+        "input_usd_micros_per_unit",
+        "output_usd_micros_per_unit",
+        "default_max_output_tokens",
+        "effective_from",
+        "source"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "sku_id": {
+          "type": "string",
+          "description": "Stable identifier; surfaces as the FOCUS SkuId."
+        },
+        "provider": {
+          "type": "string",
+          "description": "OTel gen_ai well-known provider name (openai, anthropic, ...)."
+        },
+        "model_match": {
+          "type": "string",
+          "description": "Glob over the model id (*, ** per url.rs); most-specific match wins, tie -> newest effective_from."
+        },
+        "unit": { "$ref": "#/$defs/priceUnit" },
+        "input_usd_micros_per_unit": {
+          "type": "integer",
+          "description": "Micro-USD per unit of input tokens."
+        },
+        "output_usd_micros_per_unit": {
+          "type": "integer",
+          "description": "Micro-USD per unit of output tokens."
+        },
+        "cache_read_usd_micros_per_unit": {
+          "type": ["integer", "null"],
+          "description": "Micro-USD per unit of cache-read input tokens, when priced separately."
+        },
+        "cache_write_usd_micros_per_unit": {
+          "type": ["integer", "null"],
+          "description": "Micro-USD per unit of cache-write / cache-creation tokens, when priced separately."
+        },
+        "default_max_output_tokens": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Output-token cap used to size the pre-flight reserve when a request does not cap output (ADR-008)."
+        },
+        "effective_from": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Unix seconds from which this SKU is in effect."
+        },
+        "deprecated_after": {
+          "type": ["integer", "null"],
+          "description": "Unix seconds after which this SKU should not be used, if set."
+        },
+        "source": { "$ref": "#/$defs/priceSource" }
+      }
+    }
+  }
+}

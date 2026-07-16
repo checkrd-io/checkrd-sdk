@@ -24,14 +24,26 @@ fn parse_pattern(pattern: &str) -> Vec<PatternSegment> {
         return vec![PatternSegment::DoubleWildcard];
     }
 
-    pattern
-        .split('/')
-        .map(|seg| match seg {
+    // Collapse consecutive `**` at parse time: `a/**/**/b` is identical to
+    // `a/**/b`. `**` matches zero-or-more segments, so a run of them is exactly
+    // equivalent to a single one. Collapsing bounds the parsed pattern length
+    // (a hostile policy can't inflate it with a run of `**`) and guarantees the
+    // matcher never sees adjacent double-wildcards.
+    let mut segments: Vec<PatternSegment> = Vec::new();
+    for seg in pattern.split('/') {
+        let parsed = match seg {
             "**" => PatternSegment::DoubleWildcard,
             "*" => PatternSegment::Wildcard,
             _ => PatternSegment::Literal(seg.to_string()),
-        })
-        .collect()
+        };
+        if parsed == PatternSegment::DoubleWildcard
+            && segments.last() == Some(&PatternSegment::DoubleWildcard)
+        {
+            continue;
+        }
+        segments.push(parsed);
+    }
+    segments
 }
 
 fn url_matches(pattern_segments: &[PatternSegment], normalized_url: &str) -> bool {
@@ -67,28 +79,65 @@ fn url_matches(pattern_segments: &[PatternSegment], normalized_url: &str) -> boo
         })
 }
 
-/// Recursive glob matching with `**` (matches zero or more segments).
-/// Uses the standard gitignore/Ant algorithm.
+/// Glob-match `url` segments against `pattern` segments: `**` matches zero or
+/// more segments (gitignore-style), `*` matches exactly one segment, and a
+/// literal matches itself.
+///
+/// Linear-time two-pointer wildcard match with a single backtrack point on the
+/// most recent `**` — the same algorithm as [`crate::pricing`]'s
+/// `model_matches`, lifted from character granularity to path-segment
+/// granularity. It runs in O(pattern.len() × url.len()) worst case with O(1)
+/// extra state, so it is immune to the exponential blow-up the naive
+/// skip/consume recursion suffered when a pattern carried several non-adjacent
+/// `**` (a ReDoS-class denial of service).
 fn url_matches_glob(pattern: &[PatternSegment], url: &[&str]) -> bool {
-    match (pattern.first(), url.first()) {
-        (None, None) => true,
-        (None, Some(_)) => false,
-        (Some(PatternSegment::DoubleWildcard), _) => {
-            // `**` can match zero segments (skip it) or consume one segment.
-            url_matches_glob(&pattern[1..], url)
-                || (!url.is_empty() && url_matches_glob(pattern, &url[1..]))
-        }
-        (Some(_), None) => {
-            // Remaining pattern segments must all be `**` to match empty URL.
-            pattern
-                .iter()
-                .all(|s| matches!(s, PatternSegment::DoubleWildcard))
-        }
-        (Some(PatternSegment::Wildcard), Some(_)) => url_matches_glob(&pattern[1..], &url[1..]),
-        (Some(PatternSegment::Literal(lit)), Some(seg)) => {
-            lit == seg && url_matches_glob(&pattern[1..], &url[1..])
+    let (mut p, mut t) = (0usize, 0usize);
+    // `star` = pattern index just past the most recent `**`; `mark` = the url
+    // index that `**` is currently anchored at. `None` until we meet a `**`.
+    let (mut star, mut mark): (Option<usize>, usize) = (None, 0);
+
+    while t < url.len() {
+        if p < pattern.len()
+            && match &pattern[p] {
+                // `*` consumes exactly one segment; a literal must match it.
+                PatternSegment::Wildcard => true,
+                PatternSegment::Literal(lit) => lit == url[t],
+                // `**` is not a single-segment match — handled below.
+                PatternSegment::DoubleWildcard => false,
+            }
+        {
+            p += 1;
+            t += 1;
+        } else if p < pattern.len() && matches!(pattern[p], PatternSegment::DoubleWildcard) {
+            // Enter a `**`: remember where to resume if the tail mismatches,
+            // then let it match zero segments first. Collapse any run of `**`
+            // (defensive — `parse_pattern` already collapses them).
+            while p < pattern.len() && matches!(pattern[p], PatternSegment::DoubleWildcard) {
+                p += 1;
+            }
+            star = Some(p);
+            mark = t;
+            if p == pattern.len() {
+                return true; // trailing `**` swallows the rest of the url
+            }
+        } else if let Some(sp) = star {
+            // Tail under the most recent `**` mismatched: let that `**` consume
+            // one more segment and retry. This single backtrack point is what
+            // keeps the matcher linear.
+            p = sp;
+            mark += 1;
+            t = mark;
+        } else {
+            return false;
         }
     }
+
+    // URL exhausted: any remaining pattern tail must be `**`-only to match the
+    // zero segments that are left.
+    while p < pattern.len() && matches!(pattern[p], PatternSegment::DoubleWildcard) {
+        p += 1;
+    }
+    p == pattern.len()
 }
 
 fn specificity(segments: &[PatternSegment]) -> u32 {
@@ -205,15 +254,19 @@ fn body_matches(
         }
     }
     if compiled_regex.is_some() || matcher.regex.is_some() {
-        // Pre-compiled regex from from_config(). If compilation failed at config
-        // time (invalid pattern), compiled_regex is None and we fail-closed.
+        // Regexes are compiled at load time and `from_config` rejects any
+        // pattern that fails to compile, so a present `matcher.regex` implies a
+        // present `compiled_regex` here. The `None` arm is a defensive backstop
+        // that fails in the SAFE direction (`fail_closed`) — for a deny rule
+        // that means the deny still fires — rather than silently no-op'ing
+        // (which would fail open).
         match compiled_regex {
             Some(re) => {
                 if !field.as_str().is_some_and(|s| re.is_match(s)) {
                     return false;
                 }
             }
-            None => return false,
+            None => return fail_closed,
         }
     }
 
@@ -470,8 +523,59 @@ struct CompiledRule {
     header_regexes: Vec<Option<regex::Regex>>,
 }
 
+/// Compile an optional regex pattern, returning a hard error (not a silent
+/// `None`) when a *present* pattern fails to compile.
+///
+/// A silently-dropped regex on a **deny** rule fails OPEN — the matcher
+/// reports "no match", the deny never fires, and the request is allowed. The
+/// policy is the security boundary, so a bad pattern must reject the whole
+/// bundle at load time rather than quietly disable the rule. This also covers
+/// the `regex` crate's compiled-size limit (a pathologically large pattern
+/// returns `Err` here instead of installing).
+fn compile_optional_regex(
+    pattern: Option<&str>,
+    rule_name: &str,
+    site: &str,
+) -> Result<Option<regex::Regex>, PolicyError> {
+    match pattern {
+        Some(pat) => regex::Regex::new(pat).map(Some).map_err(|e| {
+            PolicyError::InvalidConfig(format!(
+                "rule {rule_name:?}: invalid {site} regex {pat:?}: {e}"
+            ))
+        }),
+        None => Ok(None),
+    }
+}
+
+/// Validate a `time_outside` window at load time so a malformed range or an
+/// unsupported timezone is rejected up-front instead of silently failing open
+/// (deny no-op) at evaluation time. Mirrors the parsing in
+/// [`time_outside_matches`] exactly so validation and evaluation never disagree.
+fn validate_time_outside(
+    time_range: &str,
+    timezone: Option<&str>,
+    rule_name: &str,
+) -> Result<(), PolicyError> {
+    if let Some(tz) = timezone {
+        if parse_timezone_offset_minutes(tz).is_none() {
+            return Err(PolicyError::InvalidConfig(format!(
+                "rule {rule_name:?}: unsupported timezone {tz:?} (use \"UTC\" or ±HH:MM)"
+            )));
+        }
+    }
+    let valid = time_range
+        .split_once('-')
+        .is_some_and(|(start, end)| parse_time(start).is_some() && parse_time(end).is_some());
+    if !valid {
+        return Err(PolicyError::InvalidConfig(format!(
+            "rule {rule_name:?}: invalid time_outside {time_range:?} (expected HH:MM-HH:MM)"
+        )));
+    }
+    Ok(())
+}
+
 impl CompiledRule {
-    fn from_matcher(name: String, matcher: RequestMatcher) -> Self {
+    fn from_matcher(name: String, matcher: RequestMatcher) -> Result<Self, PolicyError> {
         let segments = matcher
             .url
             .as_deref()
@@ -480,35 +584,33 @@ impl CompiledRule {
         let spec = specificity(&segments);
 
         // Pre-compile regex patterns (Envoy's safe_regex_match equivalent).
-        // regex crate uses DFA/NFA — linear-time, no ReDoS.
+        // regex crate uses DFA/NFA — linear-time, no ReDoS. An uncompilable
+        // pattern is rejected here (fail-closed at load), never silently
+        // dropped (which would fail OPEN on a deny — see compile_optional_regex).
         let body_regexes: Vec<Option<regex::Regex>> = matcher
             .body
             .iter()
-            .map(|bm| {
-                bm.regex
-                    .as_ref()
-                    .and_then(|pat| regex::Regex::new(pat).ok())
-            })
-            .collect();
+            .map(|bm| compile_optional_regex(bm.regex.as_deref(), &name, "body"))
+            .collect::<Result<_, _>>()?;
 
         let header_regexes: Vec<Option<regex::Regex>> = matcher
             .headers
             .iter()
-            .map(|hm| {
-                hm.regex
-                    .as_ref()
-                    .and_then(|pat| regex::Regex::new(pat).ok())
-            })
-            .collect();
+            .map(|hm| compile_optional_regex(hm.regex.as_deref(), &name, "header"))
+            .collect::<Result<_, _>>()?;
 
-        Self {
+        if let Some(time_range) = matcher.time_outside.as_deref() {
+            validate_time_outside(time_range, matcher.timezone.as_deref(), &name)?;
+        }
+
+        Ok(Self {
             name,
             url_segments: segments,
             specificity: spec,
             body_regexes,
             header_regexes,
             matcher,
-        }
+        })
     }
 }
 
@@ -544,10 +646,10 @@ impl PolicyEngine {
         for rule in config.rules {
             match rule.kind {
                 PolicyRuleKind::Allow(matcher) => {
-                    allow_rules.push(CompiledRule::from_matcher(rule.name, matcher));
+                    allow_rules.push(CompiledRule::from_matcher(rule.name, matcher)?);
                 }
                 PolicyRuleKind::Deny(matcher) => {
-                    deny_rules.push(CompiledRule::from_matcher(rule.name, matcher));
+                    deny_rules.push(CompiledRule::from_matcher(rule.name, matcher)?);
                 }
                 PolicyRuleKind::Limit(config) => {
                     rate_limits.push((rule.name, config));
@@ -1351,6 +1453,139 @@ mod tests {
         assert!(!body_matches(&matcher, &None, false, None));
     }
 
+    // --- C-2: matcher-input degradation must never fail OPEN on a deny ---
+
+    fn empty_matcher() -> RequestMatcher {
+        RequestMatcher {
+            method: vec![],
+            url: None,
+            body: vec![],
+            headers: vec![],
+            time_outside: None,
+            timezone: None,
+        }
+    }
+
+    fn deny_config(name: &str, matcher: RequestMatcher) -> PolicyConfig {
+        PolicyConfig {
+            default: DefaultAction::Allow,
+            mode: checkrd_shared::PolicyMode::Enforce,
+            rules: vec![PolicyRule {
+                name: name.into(),
+                kind: PolicyRuleKind::Deny(matcher),
+                source: None,
+            }],
+        }
+    }
+
+    // PolicyEngine is not Debug, so unwrap_err() doesn't apply here.
+    fn expect_load_err(config: PolicyConfig) -> PolicyError {
+        match PolicyEngine::from_config(config) {
+            Ok(_) => panic!("expected the policy to be rejected at load time"),
+            Err(e) => e,
+        }
+    }
+
+    #[test]
+    fn body_regex_none_backstop_fails_closed() {
+        // Defensive backstop for the (post-fix unreachable) case where a matcher
+        // declares a regex but the compiled form is None. It must fail in the
+        // SAFE direction: fail_closed=true (deny rule) => matcher reports a match
+        // so the deny fires; fail_closed=false (allow rule) => no match so the
+        // allow does not apply. Before the fix this hardcoded `return false`
+        // (silent no-op => deny fails OPEN).
+        let matcher = BodyMatcher {
+            regex: Some("^gpt".into()),
+            ..bm("$.model", None)
+        };
+        let body = Some(r#"{"model":"gpt-4"}"#.to_string());
+        assert!(
+            body_matches(&matcher, &body, true, None),
+            "deny (fail_closed) with a missing compiled regex must fire, not silently allow"
+        );
+        assert!(
+            !body_matches(&matcher, &body, false, None),
+            "allow (fail_open) with a missing compiled regex must not apply"
+        );
+    }
+
+    #[test]
+    fn deny_rule_with_uncompilable_body_regex_is_rejected_at_load() {
+        // `(unbalanced` is a valid string but an invalid regex. Before load-time
+        // rejection this installed silently, then the deny never fired => request
+        // ALLOWED. Now the whole bundle is rejected so the previous (good) policy
+        // is retained.
+        let matcher = RequestMatcher {
+            body: vec![BodyMatcher {
+                regex: Some("(unbalanced".into()),
+                ..bm("$.model", None)
+            }],
+            ..empty_matcher()
+        };
+        let err = expect_load_err(deny_config("bad-body-regex", matcher));
+        assert!(matches!(err, PolicyError::InvalidConfig(_)), "got {err:?}");
+        assert!(err.to_string().contains("body regex"), "got {err}");
+    }
+
+    #[test]
+    fn deny_rule_with_uncompilable_header_regex_is_rejected_at_load() {
+        let matcher = RequestMatcher {
+            headers: vec![HeaderMatcher {
+                name: "authorization".into(),
+                exact: None,
+                prefix: None,
+                suffix: None,
+                contains: None,
+                regex: Some("(bad[".into()),
+                present: None,
+            }],
+            ..empty_matcher()
+        };
+        let err = expect_load_err(deny_config("bad-header-regex", matcher));
+        assert!(matches!(err, PolicyError::InvalidConfig(_)), "got {err:?}");
+        assert!(err.to_string().contains("header regex"), "got {err}");
+    }
+
+    #[test]
+    fn deny_rule_with_malformed_time_outside_is_rejected_at_load() {
+        // Before the fix a malformed range returned false at eval (deny no-op =>
+        // fail OPEN). Now it is rejected at load.
+        let matcher = RequestMatcher {
+            time_outside: Some("not-a-range".into()),
+            ..empty_matcher()
+        };
+        let err = expect_load_err(deny_config("bad-time", matcher));
+        assert!(matches!(err, PolicyError::InvalidConfig(_)), "got {err:?}");
+        assert!(err.to_string().contains("time_outside"), "got {err}");
+    }
+
+    #[test]
+    fn deny_rule_with_unsupported_timezone_is_rejected_at_load() {
+        let matcher = RequestMatcher {
+            time_outside: Some("09:00-17:00".into()),
+            timezone: Some("America/New_York".into()),
+            ..empty_matcher()
+        };
+        let err = expect_load_err(deny_config("bad-tz", matcher));
+        assert!(matches!(err, PolicyError::InvalidConfig(_)), "got {err:?}");
+        assert!(err.to_string().contains("timezone"), "got {err}");
+    }
+
+    #[test]
+    fn valid_body_regex_and_time_window_still_load() {
+        // Positive control: well-formed patterns/windows must still compile.
+        let matcher = RequestMatcher {
+            body: vec![BodyMatcher {
+                regex: Some("^gpt-[0-9]".into()),
+                ..bm("$.model", None)
+            }],
+            time_outside: Some("09:00-17:00".into()),
+            timezone: Some("-05:00".into()),
+            ..empty_matcher()
+        };
+        assert!(PolicyEngine::from_config(deny_config("ok", matcher)).is_ok());
+    }
+
     #[test]
     fn eval_deny_rule_fires_on_unparseable_body() {
         let config = PolicyConfig {
@@ -2133,6 +2368,38 @@ mod tests {
         assert!(!url_matches(&segments, "host/a/b/c/d/nope"));
     }
 
+    #[test]
+    fn url_double_wildcard_is_linear_not_exponential() {
+        // Regression for the ReDoS in the old recursive `**` matcher. A pattern
+        // with many NON-ADJACENT `**` anchored on a repeated literal, matched
+        // against a long URL of that same literal ending in a segment that never
+        // matches, forced the old skip/consume recursion to explore every way to
+        // distribute the URL's segments across the `**` — exponential (~27s at
+        // 10 `**`). The linear two-pointer matcher returns effectively instantly.
+        //
+        // Build the pattern directly (not via `parse_pattern`, which collapses
+        // adjacent `**`) so the `**` stay non-adjacent and genuinely exercise the
+        // backtrack path.
+        let mut pattern = Vec::new();
+        for _ in 0..12 {
+            pattern.push(PatternSegment::DoubleWildcard);
+            pattern.push(PatternSegment::Literal("a".to_string()));
+        }
+        // Trailing anchor the all-"a" URL can never satisfy → guaranteed no match.
+        pattern.push(PatternSegment::Literal("zzz".to_string()));
+        let url: Vec<&str> = vec!["a"; 60];
+
+        let start = std::time::Instant::now();
+        let matched = url_matches_glob(&pattern, &url);
+        let elapsed = start.elapsed();
+
+        assert!(!matched, "an all-'a' URL cannot satisfy a trailing 'zzz'");
+        assert!(
+            elapsed < std::time::Duration::from_secs(2),
+            "`**` matching must be linear-time; took {elapsed:?} (exponential regression?)"
+        );
+    }
+
     // ================================================================
     // Phase 2: Structured decision audit + dry-run mode
     // ================================================================
@@ -2681,6 +2948,90 @@ mod tests {
         }
     }
 
+    #[test]
+    fn merge_labels_identical_org_and_agent_limit_as_agent() {
+        // Regression: an agent rate limit byte-for-byte identical to an org one
+        // must be labeled by ORIGIN, not by structural equality. The old code
+        // used `org.rules.contains(rule)`, which matched the org twin and
+        // mislabeled the effective rule "org". On a tie the agent overrides org,
+        // so the single merged limit is the agent's and must read source="agent".
+        let identical_limit = || PolicyRule {
+            name: "global-limit".into(),
+            kind: PolicyRuleKind::Limit(RateLimitConfig {
+                calls_per_minute: 100,
+                per: checkrd_shared::RateLimitScope::Global,
+                field: None,
+            }),
+            source: None,
+        };
+        let org = PolicyConfig {
+            default: DefaultAction::Deny,
+            mode: PolicyMode::Enforce,
+            rules: vec![identical_limit()],
+        };
+        let agent = PolicyConfig {
+            default: DefaultAction::Deny,
+            mode: PolicyMode::Enforce,
+            rules: vec![identical_limit()],
+        };
+        let merged = checkrd_shared::merge_policies(&org, &agent);
+        let limits: Vec<_> = merged
+            .rules
+            .iter()
+            .filter(|r| matches!(r.kind, PolicyRuleKind::Limit(_)))
+            .collect();
+        assert_eq!(limits.len(), 1, "identical limits collapse to one");
+        assert_eq!(
+            limits[0].source.as_deref(),
+            Some("agent"),
+            "an agent limit identical to an org limit must be labeled by origin \
+             (agent), not by structural equality (which mislabeled it org)"
+        );
+    }
+
+    #[test]
+    fn merge_labels_rate_limit_provenance_by_origin() {
+        // A limit that exists only on the org is labeled "org"; a distinct limit
+        // that exists only on the agent is labeled "agent" (different scope keys,
+        // so both survive the merge).
+        let org = PolicyConfig {
+            default: DefaultAction::Deny,
+            mode: PolicyMode::Enforce,
+            rules: vec![PolicyRule {
+                name: "org-endpoint-limit".into(),
+                kind: PolicyRuleKind::Limit(RateLimitConfig {
+                    calls_per_minute: 100,
+                    per: checkrd_shared::RateLimitScope::Endpoint,
+                    field: None,
+                }),
+                source: None,
+            }],
+        };
+        let agent = PolicyConfig {
+            default: DefaultAction::Deny,
+            mode: PolicyMode::Enforce,
+            rules: vec![PolicyRule {
+                name: "agent-global-limit".into(),
+                kind: PolicyRuleKind::Limit(RateLimitConfig {
+                    calls_per_minute: 50,
+                    per: checkrd_shared::RateLimitScope::Global,
+                    field: None,
+                }),
+                source: None,
+            }],
+        };
+        let merged = checkrd_shared::merge_policies(&org, &agent);
+        let src = |name: &str| {
+            merged
+                .rules
+                .iter()
+                .find(|r| r.name == name)
+                .and_then(|r| r.source.as_deref())
+        };
+        assert_eq!(src("org-endpoint-limit"), Some("org"));
+        assert_eq!(src("agent-global-limit"), Some("agent"));
+    }
+
     // --- Conflict detection ---
 
     #[test]
@@ -2942,6 +3293,75 @@ mod tests {
                 pattern_segments.len(),
                 url_segments.len()
             );
+        }
+    }
+
+    // ============================================================
+    // ReDoS regression: `**` matching is linear, never exponential
+    //
+    // The old recursive `**` matcher was O(exponential) with several
+    // non-adjacent `**` in one pattern. These properties assert the linear
+    // two-pointer replacement completes in bounded time on the pathological
+    // family AND still returns the right answer on matching inputs.
+    // ============================================================
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(64))]
+
+        /// A pattern carrying ≥8 non-adjacent `**` anchored on a repeated
+        /// literal, matched against a long URL that ends in a segment the
+        /// pattern's trailing literal can never match, must complete in bounded
+        /// (linear) time and correctly report NO match. This is exactly the
+        /// input family the old exponential recursion choked on.
+        #[test]
+        fn property_many_double_stars_bounded_time_non_match(
+            n_stars in 8usize..16,
+            url_len in 20usize..80,
+        ) {
+            let mut pattern = Vec::new();
+            for _ in 0..n_stars {
+                pattern.push(PatternSegment::DoubleWildcard);
+                pattern.push(PatternSegment::Literal("a".to_string()));
+            }
+            pattern.push(PatternSegment::Literal("zzz".to_string()));
+            let url: Vec<&str> = vec!["a"; url_len];
+
+            let start = std::time::Instant::now();
+            let matched = url_matches_glob(&pattern, &url);
+            let elapsed = start.elapsed();
+
+            prop_assert!(!matched, "an all-'a' URL cannot satisfy a trailing 'zzz'");
+            prop_assert!(
+                elapsed < std::time::Duration::from_secs(1),
+                "`**` match must be linear; took {:?}",
+                elapsed
+            );
+        }
+
+        /// Correctness companion on the same `**`-heavy family, but with the
+        /// trailing anchor set to the repeated literal so matches are possible.
+        /// `[**, a] × n , a` against `a × m` matches iff the URL supplies at
+        /// least the `n + 1` literal `a` segments the pattern demands (the `**`
+        /// absorb any surplus). Locks that the linear matcher stays correct on
+        /// matching inputs, not merely fast on failing ones.
+        #[test]
+        fn property_many_double_stars_match_oracle(
+            n_stars in 8usize..16,
+            url_len in 0usize..40,
+        ) {
+            let mut pattern = Vec::new();
+            for _ in 0..n_stars {
+                pattern.push(PatternSegment::DoubleWildcard);
+                pattern.push(PatternSegment::Literal("a".to_string()));
+            }
+            pattern.push(PatternSegment::Literal("a".to_string()));
+            let url: Vec<&str> = vec!["a"; url_len];
+
+            // The pattern demands n_stars + 1 literal "a" segments; the `**`
+            // absorb any surplus. So an all-"a" URL matches iff it supplies at
+            // least that many (i.e. url_len > n_stars).
+            let expected = url_len > n_stars;
+            prop_assert_eq!(url_matches_glob(&pattern, &url), expected);
         }
     }
 }

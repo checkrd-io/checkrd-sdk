@@ -44,6 +44,18 @@ pub const TELEMETRY_BATCH_PAYLOAD_TYPE: &str = "application/vnd.checkrd.telemetr
 /// payload type, so a signature still can't be replayed across types.
 pub const POLICY_BUNDLE_PAYLOAD_TYPE: &str = "application/vnd.checkrd.policy-bundle+json";
 
+/// IANA-style payload type identifier for Checkrd pricing bundles (TDD App. E).
+///
+/// Distinct from every other payload type so the PAE prefix bytes differ — a
+/// signature over a policy or telemetry batch can never be replayed as a price
+/// table, and vice versa. A tampered price table is an integrity attack on
+/// *money*, so it rides the same DSSE cross-type defense as the policy bundle.
+///
+/// Per ADR-010, the `+json` structured-syntax suffix (RFC 6839 §3.1) is
+/// truthful: the control plane signs the bundle's canonical JSON
+/// (`serde_json::to_vec`), so the suffix describes the actual wire bytes.
+pub const PRICING_BUNDLE_PAYLOAD_TYPE: &str = "application/vnd.checkrd.pricing-bundle+json";
+
 /// DSSE envelope as it appears on the wire and in storage.
 ///
 /// Stored inside `TelemetryBatchMessage.dsse_envelope` so the writer can
@@ -194,10 +206,53 @@ mod tests {
         assert!(policy_pae.starts_with(format!("DSSEv1 {expected_policy_len} ").as_bytes()));
     }
 
+    #[test]
+    fn pricing_pae_differs_from_both_telemetry_and_policy() {
+        // Security-critical: the pricing bundle is "an integrity attack on
+        // money", so a pricing signature must not be replayable as a policy or
+        // telemetry signature, and neither of those replayable as a price
+        // table. `payload_type_binding_prevents_cross_type_replay` proves the
+        // telemetry↔policy pair; this proves the pricing type's PAE is distinct
+        // from BOTH others on the *same* payload bytes — the exact bytes an
+        // attacker would resubmit under a different declared type.
+        //
+        // Distinctness is asserted at the PAE-byte level (what actually gets
+        // signed), not merely at the constant-string level, because that is the
+        // surface a replay would attack.
+        let same_payload = b"version: 7\nrounding: half_up\n";
+
+        let telemetry_pae = pae(TELEMETRY_BATCH_PAYLOAD_TYPE, same_payload);
+        let policy_pae = pae(POLICY_BUNDLE_PAYLOAD_TYPE, same_payload);
+        let pricing_pae = pae(PRICING_BUNDLE_PAYLOAD_TYPE, same_payload);
+
+        assert_ne!(
+            pricing_pae, telemetry_pae,
+            "a pricing signature must not be replayable as telemetry"
+        );
+        assert_ne!(
+            pricing_pae, policy_pae,
+            "a pricing signature must not be replayable as a policy"
+        );
+        // Sanity: all three are mutually distinct, so no pair collides.
+        assert_ne!(telemetry_pae, policy_pae);
+
+        // The divergence is in the type-length + type-bytes prefix, before any
+        // payload byte is appended — the structural guarantee, mirrored from the
+        // telemetry↔policy test for the pricing type. The pricing media type is
+        // 43 bytes (`application/vnd.checkrd.pricing-bundle+json`).
+        let pricing_len = PRICING_BUNDLE_PAYLOAD_TYPE.len();
+        assert_eq!(pricing_len, 43);
+        assert!(pricing_pae.starts_with(format!("DSSEv1 {pricing_len} ").as_bytes()));
+    }
+
     /// Every DSSE payload type the system signs. Add new types here (e.g. the
     /// pricing bundle) so the pairwise cross-type-replay check covers them
     /// automatically.
-    const ALL_PAYLOAD_TYPES: &[&str] = &[TELEMETRY_BATCH_PAYLOAD_TYPE, POLICY_BUNDLE_PAYLOAD_TYPE];
+    const ALL_PAYLOAD_TYPES: &[&str] = &[
+        TELEMETRY_BATCH_PAYLOAD_TYPE,
+        POLICY_BUNDLE_PAYLOAD_TYPE,
+        PRICING_BUNDLE_PAYLOAD_TYPE,
+    ];
 
     #[test]
     fn payload_type_constants_are_distinct_and_well_formed() {

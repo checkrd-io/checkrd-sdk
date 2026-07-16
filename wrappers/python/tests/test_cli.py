@@ -38,74 +38,98 @@ def _run(args: list[str], capsys: pytest.CaptureFixture[str]) -> tuple[int, str,
 # ============================================================
 
 
+_POPULATED_KEY = [
+    {"keyid": "x", "public_key_hex": "a" * 64, "valid_from": 0, "valid_until": 9999999999}
+]
+
+
 class TestPolicyTrustStatus:
-    """The CI guard subcommand. Exits 1 only when an empty trust list
-    ships against a production endpoint; everything else is exit 0."""
+    """The CI guard subcommand. Reports BOTH policy and pricing trust roots
+    (TUF-style per-role separation) and exits 1 when EITHER is empty against a
+    production endpoint; everything else is exit 0."""
 
     def test_empty_dev_exits_zero(
         self, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr("checkrd._trust._PRODUCTION_TRUSTED_KEYS", [])
+        monkeypatch.setattr("checkrd._trust._PRICING_TRUSTED_KEYS", [])
         rc, out, _ = _run(["policy", "trust-status"], capsys)
         assert rc == 0
-        assert out.startswith("empty_dev:")
+        # Both roots are reported, each on its own line.
+        assert "policy empty_dev:" in out
+        assert "pricing empty_dev:" in out
 
-    def test_empty_production_exits_one(
+    def test_empty_policy_production_exits_one(
         self, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        # Pricing populated so the exit-1 comes from the POLICY root specifically.
         monkeypatch.setattr("checkrd._trust._PRODUCTION_TRUSTED_KEYS", [])
+        monkeypatch.setattr("checkrd._trust._PRICING_TRUSTED_KEYS", _POPULATED_KEY)
         rc, out, _ = _run(
             ["policy", "trust-status", "--base-url", "https://api.checkrd.io"],
             capsys,
         )
         assert rc == 1
-        assert out.startswith("empty_production:")
+        assert "policy empty_production:" in out
         assert "scripts/generate-policy-signing-key.py" in out
+        assert "pricing ok:" in out
+
+    def test_empty_pricing_production_exits_one(
+        self, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Policy populated so the exit-1 comes from the PRICING root specifically
+        # — proves pricing roots participate in the ship-blocker.
+        monkeypatch.setattr("checkrd._trust._PRODUCTION_TRUSTED_KEYS", _POPULATED_KEY)
+        monkeypatch.setattr("checkrd._trust._PRICING_TRUSTED_KEYS", [])
+        rc, out, _ = _run(
+            ["policy", "trust-status", "--base-url", "https://api.checkrd.io"],
+            capsys,
+        )
+        assert rc == 1
+        assert "policy ok:" in out
+        assert "pricing empty_production:" in out
 
     def test_localhost_url_is_dev(
         self, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr("checkrd._trust._PRODUCTION_TRUSTED_KEYS", [])
+        monkeypatch.setattr("checkrd._trust._PRICING_TRUSTED_KEYS", [])
         rc, _, _ = _run(
             ["policy", "trust-status", "--base-url", "http://localhost:8080"],
             capsys,
         )
         assert rc == 0
 
-    def test_populated_trust_list_exits_zero_against_prod(
+    def test_both_populated_exits_zero_against_prod(
         self, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(
-            "checkrd._trust._PRODUCTION_TRUSTED_KEYS",
-            [
-                {
-                    "keyid": "x",
-                    "public_key_hex": "a" * 64,
-                    "valid_from": 0,
-                    "valid_until": 9999999999,
-                }
-            ],
-        )
+        monkeypatch.setattr("checkrd._trust._PRODUCTION_TRUSTED_KEYS", _POPULATED_KEY)
+        monkeypatch.setattr("checkrd._trust._PRICING_TRUSTED_KEYS", _POPULATED_KEY)
         rc, out, _ = _run(
             ["policy", "trust-status", "--base-url", "https://api.checkrd.io"],
             capsys,
         )
         assert rc == 0
-        assert out.startswith("ok:")
+        assert "policy ok:" in out
+        assert "pricing ok:" in out
 
     def test_json_output_is_machine_readable(
         self, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr("checkrd._trust._PRODUCTION_TRUSTED_KEYS", [])
+        monkeypatch.setattr("checkrd._trust._PRICING_TRUSTED_KEYS", [])
         rc, out, _ = _run(
             ["policy", "trust-status", "--base-url", "https://api.checkrd.io", "--json"],
             capsys,
         )
         assert rc == 1
         parsed = json.loads(out)
-        assert parsed["level"] == "empty_production"
         assert parsed["base_url"] == "https://api.checkrd.io"
-        assert "message" in parsed
+        assert parsed["policy"]["level"] == "empty_production"
+        assert parsed["pricing"]["level"] == "empty_production"
+        assert parsed["exit_code"] == 1
+        assert "message" in parsed["policy"]
+        assert "message" in parsed["pricing"]
 
 
 # ============================================================

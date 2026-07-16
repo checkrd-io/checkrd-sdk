@@ -218,6 +218,157 @@ describe("handleControlEvent — policy_deactivated", () => {
   });
 });
 
+describe("handleControlEvent — pricing_updated (fail-open cost metering)", () => {
+  it("logs a warning and installs nothing without a pricing installer wired", () => {
+    const engine = makeEngine();
+    const logger = makeLogger();
+    const handled = handleControlEvent(
+      engine,
+      "pricing_updated",
+      JSON.stringify({ version: 3, pricing_envelope: { foo: "bar" } }),
+      logger,
+    );
+    // Recognized event ⇒ true, but nothing installed and a warning fired.
+    expect(handled).toBe(true);
+    expect(logger.warn).toHaveBeenCalled();
+  });
+
+  it("calls reloadPricingSigned with the PRICING trusted-keys JSON when wired", async () => {
+    const reloadPricing = vi.fn();
+    const engine = {
+      ...makeEngine(),
+      reloadPricingSigned: reloadPricing,
+      getActivePricingVersion: vi.fn(() => 7),
+    };
+    const onInstalled = vi.fn();
+    handleControlEvent(
+      engine,
+      "pricing_updated",
+      JSON.stringify({ pricing_envelope: { signatures: ["x"] } }),
+      makeLogger(),
+      undefined, // no policyUpdate
+      {
+        loadTrustedKeys: () => "{\"pricing_keys\":[]}",
+        maxAgeSecs: 900,
+        nowUnixSecs: () => 1_700_000_000,
+        onInstalled,
+      },
+    );
+    // installSignedPricing is fire-and-forget; wait a tick.
+    await new Promise((r) => setTimeout(r, 10));
+    expect(reloadPricing).toHaveBeenCalledWith(
+      expect.objectContaining({
+        maxAgeSecs: 900,
+        nowUnixSecs: 1_700_000_000,
+        trustedKeysJson: "{\"pricing_keys\":[]}",
+      }),
+    );
+    // No `hash` / `active_pricing_hash` in the event, so the server-trusted
+    // hash is null — the SDK never synthesizes one (SHA-256 of the DSSE
+    // payload is not the server's SHA-256 of the canonical bundle).
+    expect(onInstalled).toHaveBeenCalledWith(7, null);
+  });
+
+  it("does NOT touch the policy installer (isolation of the two paths)", async () => {
+    const reloadPolicy = vi.fn();
+    const reloadPricing = vi.fn();
+    const engine = {
+      ...makeEngine(),
+      reloadPolicySigned: reloadPolicy,
+      reloadPricingSigned: reloadPricing,
+      getActivePricingVersion: vi.fn(() => 1),
+    };
+    handleControlEvent(
+      engine,
+      "pricing_updated",
+      JSON.stringify({ pricing_envelope: { signatures: ["x"] } }),
+      makeLogger(),
+      { loadTrustedKeys: () => "POLICY_KEYS" },
+      { loadTrustedKeys: () => "PRICING_KEYS" },
+    );
+    await new Promise((r) => setTimeout(r, 10));
+    expect(reloadPricing).toHaveBeenCalledWith(
+      expect.objectContaining({ trustedKeysJson: "PRICING_KEYS" }),
+    );
+    // The policy verifier is never called on a pricing event.
+    expect(reloadPolicy).not.toHaveBeenCalled();
+  });
+
+  it("FAIL-OPEN: a rejected bundle logs a warning and does NOT throw or rethrow", async () => {
+    const { PricingSignatureError } = await import("../src/exceptions.js");
+    const reloadPricing = vi.fn(() => {
+      throw new PricingSignatureError(-16); // signature_invalid
+    });
+    const logger = makeLogger();
+    const engine = {
+      ...makeEngine(),
+      reloadPricingSigned: reloadPricing,
+    };
+    // handleControlEvent itself must not throw synchronously.
+    expect(() =>
+      handleControlEvent(
+        engine,
+        "pricing_updated",
+        JSON.stringify({ pricing_envelope: { signatures: ["x"] } }),
+        logger,
+        undefined,
+        { loadTrustedKeys: () => "{}" },
+      ),
+    ).not.toThrow();
+    await new Promise((r) => setTimeout(r, 10));
+    // Fail-open path logs a WARNING (not error), keeps running, and — the
+    // headline — never surfaces the rejection to the host.
+    expect(logger.warn).toHaveBeenCalled();
+  });
+
+  it("hash-cache: identical re-delivery skips the FFI install", async () => {
+    const reloadPricing = vi.fn();
+    const engine = {
+      ...makeEngine(),
+      reloadPricingSigned: reloadPricing,
+      getActivePricingVersion: vi.fn(() => 4),
+    };
+    const HASH = "a".repeat(64);
+    handleControlEvent(
+      engine,
+      "pricing_updated",
+      JSON.stringify({ hash: HASH, pricing_envelope: { signatures: ["x"] } }),
+      makeLogger(),
+      undefined,
+      { loadTrustedKeys: () => "{}", getLastHash: () => HASH },
+    );
+    await new Promise((r) => setTimeout(r, 10));
+    // Incoming hash == last-installed hash ⇒ no-op, FFI never called.
+    expect(reloadPricing).not.toHaveBeenCalled();
+  });
+
+  it("init also installs the pricing bundle when pricing_envelope is present", async () => {
+    const reloadPricing = vi.fn();
+    const engine = {
+      ...makeEngine(),
+      reloadPricingSigned: reloadPricing,
+      getActivePricingVersion: vi.fn(() => 2),
+    };
+    handleControlEvent(
+      engine,
+      "init",
+      JSON.stringify({
+        kill_switch_active: false,
+        pricing_envelope: { signatures: ["x"] },
+        active_pricing_hash: "b".repeat(64),
+      }),
+      makeLogger(),
+      undefined,
+      { loadTrustedKeys: () => "PRICING_KEYS" },
+    );
+    await new Promise((r) => setTimeout(r, 10));
+    expect(engine.setKillSwitch).toHaveBeenCalledWith(false);
+    expect(reloadPricing).toHaveBeenCalledWith(
+      expect.objectContaining({ trustedKeysJson: "PRICING_KEYS" }),
+    );
+  });
+});
+
 describe("handleControlEvent — unknown events", () => {
   it("returns false for unknown event names without touching the engine", () => {
     const engine = makeEngine();

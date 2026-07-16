@@ -1,0 +1,46 @@
+[
+  {
+    "name": "openai_stream_with_usage_cache_and_reasoning",
+    "provider": "openai",
+    "comment": "include_usage final chunk carries usage with empty choices; cached/reasoning are subsets of the totals (native inclusive, no normalization).",
+    "sse_frames": [
+      "data: {\"id\":\"x\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\"}}]}\n\n",
+      "data: {\"id\":\"x\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"}}]}\n\n",
+      "data: {\"id\":\"x\",\"choices\":[],\"usage\":{\"prompt_tokens\":1000,\"completion_tokens\":500,\"prompt_tokens_details\":{\"cached_tokens\":800},\"completion_tokens_details\":{\"reasoning_tokens\":200}}}\n\n",
+      "data: [DONE]\n\n"
+    ],
+    "complete": true,
+    "expected_usage_attrs": {
+      "gen_ai.usage.input_tokens": 1000,
+      "gen_ai.usage.output_tokens": 500,
+      "gen_ai.usage.cache_read.input_tokens": 800,
+      "gen_ai.usage.reasoning.output_tokens": 200
+    }
+  },
+  {
+    "name": "openai_stream_basic_usage",
+    "provider": "openai",
+    "sse_frames": [
+      "data: {\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}\n\n",
+      "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":40,\"completion_tokens\":12}}\n\n",
+      "data: [DONE]\n\n"
+    ],
+    "complete": true,
+    "expected_usage_attrs": {
+      "gen_ai.usage.input_tokens": 40,
+      "gen_ai.usage.output_tokens": 12
+    }
+  },
+  {
+    "name": "openai_stream_abandoned_before_usage_frame",
+    "provider": "openai",
+    "comment": "Stream ends (client disconnect) before the include_usage frame. No usage is estimated; the event is untallied.",
+    "sse_frames": [
+      "data: {\"choices\":[{\"delta\":{\"content\":\"par\"}}]}\n\n",
+      "data: {\"choices\":[{\"delta\":{\"content\":\"tial\"}}]}\n\n"
+    ],
+    "complete": false,
+    "expected_usage_attrs": {},
+    "expected_pricing_status": "untallied"
+  }
+]

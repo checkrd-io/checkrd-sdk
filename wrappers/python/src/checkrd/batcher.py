@@ -120,6 +120,24 @@ SIGNATURE_WINDOW_SECS = 300
 _LIVE_BATCHERS: "weakref.WeakSet[TelemetryBatcher]" = weakref.WeakSet()
 register_fork_handler(_LIVE_BATCHERS, "_reinit_after_fork", "telemetry batcher")
 
+# Dotted OTel GenAI attribute key -> flat ``TelemetryEventInput`` wire field.
+# The httpx transport (and the OTLP sinks) speak the dotted OTel names; the
+# ingest endpoint's ``TelemetryEventInput`` declares the flat underscore names.
+# ``_flatten_event`` applies this so the transport's body/stream-extracted usage
+# reaches the SDK-signed wire. ``gen_ai.response.model`` precedes
+# ``gen_ai.request.model`` so the model that actually served the call wins.
+_GENAI_DOTTED_TO_FLAT: tuple[tuple[str, str], ...] = (
+    ("gen_ai.provider.name", "gen_ai_system"),
+    ("gen_ai.operation.name", "gen_ai_operation"),
+    ("gen_ai.response.model", "gen_ai_model"),
+    ("gen_ai.request.model", "gen_ai_model"),
+    ("gen_ai.usage.input_tokens", "gen_ai_input_tokens"),
+    ("gen_ai.usage.output_tokens", "gen_ai_output_tokens"),
+    ("gen_ai.usage.cache_read.input_tokens", "gen_ai_cache_read_input_tokens"),
+    ("gen_ai.usage.cache_creation.input_tokens", "gen_ai_cache_creation_input_tokens"),
+    ("gen_ai.usage.reasoning.output_tokens", "gen_ai_reasoning_output_tokens"),
+)
+
 # Retry configuration is centralised in :mod:`checkrd._retry`. The
 # batcher consumes ``DEFAULT_MAX_ATTEMPTS``, ``DEFAULT_MAX_SLEEP_SECS``,
 # and the helper functions ``next_backoff`` / ``should_retry_status`` —
@@ -256,6 +274,11 @@ class TelemetryBatcher:
         self._lock = threading.Lock()
         self._flush_event = threading.Event()
         self._buffer = []
+        # Reset the byte accountant alongside the buffer it tracks. Without
+        # this the child inherits the parent's byte total against an empty
+        # buffer, so byte-backpressure starts wrong and can drop events even
+        # though nothing is queued.
+        self._queue_bytes = 0
         self._stopped = False
         self._events_dropped_backpressure = 0
         self._events_dropped_signing_error = 0
@@ -447,7 +470,25 @@ class TelemetryBatcher:
                 self._flush_event.clear()
             events = self._drain()
             if events:
-                self._send(events)
+                try:
+                    self._send(events)
+                except Exception:
+                    # Top-level guard. ``_send`` flattens + ``json.dumps``es the
+                    # batch and signs it via the WASM core BEFORE any of its own
+                    # try/except handlers run — a non-JSON-serializable event
+                    # (e.g. a ``before_send`` that stamped a ``set``/``datetime``)
+                    # or a signing trap would otherwise escape ``_run`` and kill
+                    # this daemon thread, silently stopping ALL telemetry for the
+                    # rest of the process's life. Account for the drop, log, and
+                    # keep the loop draining future batches.
+                    dropped = len(events)
+                    self._events_dropped_send_error += dropped
+                    logger.exception(
+                        "checkrd: telemetry send raised unexpectedly; dropping "
+                        "%d events and continuing",
+                        dropped,
+                    )
+                    self._notify_drop("send_error", dropped)
 
     def _drain(self) -> list[dict[str, Any]]:
         """Drain the buffer under the lock. Returns the events."""
@@ -848,8 +889,21 @@ class TelemetryBatcher:
             "span_status_message",
             "gen_ai_system",
             "gen_ai_model",
+            "gen_ai_operation",
             "gen_ai_input_tokens",
             "gen_ai_output_tokens",
+            "gen_ai_cache_read_input_tokens",
+            "gen_ai_cache_creation_input_tokens",
+            "gen_ai_reasoning_output_tokens",
+            # Cost-metering fields (M-12), stamped by ``settle_cost_into`` when
+            # metering is on and a pricing bundle is installed. Optional on the
+            # server's ``TelemetryEventInput``; absent when metering is off.
+            # Without these here the transport settles a cost that never reaches
+            # the wire — the JS ``flattenEvent`` passes the same four through.
+            "cost_usd_micros",
+            "currency",
+            "pricing_bundle_version",
+            "pricing_status",
             "matched_rule",
             "matched_rule_kind",
             "evaluation_path",
@@ -894,5 +948,18 @@ class TelemetryBatcher:
                 flat["status_code"] = response.get("status_code")
             if "latency_ms" not in flat:
                 flat["latency_ms"] = response.get("latency_ms")
+
+        # Map the dotted OTel GenAI attribute keys onto the flat wire fields the
+        # ingest endpoint accepts. The httpx transport stamps the OTel-dotted
+        # names (``gen_ai.usage.input_tokens``) — the same shape the extractors
+        # and OTLP sinks speak — while ``TelemetryEventInput`` declares the flat
+        # underscore names (``gen_ai_input_tokens``). Without this rename the
+        # transport's extracted usage + provider/operation never reach the
+        # SDK-signed wire. ``setdefault`` so a flat key an adapter already set
+        # wins over the dotted source.
+        for dotted, flat_key in _GENAI_DOTTED_TO_FLAT:
+            value = event.get(dotted)
+            if value is not None and flat.get(flat_key) is None:
+                flat[flat_key] = value
 
         return flat

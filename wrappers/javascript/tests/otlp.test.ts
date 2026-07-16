@@ -47,9 +47,9 @@ describe("eventsToOtlpJson", () => {
   it("pins the GenAI semconv version via schema_url (RFC: switch-over)", () => {
     const payload = parsePayload(eventsToOtlpJson([], "svc"));
     const rs = payload.resourceSpans[0]!;
-    expect(rs.schemaUrl).toMatch(
-      /^https:\/\/opentelemetry\.io\/schemas\/\d+\.\d+\.\d+$/,
-    );
+    // Pinned EXACTLY to 1.41.0 — the version whose attribute names we
+    // emit (`gen_ai.provider.name`, not the deprecated `gen_ai.system`).
+    expect(rs.schemaUrl).toBe("https://opentelemetry.io/schemas/1.41.0");
     expect(rs.scopeSpans[0]!.schemaUrl).toBe(rs.schemaUrl);
   });
 
@@ -80,7 +80,43 @@ describe("eventsToOtlpJson", () => {
     expect(findAttr("checkrd.latency_ms")?.value).toEqual({ doubleValue: 123.4 });
   });
 
-  it("translates GenAI semantic-convention attributes when present", () => {
+  it("translates GenAI attributes from modern dotted event keys", () => {
+    // Transport / body-extractor path: events carry the latest
+    // (semconv 1.41.x) dotted keys. They map straight through.
+    const json = eventsToOtlpJson(
+      [
+        {
+          method: "POST",
+          "gen_ai.provider.name": "openai",
+          "gen_ai.operation.name": "chat",
+          "gen_ai.request.model": "gpt-4o",
+          "gen_ai.response.model": "gpt-4o-2024-08-06",
+          "gen_ai.usage.input_tokens": 250,
+          "gen_ai.usage.output_tokens": 500,
+          "gen_ai.request.stream": true,
+        },
+      ],
+      "checkrd",
+    );
+    const span = parsePayload(json).resourceSpans[0]!.scopeSpans[0]!.spans[0]!;
+    const findAttr = (k: string) => span.attributes.find((a) => a.key === k);
+    // Emits `gen_ai.provider.name`, NOT the deprecated `gen_ai.system`.
+    expect(findAttr("gen_ai.provider.name")?.value).toEqual({ stringValue: "openai" });
+    expect(findAttr("gen_ai.system")).toBeUndefined();
+    expect(findAttr("gen_ai.operation.name")?.value).toEqual({ stringValue: "chat" });
+    expect(findAttr("gen_ai.request.model")?.value).toEqual({ stringValue: "gpt-4o" });
+    expect(findAttr("gen_ai.response.model")?.value).toEqual({
+      stringValue: "gpt-4o-2024-08-06",
+    });
+    expect(findAttr("gen_ai.usage.input_tokens")?.value).toEqual({ intValue: "250" });
+    expect(findAttr("gen_ai.usage.output_tokens")?.value).toEqual({ intValue: "500" });
+    expect(findAttr("gen_ai.request.stream")?.value).toEqual({ boolValue: true });
+  });
+
+  it("translates GenAI attributes from flat wire-schema keys (adapter path)", () => {
+    // Framework adapters (Vercel AI SDK, LangChain, OpenAI Agents) emit
+    // the flat `TelemetryEventInput` keys. They must still surface the
+    // modern `gen_ai.provider.name` attribute — never `gen_ai.system`.
     const json = eventsToOtlpJson(
       [
         {
@@ -95,7 +131,8 @@ describe("eventsToOtlpJson", () => {
     );
     const span = parsePayload(json).resourceSpans[0]!.scopeSpans[0]!.spans[0]!;
     const findAttr = (k: string) => span.attributes.find((a) => a.key === k);
-    expect(findAttr("gen_ai.system")?.value).toEqual({ stringValue: "openai" });
+    expect(findAttr("gen_ai.provider.name")?.value).toEqual({ stringValue: "openai" });
+    expect(findAttr("gen_ai.system")).toBeUndefined();
     expect(findAttr("gen_ai.request.model")?.value).toEqual({ stringValue: "gpt-4o" });
     expect(findAttr("gen_ai.usage.input_tokens")?.value).toEqual({ intValue: "250" });
     expect(findAttr("gen_ai.usage.output_tokens")?.value).toEqual({ intValue: "500" });
@@ -287,5 +324,117 @@ describe("OtlpSink", () => {
     expect(fetch).not.toHaveBeenCalled();
     await sink.close();
     expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Metrics flush (M-15): a GenAI event drives a second POST to /v1/metrics
+  // alongside the spans POST to /v1/traces.
+  // ---------------------------------------------------------------------------
+
+  it("POSTs GenAI metrics to /v1/metrics alongside spans on /v1/traces", async () => {
+    const fetch = vi.fn(async () => new Response(null, { status: 204 }));
+    const sink = new OtlpSink({
+      endpoint: "https://otlp.example.com",
+      fetch: fetch as unknown as typeof globalThis.fetch,
+    });
+    sink.enqueue({
+      method: "POST",
+      "gen_ai.provider.name": "openai",
+      "gen_ai.operation.name": "chat",
+      "gen_ai.request.model": "gpt-4o",
+      "gen_ai.usage.input_tokens": 1000,
+      "gen_ai.usage.output_tokens": 500,
+      latency_ms: 1200,
+    });
+    await sink.flush();
+
+    const calls = fetch.mock.calls as unknown as [string, RequestInit][];
+    expect(calls).toHaveLength(2);
+    const urls = calls.map((c) => c[0]);
+    expect(urls).toContain("https://otlp.example.com/v1/traces");
+    expect(urls).toContain("https://otlp.example.com/v1/metrics");
+
+    // The metrics body carries the two GenAI histogram instruments.
+    const metricsCall = calls.find((c) => c[0].endsWith("/v1/metrics"));
+    const body = JSON.parse(metricsCall![1].body as string) as {
+      resourceMetrics: {
+        scopeMetrics: { metrics: { name: string; unit: string }[] }[];
+      }[];
+    };
+    const metrics = body.resourceMetrics[0]!.scopeMetrics[0]!.metrics;
+    const names = metrics.map((m) => m.name).sort();
+    expect(names).toEqual([
+      "gen_ai.client.operation.duration",
+      "gen_ai.client.token.usage",
+    ]);
+    await sink.close();
+  });
+
+  it("derives the /v1/metrics endpoint when the caller pins /v1/traces", async () => {
+    const fetch = vi.fn(async () => new Response(null, { status: 204 }));
+    const sink = new OtlpSink({
+      endpoint: "https://api.honeycomb.io/v1/traces",
+      fetch: fetch as unknown as typeof globalThis.fetch,
+    });
+    sink.enqueue({ "gen_ai.provider.name": "openai", latency_ms: 300 });
+    await sink.flush();
+    const urls = (fetch.mock.calls as unknown as [string, RequestInit][]).map((c) => c[0]);
+    // The traces URL is respected verbatim; the metrics URL swaps the signal.
+    expect(urls).toContain("https://api.honeycomb.io/v1/traces");
+    expect(urls).toContain("https://api.honeycomb.io/v1/metrics");
+    await sink.close();
+  });
+
+  it("re-exports cumulative metric totals across flushes (CUMULATIVE temporality)", async () => {
+    const fetch = vi.fn(async () => new Response(null, { status: 204 }));
+    const sink = new OtlpSink({
+      endpoint: "https://otlp.example.com",
+      fetch: fetch as unknown as typeof globalThis.fetch,
+    });
+    const genaiEvent = {
+      "gen_ai.provider.name": "openai",
+      "gen_ai.operation.name": "chat",
+      "gen_ai.request.model": "gpt-4o",
+      "gen_ai.usage.input_tokens": 10,
+    };
+    sink.enqueue({ ...genaiEvent });
+    await sink.flush();
+    sink.enqueue({ ...genaiEvent });
+    await sink.flush();
+
+    // Grab the LAST metrics POST — its input series must reflect BOTH events
+    // (count 2, sum 20), proving the accumulator is not reset between flushes.
+    const calls = fetch.mock.calls as unknown as [string, RequestInit][];
+    const metricsBodies = calls
+      .filter((c) => c[0].endsWith("/v1/metrics"))
+      .map((c) => JSON.parse(c[1].body as string) as {
+        resourceMetrics: {
+          scopeMetrics: {
+            metrics: {
+              name: string;
+              histogram: {
+                dataPoints: {
+                  attributes: { key: string; value: { stringValue: string } }[];
+                  count: string;
+                  sum: number;
+                }[];
+              };
+            }[];
+          }[];
+        }[];
+      });
+    expect(metricsBodies.length).toBeGreaterThanOrEqual(2);
+    const lastBody = metricsBodies[metricsBodies.length - 1]!;
+    const tokenMetric = lastBody.resourceMetrics[0]!.scopeMetrics[0]!.metrics.find(
+      (m) => m.name === "gen_ai.client.token.usage",
+    )!;
+    const inputPoint = tokenMetric.histogram.dataPoints.find((dp) =>
+      dp.attributes.some(
+        (a) => a.key === "gen_ai.token.type" && a.value.stringValue === "input",
+      ),
+    )!;
+    expect(Number(inputPoint.count)).toBe(2);
+    expect(inputPoint.sum).toBe(20);
+    await sink.close();
   });
 });

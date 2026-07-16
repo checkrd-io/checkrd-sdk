@@ -17,7 +17,7 @@ import type {
   OnAllowHook,
   OnDenyHook,
 } from "../hooks.js";
-import type { EvaluateRequest, WasmEngine } from "../engine.js";
+import type { EvalResult, EvaluateRequest, WasmEngine } from "../engine.js";
 import type { TelemetrySink, TelemetryEvent } from "../sinks.js";
 import { attributesForUrl } from "../_genai.js";
 import type { Logger } from "../_logger.js";
@@ -246,7 +246,43 @@ export function wrapFetch(
       timestamp: now.toISOString(),
       timestamp_ms: now.getTime(),
     };
-    const result = engine.evaluate(evalReq);
+    // The engine evaluate() call is pure in-WASM compute, but a
+    // corrupt policy, an OOM in the sandbox, or a wasmtime trap can
+    // still throw at request time. A thrown fault must NOT break the
+    // caller's real API call in permissive mode — that would make
+    // Checkrd a single point of failure for the app it protects.
+    // Fail-open contract (same posture as the oversized-body branch
+    // above): strict + enforce fails CLOSED (deny); permissive — or
+    // observe-only — fails OPEN (log + pass the request through).
+    let result: EvalResult;
+    try {
+      result = engine.evaluate(evalReq);
+    } catch (err) {
+      if (securityMode === "strict" && enforce) {
+        logger?.warn("request denied: policy engine error (strict mode fails closed)", {
+          requestId,
+          url,
+          err,
+        });
+        throw new CheckrdPolicyDenied({
+          reason: "policy engine error",
+          requestId,
+          url,
+          dashboardUrl,
+        });
+      }
+      logger?.warn("policy engine error; passing request through (fail-open)", {
+        requestId,
+        url,
+        err,
+      });
+      // Synthesize an allow verdict so the request forwards through the
+      // normal allow path below. Empty telemetry_json makes
+      // enqueueEvalEvent a no-op — we have no engine-produced event to
+      // emit, and fabricating one would misrepresent the fault as a
+      // clean allow on the dashboard.
+      result = { allowed: true, telemetry_json: "", request_id: requestId };
+    }
     // Telemetry is deferred until after the upstream call so the event
     // carries the actual response status_code + latency_ms. The Python
     // transport does the same: WASM emits a partial event, the transport

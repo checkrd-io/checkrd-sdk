@@ -1,0 +1,54 @@
+[
+  {
+    "name": "gemini_generate_content_response_with_cache_and_thoughts",
+    "provider": "google.gemini",
+    "comment": "Standard Gemini API: candidatesTokenCount is inclusive of thoughtsTokenCount, cachedContentTokenCount is a subset of promptTokenCount. Model from response modelVersion (request model is URL-derived, out of body-extractor scope).",
+    "response": {
+      "body": {
+        "modelVersion": "gemini-2.5-pro",
+        "usageMetadata": {
+          "promptTokenCount": 1000,
+          "candidatesTokenCount": 500,
+          "cachedContentTokenCount": 800,
+          "thoughtsTokenCount": 200,
+          "totalTokenCount": 1500
+        }
+      }
+    },
+    "expected_response_attrs": {
+      "gen_ai.response.model": "gemini-2.5-pro",
+      "gen_ai.usage.input_tokens": 1000,
+      "gen_ai.usage.output_tokens": 500,
+      "gen_ai.usage.cache_read.input_tokens": 800,
+      "gen_ai.usage.reasoning.output_tokens": 200
+    }
+  },
+  {
+    "name": "gemini_response_no_cache_no_thoughts",
+    "provider": "google.gemini",
+    "response": { "body": { "modelVersion": "gemini-2.0-flash", "usageMetadata": { "promptTokenCount": 40, "candidatesTokenCount": 15, "totalTokenCount": 55 } } },
+    "expected_response_attrs": {
+      "gen_ai.response.model": "gemini-2.0-flash",
+      "gen_ai.usage.input_tokens": 40,
+      "gen_ai.usage.output_tokens": 15
+    }
+  },
+  {
+    "name": "vertex_ai_same_shape",
+    "provider": "google.vertex_ai",
+    "comment": "Vertex AI uses the same usageMetadata shape and is handled by the same extractor branch.",
+    "response": { "body": { "modelVersion": "gemini-2.5-flash", "usageMetadata": { "promptTokenCount": 200, "candidatesTokenCount": 80, "cachedContentTokenCount": 50 } } },
+    "expected_response_attrs": {
+      "gen_ai.response.model": "gemini-2.5-flash",
+      "gen_ai.usage.input_tokens": 200,
+      "gen_ai.usage.output_tokens": 80,
+      "gen_ai.usage.cache_read.input_tokens": 50
+    }
+  },
+  {
+    "name": "gemini_malformed_usage_metadata_missing",
+    "provider": "google.gemini",
+    "response": { "body": { "modelVersion": "gemini-2.5-pro" } },
+    "expected_response_attrs": { "gen_ai.response.model": "gemini-2.5-pro" }
+  }
+]

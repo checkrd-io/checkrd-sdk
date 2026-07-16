@@ -19,7 +19,7 @@ interface StubContext {
   vars: Record<string, unknown>;
   set: (key: string, value: unknown) => void;
   get: (key: string) => unknown;
-  json: (data: unknown, status?: number) => Response;
+  json: (data: unknown, status?: number, headers?: Record<string, string>) => Response;
   req: { method: string; url: string };
 }
 
@@ -31,8 +31,13 @@ function stubContext(): StubContext {
       vars[key] = value;
     },
     get: (key) => vars[key],
-    json: (data, status = 200) =>
-      Response.json(data as Record<string, unknown>, { status }),
+    // Mirror Hono's `c.json(object, status, headers)` — the third arg
+    // lets the middleware set `Content-Type: application/problem+json`.
+    json: (data, status = 200, headers) =>
+      Response.json(data as Record<string, unknown>, {
+        status,
+        ...(headers !== undefined ? { headers } : {}),
+      }),
     req: { method: "POST", url: "http://localhost/chat" },
   };
 }
@@ -55,7 +60,7 @@ describe("checkrdHono", () => {
     expect(ctx.vars["checkrdFetch"]).toBeDefined();
   });
 
-  it("catches a CheckrdPolicyDenied thrown downstream → 403 JSON", async () => {
+  it("catches a CheckrdPolicyDenied thrown downstream → 403 problem+json", async () => {
     const ctx = stubContext();
     const next = async (): Promise<void> => {
       throw new CheckrdPolicyDenied({
@@ -68,10 +73,19 @@ describe("checkrdHono", () => {
     const mw = checkrdHono({ policy: ALLOW_ALL, agentId: "test" });
     const res = (await mw(ctx, next))!;
     expect(res.status).toBe(403);
-    const body = await res.json() as { error: { type: string; request_id: string; dashboard_url: string } };
-    expect(body.error.type).toBe("policy_denied");
-    expect(body.error.request_id).toBe("req_abc");
-    expect(body.error.dashboard_url).toBe("https://app.checkrd.io/e/abc");
+    expect(res.headers.get("content-type")).toBe("application/problem+json");
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.type).toBe("https://checkrd.io/errors/policy_denied");
+    expect(body.title).toBe("Request denied by policy");
+    expect(body.status).toBe(403);
+    expect(body.detail).toBe("blocked");
+    expect(body.code).toBe("policy_denied");
+    expect(body.request_id).toBe("req_abc");
+    expect(body.dashboard_url).toBe("https://app.checkrd.io/e/abc");
+    // No rule_name / suggestion on this deny → omitted entirely.
+    expect(body).not.toHaveProperty("rule_name");
+    expect(body).not.toHaveProperty("suggestion");
+    expect(body).not.toHaveProperty("error");
   });
 
   it("lets non-policy errors pass through untouched", async () => {

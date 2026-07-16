@@ -22,6 +22,7 @@
  */
 
 import type { TelemetryEvent, TelemetrySink } from "./sinks.js";
+import { stampGenAiAttributes } from "./_genai_semconv.js";
 import { VERSION } from "./_version.js";
 
 /** Opaque OpenTelemetry types we don't want to bring into the hard dep surface. */
@@ -186,9 +187,15 @@ function applySemconvAttributes(span: OtelSpan, event: TelemetryEvent): void {
     span.setAttribute("checkrd.latency_ms", latencyMs);
   }
 
-  // --- GenAI semconv (pinned attribute names; switch-over, no dual-emit) ---
-  // Two attribute-source layers, both stamped here so a span carries
-  // the full GenAI picture regardless of which path produced it:
+  // --- GenAI semconv (latest names; switch-over, no dual-emit) ---
+  // We emit the latest (semconv 1.41.x) GenAI attribute names
+  // unconditionally; the deprecated ``gen_ai.system`` is deliberately
+  // not emitted. ``OTEL_SEMCONV_STABILITY_OPT_IN=gen_ai_latest_experimental``
+  // is a no-op for these manually-stamped attributes because we are
+  // already on the latest.
+  //
+  // Two attribute-source layers feed these, both covered so a span
+  // carries the full GenAI picture regardless of which path produced it:
   //
   //   1. URL-derived (always on) — ``gen_ai.provider.name`` and
   //      ``gen_ai.operation.name`` from the request URL
@@ -197,38 +204,28 @@ function applySemconvAttributes(span: OtelSpan, event: TelemetryEvent): void {
   //   2. Body-derived (opt-in via ``CHECKRD_EXTRACT_GENAI_BODY``) —
   //      ``gen_ai.request.model``, ``gen_ai.response.model``,
   //      ``gen_ai.usage.input_tokens``, ``gen_ai.usage.output_tokens``,
-  //      ``gen_ai.request.stream``. Requires parsing JSON bodies, so
-  //      gated by an explicit opt-in to keep the PII surface bounded
-  //      (see ``_genai_body.ts``).
+  //      ``gen_ai.request.stream`` (see ``_genai_body.ts``).
   //
-  // The transport layer writes these keys directly onto the
-  // telemetry event using OTel-spec names, so the sink just passes
-  // them through. Iterating a fixed list (rather than
-  // ``for (k of Object.keys(event)) if (k.startsWith("gen_ai."))``)
-  // keeps the contract auditable — a dashboard query for a specific
-  // attribute name has a single source of truth.
-  const stringGenAiAttrs = [
-    "gen_ai.provider.name",
-    "gen_ai.operation.name",
-    "gen_ai.request.model",
-    "gen_ai.response.model",
-  ] as const;
-  for (const key of stringGenAiAttrs) {
-    const value = readString(event, key);
-    if (value !== undefined) span.setAttribute(key, value);
-  }
-  const numericGenAiAttrs = [
-    "gen_ai.usage.input_tokens",
-    "gen_ai.usage.output_tokens",
-  ] as const;
-  for (const key of numericGenAiAttrs) {
-    const value = readNumber(event, key);
-    if (value !== undefined) span.setAttribute(key, value);
-  }
-  const stream = readBoolean(event, "gen_ai.request.stream");
-  if (stream !== undefined) {
-    span.setAttribute("gen_ai.request.stream", stream);
-  }
+  //   3. Framework adapters (Vercel AI SDK, LangChain, OpenAI Agents)
+  //      write the flat wire-schema keys (``gen_ai_system`` …); the
+  //      shared mapping reads those too, so adapter events keep their
+  //      GenAI attributes on this sink.
+  //
+  // The dotted/flat→attribute mapping lives in ``_genai_semconv.ts``,
+  // shared with ``OtlpSink`` so a dashboard query for a specific
+  // attribute name has a single source of truth and the two sinks
+  // cannot diverge.
+  stampGenAiAttributes(event, {
+    setString: (key, value) => {
+      span.setAttribute(key, value);
+    },
+    setNumber: (key, value) => {
+      span.setAttribute(key, value);
+    },
+    setBoolean: (key, value) => {
+      span.setAttribute(key, value);
+    },
+  });
 
   // --- Checkrd namespace -----------------------------------------
   const agentId = readString(event, "agent_id");
@@ -259,9 +256,4 @@ function readString(event: TelemetryEvent, key: string): string | undefined {
 function readNumber(event: TelemetryEvent, key: string): number | undefined {
   const v = event[key];
   return typeof v === "number" && Number.isFinite(v) ? v : undefined;
-}
-
-function readBoolean(event: TelemetryEvent, key: string): boolean | undefined {
-  const v = event[key];
-  return typeof v === "boolean" ? v : undefined;
 }

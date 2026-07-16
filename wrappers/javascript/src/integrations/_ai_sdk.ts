@@ -22,7 +22,7 @@ import { CheckrdPolicyDenied } from "../exceptions.js";
 import type { WasmEngine, EvaluateRequest } from "../engine.js";
 import type { TelemetrySink } from "../sinks.js";
 import type { Logger } from "../_logger.js";
-import { getSink } from "../index.js";
+import { getSink } from "../_runtime.js";
 
 /** Options for {@link checkrdMiddleware}. */
 export interface CheckrdMiddlewareOptions {

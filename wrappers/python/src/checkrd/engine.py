@@ -13,7 +13,7 @@ from typing import Any, Optional, Union
 
 import wasmtime
 
-from checkrd.exceptions import CheckrdInitError, PolicySignatureError
+from checkrd.exceptions import CheckrdError, CheckrdInitError, PolicySignatureError
 
 logger = logging.getLogger("checkrd")
 
@@ -175,6 +175,15 @@ class WasmEngine:
         self._reload_signed_fn: Any = exports["reload_policy_signed"]
         self._get_active_policy_version_fn: Any = exports["get_active_policy_version"]
         self._set_initial_policy_version_fn: Any = exports["set_initial_policy_version"]
+        # Cost-metering (M-3 / M-4) exports. Structural mirror of the policy
+        # reload/version quartet above; the active price table is per-instance
+        # state inside this engine's wasmtime Store, just like the policy and
+        # the rate limiters (CLAUDE.md architecture rule 7 — WASM instances are
+        # isolated, nothing is shared across engines).
+        self._reload_pricing_signed_fn: Any = exports["reload_pricing_signed"]
+        self._get_active_pricing_version_fn: Any = exports["get_active_pricing_version"]
+        self._set_initial_pricing_version_fn: Any = exports["set_initial_pricing_version"]
+        self._settle_usage_fn: Any = exports["settle_usage"]
         self._generate_keypair_fn: Any = exports["generate_keypair"]
         self._sign_fn: Any = exports["sign"]
         self._sign_telemetry_batch_fn: Any = exports["sign_telemetry_batch"]
@@ -224,6 +233,21 @@ class WasmEngine:
                 packed: int = self._evaluate_fn(self._store, req_ptr, req_len)
             finally:
                 self._dealloc(self._store, req_ptr, req_len)
+
+            if packed == 0:
+                # A zero packed return means the WASM core produced no result
+                # pointer — an internal allocation/serialization failure inside
+                # ``evaluate_request``. There is nothing to read or free (mirrors
+                # ``sign()`` / ``sign_telemetry_batch()``, which also treat 0 as
+                # "no output"). Raise a clear, catchable error instead of letting
+                # ``json.loads("")`` surface a cryptic ``JSONDecodeError`` — the
+                # transport's fail-open/fail-closed guard keys off this exception
+                # to honor the caller's ``security_mode``.
+                raise CheckrdError(
+                    "policy engine returned no evaluation result "
+                    "(WASM core produced a null pointer)",
+                    code="evaluate_failed",
+                )
 
             result_ptr, result_len = self._unpack(packed)
             result_json = self._read_from_wasm(result_ptr, result_len)
@@ -441,6 +465,174 @@ class WasmEngine:
             raise CheckrdInitError(
                 f"set_initial_policy_version({version}) failed: {reason} (code={rc})"
             )
+
+    # --- Cost metering (M-3 / M-4): pricing bundle + per-call settlement ---
+
+    def reload_pricing_signed(
+        self,
+        envelope_json: str,
+        trusted_keys_json: str,
+        now_unix_secs: int,
+        max_age_secs: int,
+    ) -> None:
+        """Hot-reload the pricing bundle from a DSSE-signed envelope (M-3).
+
+        The cost-metering analogue of :meth:`reload_policy_signed`. Verifies
+        the envelope against the supplied trust list via the WASM core's
+        ``reload_pricing_signed`` FFI export under the *pricing* DSSE payload
+        type, then enforces the same defenses before installing the price
+        table the engine's :meth:`settle_usage` reads:
+
+        - DSSE signature verification against trusted keys
+        - Cross-type replay defense via the pricing payload-type binding (a
+          policy- or telemetry-signed envelope can never install as a price
+          table — proven by ``test_pricing_cross_purpose``)
+        - ``PricingBundle.schema_version`` check
+        - Monotonic version check (rollback rejection)
+        - Bundle freshness check via ``signed_at`` within ``max_age_secs`` and
+          the forward clock-skew window
+
+        On any failure the existing price table is left in place and
+        :class:`PolicySignatureError` is raised with the FFI code — the engine
+        never installs an unverified or stale price table.
+
+        # Arguments
+
+        - ``envelope_json``: DSSE envelope JSON. The verified payload must be a
+          ``PricingBundle`` JSON document.
+        - ``trusted_keys_json``: JSON array of trusted Ed25519 pricing keys.
+          **Must come from** :func:`checkrd._trust.trusted_pricing_keys` — the
+          structurally separate pricing trust root, never the policy list.
+        - ``now_unix_secs``: current Unix timestamp; injected by the caller
+          because the WASM core has no clock access.
+        - ``max_age_secs``: maximum bundle age accepted (production: 86400).
+
+        # Raises
+
+        - :class:`PolicySignatureError` with the FFI error code (``-15..-24``,
+          plus the shared ``-1``/``-2``/``-3``/``-9``) on any verification,
+          schema, monotonicity, or freshness failure.
+        """
+        from checkrd.exceptions import PolicySignatureError
+
+        with self._lock:
+            env_ptr, env_len = self._write_to_wasm(envelope_json)
+            keys_ptr, keys_len = self._write_to_wasm(trusted_keys_json)
+            try:
+                rc: int = self._reload_pricing_signed_fn(
+                    self._store,
+                    env_ptr,
+                    env_len,
+                    keys_ptr,
+                    keys_len,
+                    now_unix_secs,
+                    max_age_secs,
+                )
+            finally:
+                self._dealloc(self._store, env_ptr, env_len)
+                self._dealloc(self._store, keys_ptr, keys_len)
+        if rc != 0:
+            raise PolicySignatureError(rc)
+
+    def get_active_pricing_version(self) -> int:
+        """Return the highest pricing bundle version this engine has installed.
+
+        Returns 0 before any signed bundle has been installed in this process.
+        Used both as the "is metering active?" gate on the settle path (a
+        version of 0 means no price table) and by the persistence loop: after
+        every successful signed install the wrapper reads this value and writes
+        it to ``$CHECKRD_CONFIG_DIR/pricing_state.json`` so the rollback
+        defense survives process restarts.
+        """
+        with self._lock:
+            return int(self._get_active_pricing_version_fn(self._store))
+
+    def set_initial_pricing_version(self, version: int) -> None:
+        """Restore the persisted pricing bundle version high water mark.
+
+        The cost-metering analogue of :meth:`set_initial_policy_version`.
+        Called exactly once during SDK startup, BEFORE any signed pricing
+        reload, to feed back the value persisted on the previous run. Without
+        it, an attacker who can restart the SDK process trivially defeats the
+        price-table rollback protection by replaying an older signed bundle
+        (the in-memory ``last_pricing_version`` would reset to 0).
+
+        Strict semantics enforced by the WASM core:
+        - Only succeeds when the engine has not yet installed any signed
+          pricing bundle in this process.
+        - Once a real install has happened, only the monotonic
+          :meth:`reload_pricing_signed` path can change the counter.
+
+        Raises :class:`CheckrdInitError` on failure (engine not initialized, or
+        a real pricing install has already taken place — FFI ``-24``).
+        """
+        from checkrd.exceptions import _FFI_ERROR_REASONS
+
+        with self._lock:
+            rc: int = self._set_initial_pricing_version_fn(self._store, version)
+        if rc != 0:
+            reason = _FFI_ERROR_REASONS.get(rc, f"unknown_{rc}")
+            raise CheckrdInitError(
+                f"set_initial_pricing_version({version}) failed: {reason} (code={rc})"
+            )
+
+    def settle_usage(self, request_id: str, usage_json: str) -> dict[str, Any]:
+        """Compute one completed call's cost from the active pricing bundle (M-4).
+
+        Marshals the normalized ``UsageInput`` JSON into the WASM core's
+        ``settle_usage`` export and JSON-decodes the packed ``SettleResult`` it
+        returns — the same packed-``u64`` (``ptr << 32 | len``) unpack +
+        ``json.loads`` path :meth:`evaluate` uses.
+
+        ``request_id`` is forwarded for log/trace correlation only; it does not
+        affect the computed cost.
+
+        # Arguments
+
+        - ``request_id``: the SDK's per-call correlation id (carried, not used
+          in the arithmetic).
+        - ``usage_json``: canonical ``UsageInput`` JSON —
+          ``{provider, model, input_tokens, output_tokens, cache_read_tokens,
+          cache_creation_tokens, reasoning_tokens}``. Build it with
+          :func:`checkrd._genai_body.build_usage_input`.
+
+        # Returns
+
+        The ``SettleResult`` dict::
+
+            {
+                "cost_usd_micros": int,        # integer micro-USD
+                "currency": str,               # "USD" in v1
+                "pricing_bundle_version": int, # 0 when metering disabled
+                "pricing_status": str,         # priced | unpriced_model |
+                                               #   untallied | disabled
+                "overflow": bool,
+                "sku_id": str | None,
+            }
+
+        Metering is fail-open: a missing price table yields
+        ``pricing_status="disabled"`` and an unknown model
+        ``"unpriced_model"`` — neither ever raises or blocks the call.
+        """
+        with self._lock:
+            rid_ptr, rid_len = self._write_to_wasm(request_id)
+            usage_ptr, usage_len = self._write_to_wasm(usage_json)
+            try:
+                packed: int = self._settle_usage_fn(
+                    self._store,
+                    rid_ptr,
+                    rid_len,
+                    usage_ptr,
+                    usage_len,
+                )
+            finally:
+                self._dealloc(self._store, rid_ptr, rid_len)
+                self._dealloc(self._store, usage_ptr, usage_len)
+
+            result_ptr, result_len = self._unpack(packed)
+            result_json = self._read_from_wasm(result_ptr, result_len)
+            self._dealloc(self._store, result_ptr, result_len)
+        return json.loads(result_json)  # type: ignore[no-any-return]
 
     # --- WASM memory helpers ---
 

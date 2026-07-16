@@ -24,8 +24,9 @@
  */
 
 import type { FetchFn } from "../transports/fetch.js";
-import { wrapAsync, type InitAsyncOptions } from "../index.js";
+import { wrapAsync, type InitAsyncOptions } from "../_runtime.js";
 import { isCheckrdPolicyDenied } from "../exceptions.js";
+import { policyDeniedProblem, PROBLEM_JSON_CONTENT_TYPE } from "./_problem.js";
 
 /** Cached per-process Checkrd state so modules sharing an import get one engine. */
 let cached: Promise<CheckrdNextContext> | null = null;
@@ -136,17 +137,13 @@ export function checkrdRoute(
       return await handler({ request, fetch: ctx.fetch });
     } catch (err) {
       if (isCheckrdPolicyDenied(err)) {
-        return Response.json(
-          {
-            error: {
-              type: "policy_denied",
-              message: err.reason,
-              request_id: err.requestId,
-              dashboard_url: err.dashboardUrl ?? null,
-            },
-          },
-          { status: 403 },
-        );
+        // RFC 9457 problem+json. `Response.json` defaults the
+        // Content-Type to `application/json`, so override it explicitly
+        // to the problem media type.
+        return Response.json(policyDeniedProblem(err), {
+          status: 403,
+          headers: { "Content-Type": PROBLEM_JSON_CONTENT_TYPE },
+        });
       }
       throw err;
     }

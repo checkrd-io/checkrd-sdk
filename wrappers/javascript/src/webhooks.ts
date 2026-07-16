@@ -11,6 +11,7 @@
  * because any whitespace change invalidates the HMAC.
  */
 
+import { resolveBuiltin } from "./_builtin.js";
 import { CheckrdError } from "./exceptions.js";
 
 /** Default clock-skew tolerance, in seconds. Stripe uses 300s. */
@@ -61,7 +62,7 @@ export interface VerifyWebhookOptions {
  * {@link WebhookVerificationError} on any failure reason (missing
  * header, malformed envelope, stale timestamp, signature mismatch).
  *
- *     import { verifyWebhook } from "checkrd/webhooks";
+ *     import { verifyWebhook } from "checkrd";
  *
  *     app.post("/checkrd-webhook", express.raw({ type: "*\/*" }), (req, res) => {
  *       try {
@@ -271,19 +272,28 @@ let _nodeCrypto: NodeCryptoShim | null = null;
  * webhook API is the intended surface on Node; callers running on
  * Cloudflare Workers / Vercel Edge should instead call
  * {@link verifyWebhookAsync}.
+ *
+ * Resolution goes through {@link resolveBuiltin} (`getBuiltinModule`
+ * first, then `require`), never a bare `require("node:crypto")`. A bare
+ * `require` is fatal on Node ESM: tsup/esbuild rewrites it to a
+ * `__require` shim that throws `Dynamic require ... is not supported`
+ * whenever the ambient `require` is undefined — which is ALWAYS true in
+ * an ESM module. That made the sync `verifyWebhook` throw for every
+ * modern Node ESM / Next.js consumer while wrongly blaming the edge
+ * runtimes. `getBuiltinModule` works in ESM, so this path now resolves.
  */
 function loadNodeCryptoOrThrow(): NodeCryptoShim {
   if (_nodeCrypto) return _nodeCrypto;
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports -- sync load on Node
-    _nodeCrypto = require("node:crypto") as NodeCryptoShim;
+  const mod = resolveBuiltin("node:crypto") as NodeCryptoShim | null;
+  if (mod) {
+    _nodeCrypto = mod;
     return _nodeCrypto;
-  } catch {
-    throw new Error(
-      "verifyWebhook requires node:crypto. On Cloudflare Workers and " +
-        "Vercel Edge, use verifyWebhookAsync which uses Web Crypto.",
-    );
   }
+  throw new Error(
+    "verifyWebhook requires node:crypto, which is not available in this " +
+      "runtime (Cloudflare Workers, Vercel Edge, Deno, browser). Use " +
+      "verifyWebhookAsync, which verifies via Web Crypto and works everywhere.",
+  );
 }
 
 /**

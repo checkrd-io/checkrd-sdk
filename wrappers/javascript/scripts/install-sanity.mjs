@@ -48,13 +48,35 @@ try {
 // Main entry exposes only the slim curated set: client class, init
 // helpers, errors, webhook verifiers. WasmEngine / loadConfig
 // / sinks live on the checkrd/advanced subpath (see Stripe / OpenAI pattern).
+import { createHmac } from "node:crypto";
 import { wrap, wrapFetch, init, Checkrd, CheckrdPolicyDenied, verifyWebhook, verifyWebhookAsync } from "checkrd";
 for (const [name, val] of Object.entries({ wrap, wrapFetch, init, Checkrd, CheckrdPolicyDenied, verifyWebhook, verifyWebhookAsync })) {
   if (val === undefined) {
     throw new Error(\`ESM main-entry export missing: \${name}\`);
   }
 }
-console.log("ok: ESM main-entry exports resolve");
+// INVOKE verifyWebhook against the INSTALLED artifact under real Node ESM
+// (\`require\` is undefined at module scope). This is the exact call that
+// regressed to a hard throw ("Dynamic require of node:crypto ..."): a
+// pure \`!== undefined\` export-presence check could never catch it, which
+// is how the bug shipped. Assert a valid signature verifies AND a
+// tampered body is rejected — proving the real node:crypto HMAC ran.
+const secret = "whsec_install_sanity";
+const body = JSON.stringify({ event: "policy.updated", version: 1 });
+const ts = 1700000000;
+const hex = createHmac("sha256", secret).update(\`\${ts}.\${body}\`).digest("hex");
+const header = \`t=\${ts},v1=\${hex}\`;
+verifyWebhook({ rawBody: body, signatureHeader: header, secret, nowUnixSecs: () => ts });
+let rejectedCode = null;
+try {
+  verifyWebhook({ rawBody: body + "TAMPER", signatureHeader: header, secret, nowUnixSecs: () => ts });
+} catch (err) {
+  rejectedCode = err && err.code;
+}
+if (rejectedCode !== "signature_mismatch") {
+  throw new Error("verifyWebhook failed to reject a tampered body (code=" + rejectedCode + ")");
+}
+console.log("ok: ESM main-entry exports resolve + verifyWebhook verifies through node:crypto");
 `,
   );
   run("node esm.mjs", { cwd: tmp });
@@ -63,13 +85,33 @@ console.log("ok: ESM main-entry exports resolve");
   writeFileSync(
     join(tmp, "esm-advanced.mjs"),
     `
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { WasmEngine, TelemetryBatcher, loadConfig, CircuitBreaker } from "checkrd/advanced";
 for (const [name, val] of Object.entries({ WasmEngine, TelemetryBatcher, loadConfig, CircuitBreaker })) {
   if (val === undefined) {
     throw new Error(\`ESM advanced-subpath export missing: \${name}\`);
   }
 }
-console.log("ok: ESM advanced-subpath exports resolve");
+// INVOKE loadConfig against a real file through the INSTALLED artifact
+// under Node ESM. This is the exact path that regressed to a hard throw
+// ("policy file loading requires node:fs ..."): a \`!== undefined\` check
+// never reaches it because \`require("node:fs")\` compiled to esbuild's
+// throwing __require shim.
+const dir = mkdtempSync(join(tmpdir(), "checkrd-smoke-policy-"));
+const policyPath = join(dir, "policy.yaml");
+writeFileSync(policyPath, "agent: smoke\\ndefault: allow\\nrules: []\\n");
+try {
+  const canonical = loadConfig(policyPath);
+  const parsed = JSON.parse(canonical);
+  if (parsed.agent !== "smoke" || parsed.default !== "allow") {
+    throw new Error("loadConfig returned unexpected JSON: " + canonical);
+  }
+} finally {
+  rmSync(dir, { recursive: true, force: true });
+}
+console.log("ok: ESM advanced-subpath exports resolve + loadConfig reads a file through node:fs");
 `,
   );
   run("node esm-advanced.mjs", { cwd: tmp });

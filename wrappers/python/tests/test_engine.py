@@ -10,7 +10,7 @@ from unittest.mock import patch
 import pytest
 
 from checkrd.engine import WasmEngine, _verify_wasm_integrity
-from checkrd.exceptions import CheckrdInitError
+from checkrd.exceptions import CheckrdError, CheckrdInitError
 from tests.conftest import requires_wasm
 
 _TS = "2026-03-28T14:30:00Z"
@@ -399,6 +399,24 @@ class TestEvaluate:
         assert telemetry["request"]["url_host"] == "api.stripe.com"
         assert telemetry["request"]["method"] == "GET"
         assert telemetry["policy_result"] == "allowed"
+
+    def test_zero_packed_return_raises_clean_error(self, policy_json: str) -> None:
+        """A 0 packed return from ``evaluate_request`` means the WASM core
+        produced a null pointer (internal alloc/serialization failure). It must
+        raise a clear, catchable ``CheckrdError`` — NOT crash with a cryptic
+        ``json.loads("")`` ``JSONDecodeError``. The transport's fail-open /
+        fail-closed guard keys off a real exception surfacing here.
+        """
+        engine = WasmEngine(policy_json, "test-agent")
+        # Force the FFI export to report "no result" (packed == 0). The real
+        # req_ptr is still freed by the finally; there is no result pointer to
+        # read, so evaluate() must short-circuit into the raise.
+        with patch.object(engine, "_evaluate_fn", return_value=0):
+            with pytest.raises(CheckrdError) as exc_info:
+                _eval(engine, "GET", "https://api.stripe.com/v1/charges")
+        assert exc_info.value.code == "evaluate_failed"
+        # Regression guard: it must not be the raw json crash.
+        assert not isinstance(exc_info.value, json.JSONDecodeError)
 
 
 @requires_wasm

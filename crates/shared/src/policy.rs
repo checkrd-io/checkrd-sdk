@@ -489,10 +489,20 @@ pub fn merge_policies(org: &PolicyConfig, agent: &PolicyConfig) -> PolicyConfig 
         }
     }
 
-    // Rate limits: most-restrictive-wins per scope key
+    // Rate limits: most-restrictive-wins per scope key. Track provenance by
+    // which policy we're iterating (org first, then agent) rather than
+    // re-deriving it via `org.rules.contains(rule)`: structural equality would
+    // mislabel an agent limit that happens to be byte-for-byte identical to an
+    // org one as "org". On an exact tie the agent wins — it is iterated second
+    // and overrides org, consistent with the allow/default rules above.
     let mut rate_limit_map: std::collections::BTreeMap<String, (PolicyRule, u32)> =
         std::collections::BTreeMap::new();
-    for rule in org.rules.iter().chain(agent.rules.iter()) {
+    for (rule, source) in org
+        .rules
+        .iter()
+        .map(|r| (r, "org"))
+        .chain(agent.rules.iter().map(|r| (r, "agent")))
+    {
         if let PolicyRuleKind::Limit(ref config) = rule.kind {
             let scope_key = match config.per {
                 RateLimitScope::Global => "__global__".to_string(),
@@ -501,15 +511,10 @@ pub fn merge_policies(org: &PolicyConfig, agent: &PolicyConfig) -> PolicyConfig 
                     format!("bf:{}", config.field.as_deref().unwrap_or(""))
                 }
             };
-            let source = if org.rules.contains(rule) {
-                "org"
-            } else {
-                "agent"
-            };
             match rate_limit_map.get(&scope_key) {
-                Some((_, existing_cpm)) if config.calls_per_minute >= *existing_cpm => {
-                    // Existing is more restrictive, keep it
-                }
+                // Keep the existing entry only if it is STRICTLY more
+                // restrictive; on a tie the current (later) rule replaces it.
+                Some((_, existing_cpm)) if config.calls_per_minute > *existing_cpm => {}
                 _ => {
                     let mut r = rule.clone();
                     r.source = Some(source.into());

@@ -84,6 +84,33 @@ class TestSyncInstrumentation:
         client = fake_openai_module.OpenAI(api_key="sk-test")
         assert isinstance(client._client, httpx.Client)
 
+    def test_genai_extraction_flag_threads_from_init(
+        self,
+        fake_openai_module,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path,
+    ) -> None:
+        """``init(extract_genai_body_attrs=True)`` reaches the instrumented
+        client's transport, so an instrumented vendor client cost-meters at
+        parity with a ``wrap()``-ed one (P1-15)."""
+        monkeypatch.setenv("CHECKRD_CONFIG_DIR", str(tmp_path))
+        checkrd.shutdown()
+        try:
+            checkrd.init(
+                agent_id="t",
+                policy={"agent": "t", "mode": "enforce", "default": "allow", "rules": []},
+                extract_genai_body_attrs=True,
+                cost_metering=True,
+            )
+            OpenAIInstrumentor().instrument()
+            client = fake_openai_module.OpenAI(api_key="sk-test")
+            transport = client._client._transport
+            assert isinstance(transport, CheckrdTransport)
+            assert transport._extract_genai_body_attrs is True
+            assert transport._cost_metering is True
+        finally:
+            checkrd.shutdown()
+
 
 @requires_wasm
 class TestAsyncInstrumentation:

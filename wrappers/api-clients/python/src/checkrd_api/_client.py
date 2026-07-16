@@ -43,6 +43,7 @@ from ._exceptions import (
     APIStatusError,
     APITimeoutError,
     make_status_error,
+    parse_retry_after,
 )
 from ._pagination import AsyncPage, SyncPage, _PageState
 
@@ -144,6 +145,26 @@ class _BaseClient:
         """
         base = min(0.5 * (2 ** (attempt - 1)), 8.0)
         return base * random.uniform(0.5, 1.0)
+
+    #: Hard cap on any server-dictated ``Retry-After`` wait so a
+    #: misbehaving (or hostile) ``Retry-After: 86400`` can't wedge a
+    #: client for a day inside the retry loop.
+    _MAX_RETRY_AFTER_SECS = 60.0
+
+    @classmethod
+    def _delay_before_retry(cls, response: httpx.Response, attempt: int) -> float:
+        """Backoff before the next attempt for a retryable *response*.
+
+        Honors a ``Retry-After`` header (RFC 9110 §10.2.3 — integer
+        seconds or HTTP-date) when the server sent one, e.g. on a 429,
+        clamping it to ``_MAX_RETRY_AFTER_SECS``. Falls back to the
+        jittered exponential backoff when the header is absent or
+        unparseable.
+        """
+        retry_after = parse_retry_after(response)
+        if retry_after is not None:
+            return min(retry_after, cls._MAX_RETRY_AFTER_SECS)
+        return cls._retry_delay(attempt)
 
 
 class Checkrd(_BaseClient):
@@ -296,7 +317,7 @@ class Checkrd(_BaseClient):
                     return None
                 return response.json()
             if self._should_retry(response.status_code) and attempt < attempts:
-                time.sleep(self._retry_delay(attempt))
+                time.sleep(self._delay_before_retry(response, attempt))
                 continue
             raise make_status_error(response, _safe_json(response))
         raise last_error  # pragma: no cover - unreachable but keeps mypy happy
@@ -461,7 +482,7 @@ class AsyncCheckrd(_BaseClient):
                     return None
                 return response.json()
             if self._should_retry(response.status_code) and attempt < attempts:
-                await asyncio.sleep(self._retry_delay(attempt))
+                await asyncio.sleep(self._delay_before_retry(response, attempt))
                 continue
             raise make_status_error(response, _safe_json(response))
         raise last_error  # pragma: no cover

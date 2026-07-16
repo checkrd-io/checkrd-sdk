@@ -51,6 +51,15 @@ class TelemetryEventRow:
             policy_mode (None | str | Unset): `"enforce"` or `"dry_run"`.
             evaluation_path (None | str | Unset): JSON-serialized `Vec<EvaluationStep>`. Empty string = no path
                 recorded.
+            gen_ai_operation (None | str | Unset): OTel `gen_ai.operation.name` (e.g. `chat`, `embeddings`).
+            gen_ai_cache_read_input_tokens (int | None | Unset): Cache-read input token count.
+            gen_ai_cache_creation_input_tokens (int | None | Unset): Cache-creation input token count.
+            gen_ai_reasoning_output_tokens (int | None | Unset): Reasoning output token count.
+            cost_usd_micros (int | None | Unset): Cost in integer micro-USD, computed in the WASM core from the
+                signed pricing bundle.
+            currency (None | str | Unset): ISO 4217 alphabetic currency code (constant `"USD"` in v1).
+            pricing_bundle_version (int | None | Unset): Pricing-bundle version the cost was computed against.
+            pricing_status (None | str | Unset): `priced` | `unpriced_model` | `untallied` | `disabled`.
     """
 
     agent_id: UUID
@@ -76,6 +85,14 @@ class TelemetryEventRow:
     matched_rule_kind: None | str | Unset = UNSET
     policy_mode: None | str | Unset = UNSET
     evaluation_path: None | str | Unset = UNSET
+    gen_ai_operation: None | str | Unset = UNSET
+    gen_ai_cache_read_input_tokens: int | None | Unset = UNSET
+    gen_ai_cache_creation_input_tokens: int | None | Unset = UNSET
+    gen_ai_reasoning_output_tokens: int | None | Unset = UNSET
+    cost_usd_micros: int | None | Unset = UNSET
+    currency: None | str | Unset = UNSET
+    pricing_bundle_version: int | None | Unset = UNSET
+    pricing_status: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -191,6 +208,54 @@ class TelemetryEventRow:
         else:
             evaluation_path = self.evaluation_path
 
+        gen_ai_operation: None | str | Unset
+        if isinstance(self.gen_ai_operation, Unset):
+            gen_ai_operation = UNSET
+        else:
+            gen_ai_operation = self.gen_ai_operation
+
+        gen_ai_cache_read_input_tokens: int | None | Unset
+        if isinstance(self.gen_ai_cache_read_input_tokens, Unset):
+            gen_ai_cache_read_input_tokens = UNSET
+        else:
+            gen_ai_cache_read_input_tokens = self.gen_ai_cache_read_input_tokens
+
+        gen_ai_cache_creation_input_tokens: int | None | Unset
+        if isinstance(self.gen_ai_cache_creation_input_tokens, Unset):
+            gen_ai_cache_creation_input_tokens = UNSET
+        else:
+            gen_ai_cache_creation_input_tokens = self.gen_ai_cache_creation_input_tokens
+
+        gen_ai_reasoning_output_tokens: int | None | Unset
+        if isinstance(self.gen_ai_reasoning_output_tokens, Unset):
+            gen_ai_reasoning_output_tokens = UNSET
+        else:
+            gen_ai_reasoning_output_tokens = self.gen_ai_reasoning_output_tokens
+
+        cost_usd_micros: int | None | Unset
+        if isinstance(self.cost_usd_micros, Unset):
+            cost_usd_micros = UNSET
+        else:
+            cost_usd_micros = self.cost_usd_micros
+
+        currency: None | str | Unset
+        if isinstance(self.currency, Unset):
+            currency = UNSET
+        else:
+            currency = self.currency
+
+        pricing_bundle_version: int | None | Unset
+        if isinstance(self.pricing_bundle_version, Unset):
+            pricing_bundle_version = UNSET
+        else:
+            pricing_bundle_version = self.pricing_bundle_version
+
+        pricing_status: None | str | Unset
+        if isinstance(self.pricing_status, Unset):
+            pricing_status = UNSET
+        else:
+            pricing_status = self.pricing_status
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
@@ -236,6 +301,22 @@ class TelemetryEventRow:
             field_dict["policy_mode"] = policy_mode
         if evaluation_path is not UNSET:
             field_dict["evaluation_path"] = evaluation_path
+        if gen_ai_operation is not UNSET:
+            field_dict["gen_ai_operation"] = gen_ai_operation
+        if gen_ai_cache_read_input_tokens is not UNSET:
+            field_dict["gen_ai_cache_read_input_tokens"] = gen_ai_cache_read_input_tokens
+        if gen_ai_cache_creation_input_tokens is not UNSET:
+            field_dict["gen_ai_cache_creation_input_tokens"] = gen_ai_cache_creation_input_tokens
+        if gen_ai_reasoning_output_tokens is not UNSET:
+            field_dict["gen_ai_reasoning_output_tokens"] = gen_ai_reasoning_output_tokens
+        if cost_usd_micros is not UNSET:
+            field_dict["cost_usd_micros"] = cost_usd_micros
+        if currency is not UNSET:
+            field_dict["currency"] = currency
+        if pricing_bundle_version is not UNSET:
+            field_dict["pricing_bundle_version"] = pricing_bundle_version
+        if pricing_status is not UNSET:
+            field_dict["pricing_status"] = pricing_status
 
         return field_dict
 
@@ -408,6 +489,84 @@ class TelemetryEventRow:
 
         evaluation_path = _parse_evaluation_path(d.pop("evaluation_path", UNSET))
 
+        def _parse_gen_ai_operation(data: object) -> None | str | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(None | str | Unset, data)
+
+        gen_ai_operation = _parse_gen_ai_operation(d.pop("gen_ai_operation", UNSET))
+
+        def _parse_gen_ai_cache_read_input_tokens(data: object) -> int | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(int | None | Unset, data)
+
+        gen_ai_cache_read_input_tokens = _parse_gen_ai_cache_read_input_tokens(
+            d.pop("gen_ai_cache_read_input_tokens", UNSET)
+        )
+
+        def _parse_gen_ai_cache_creation_input_tokens(data: object) -> int | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(int | None | Unset, data)
+
+        gen_ai_cache_creation_input_tokens = _parse_gen_ai_cache_creation_input_tokens(
+            d.pop("gen_ai_cache_creation_input_tokens", UNSET)
+        )
+
+        def _parse_gen_ai_reasoning_output_tokens(data: object) -> int | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(int | None | Unset, data)
+
+        gen_ai_reasoning_output_tokens = _parse_gen_ai_reasoning_output_tokens(
+            d.pop("gen_ai_reasoning_output_tokens", UNSET)
+        )
+
+        def _parse_cost_usd_micros(data: object) -> int | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(int | None | Unset, data)
+
+        cost_usd_micros = _parse_cost_usd_micros(d.pop("cost_usd_micros", UNSET))
+
+        def _parse_currency(data: object) -> None | str | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(None | str | Unset, data)
+
+        currency = _parse_currency(d.pop("currency", UNSET))
+
+        def _parse_pricing_bundle_version(data: object) -> int | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(int | None | Unset, data)
+
+        pricing_bundle_version = _parse_pricing_bundle_version(d.pop("pricing_bundle_version", UNSET))
+
+        def _parse_pricing_status(data: object) -> None | str | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(None | str | Unset, data)
+
+        pricing_status = _parse_pricing_status(d.pop("pricing_status", UNSET))
+
         telemetry_event_row = cls(
             agent_id=agent_id,
             request_id=request_id,
@@ -432,6 +591,14 @@ class TelemetryEventRow:
             matched_rule_kind=matched_rule_kind,
             policy_mode=policy_mode,
             evaluation_path=evaluation_path,
+            gen_ai_operation=gen_ai_operation,
+            gen_ai_cache_read_input_tokens=gen_ai_cache_read_input_tokens,
+            gen_ai_cache_creation_input_tokens=gen_ai_cache_creation_input_tokens,
+            gen_ai_reasoning_output_tokens=gen_ai_reasoning_output_tokens,
+            cost_usd_micros=cost_usd_micros,
+            currency=currency,
+            pricing_bundle_version=pricing_bundle_version,
+            pricing_status=pricing_status,
         )
 
         telemetry_event_row.additional_properties = d

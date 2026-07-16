@@ -47,6 +47,15 @@ from typing import Any, Mapping, Optional
 # property computed as ``f"{DOCS_BASE_URL}/{self.code}"``.
 DOCS_BASE_URL = "https://checkrd.io/errors"
 
+# Dereferenceable base for RFC 9457 ``type`` URIs. Each problem type
+# resolves to ``https://checkrd.io/errors/{code}`` — the same URI the
+# control plane uses (``crates/api`` ``ERROR_TYPE_BASE``) and which the
+# website 302-redirects to the matching per-code anchor under the
+# ``/docs/api/errors`` reference. Distinct constant (not reusing
+# ``DOCS_BASE_URL``) so the two roles stay independently auditable
+# even though they currently share a path.
+ERROR_TYPE_BASE = "https://checkrd.io/errors"
+
 
 # ---------------------------------------------------------------------------
 # Code-derivation helpers (kept for back-compat with existing call sites)
@@ -100,6 +109,22 @@ def _derive_init_code(message: str) -> str:
 #   -12: bundle older than max_age_secs (replay defense)
 #   -13: bundle.signed_at beyond clock-skew window (future-dated)
 #   -14: set_initial_policy_version called when counter is non-zero
+#
+# Codes -15..-24 are the cost-metering (M-3) pricing-reload surface: a faithful
+# clone of the -4..-14 policy-reload family with its own distinct codes so a
+# pricing-bundle failure can be labelled separately from a policy one. They map
+# 1:1 onto crates/core's FFI_PRICING_* constants; the shared -1/-2/-3/-9 are
+# reused as-is by both reload paths.
+#   -15: pricing payload-type mismatch (cross-type replay attempt)
+#   -16: pricing signature invalid
+#   -17: pricing unknown / no signer
+#   -18: pricing key not in validity window
+#   -19: verified payload is not a PricingBundle
+#   -20: PricingBundle.schema_version mismatch
+#   -21: bundle.version <= last_pricing_version (rollback defense)
+#   -22: pricing bundle older than max_age_secs (replay defense)
+#   -23: pricing bundle.signed_at beyond clock-skew window (future-dated)
+#   -24: set_initial_pricing_version called when a pricing bundle is installed
 _FFI_ERROR_REASONS: dict[int, str] = {
     -1: "envelope_json_parse_error",
     -2: "invalid_utf8",
@@ -115,6 +140,16 @@ _FFI_ERROR_REASONS: dict[int, str] = {
     -12: "bundle_too_old",
     -13: "bundle_in_future",
     -14: "policy_version_already_set",
+    -15: "pricing_payload_type_mismatch",
+    -16: "pricing_signature_invalid",
+    -17: "pricing_unknown_or_no_signer",
+    -18: "pricing_key_not_in_validity_window",
+    -19: "pricing_verified_payload_invalid",
+    -20: "pricing_schema_version_mismatch",
+    -21: "pricing_bundle_version_not_monotonic",
+    -22: "pricing_bundle_too_old",
+    -23: "pricing_bundle_in_future",
+    -24: "pricing_version_already_set",
 }
 
 # Backwards-compatible alias for the existing PolicySignatureError API.
@@ -256,6 +291,47 @@ class CheckrdPolicyDenied(CheckrdError):
             lines.append(f"  Dashboard: {dashboard_url}")
         lines.append(f"  Docs: {DOCS_BASE_URL}/{code}")
         return "\n".join(lines)
+
+
+def policy_denied_problem(
+    exc: CheckrdPolicyDenied,
+    dashboard_url: Optional[str] = None,
+) -> dict[str, Any]:
+    """Render a :class:`CheckrdPolicyDenied` as an RFC 9457 problem document.
+
+    Single source of truth for the ``application/problem+json`` body the
+    ASGI / WSGI middlewares return on a policy deny, so the two stay
+    byte-identical. Mirrors the control plane's problem shape (standard
+    members ``type``/``title``/``status``/``detail`` first, then extension
+    members ``code``/``request_id`` and the optional policy extensions).
+
+    Args:
+        exc: The deny exception raised by a wrapped client.
+        dashboard_url: Middleware-level fallback base URL, used only when
+            the exception didn't carry its own ``dashboard_url``.
+
+    Returns:
+        A JSON-serializable dict. Standard members come first; extension
+        members (``rule_name``, ``suggestion``) are omitted when ``None``.
+        ``dashboard_url`` is always present (possibly ``None``) so clients
+        can rely on the key.
+    """
+    problem: dict[str, Any] = {
+        # --- RFC 9457 standard members ---
+        "type": f"{ERROR_TYPE_BASE}/policy_denied",
+        "title": "Request denied by policy",
+        "status": 403,
+        "detail": exc.reason,
+        # --- extension members (RFC 9457 §3.2) ---
+        "code": "policy_denied",
+        "request_id": exc.request_id,
+        "dashboard_url": exc.dashboard_url or dashboard_url,
+    }
+    if exc.rule_name is not None:
+        problem["rule_name"] = exc.rule_name
+    if exc.suggestion is not None:
+        problem["suggestion"] = exc.suggestion
+    return problem
 
 
 class PolicySignatureError(CheckrdError):
@@ -587,11 +663,13 @@ def _extract_message(body: Any) -> Optional[str]:
 
 __all__ = [
     "DOCS_BASE_URL",
+    "ERROR_TYPE_BASE",
     # Base
     "CheckrdError",
     # SDK-local
     "CheckrdInitError",
     "CheckrdPolicyDenied",
+    "policy_denied_problem",
     "PolicySignatureError",
     # API errors
     "APIError",

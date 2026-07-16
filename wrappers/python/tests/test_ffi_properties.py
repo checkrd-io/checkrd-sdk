@@ -263,3 +263,61 @@ def test_malformed_policy_raises_init_error(malformed: str) -> None:
     """
     with pytest.raises(CheckrdInitError):
         WasmEngine(malformed, "test-agent", private_key_bytes=b"", instance_id="")
+
+
+# ---------------------------------------------------------------------------
+# settle_usage FFI seam (M-12): never raises on arbitrary usage
+# ---------------------------------------------------------------------------
+
+# Arbitrary usage dicts: well-known keys with adversarial values (negatives,
+# huge ints, wrong types) mixed with junk keys. The core deserializes unknown /
+# wrong-typed fields to all-zero usage (a zero-token call costs nothing), so
+# settle must ALWAYS return a well-formed SettleResult and never trap. This
+# guards the new pricing FFI seam the same way the evaluate strategy guards the
+# policy seam.
+_usage_value_st = st.one_of(
+    st.integers(min_value=-(2**63), max_value=2**63 - 1),
+    st.floats(allow_nan=True, allow_infinity=True),
+    st.text(max_size=20),
+    st.booleans(),
+    st.none(),
+)
+_usage_dict_st = st.dictionaries(
+    keys=st.sampled_from(
+        [
+            "provider",
+            "model",
+            "input_tokens",
+            "output_tokens",
+            "cache_read_tokens",
+            "cache_creation_tokens",
+            "reasoning_tokens",
+            "junk_key",
+        ]
+    ),
+    values=_usage_value_st,
+    max_size=8,
+)
+
+
+@given(usage=_usage_dict_st)
+@settings(max_examples=100, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
+def test_settle_usage_never_raises_for_arbitrary_usage(
+    allow_all_engine: WasmEngine, usage: dict[str, object]
+) -> None:
+    """``settle_usage`` is fail-open for ANY usage dict: it returns a
+    well-formed SettleResult with a non-negative integer cost and never raises
+    or traps the WASM core. No pricing bundle is installed here, so the status
+    is ``disabled`` — but the property is robustness of the FFI marshalling and
+    the core's ``unwrap_or_default`` deserialize, independent of any bundle.
+    """
+    try:
+        payload = json.dumps(usage)
+    except (TypeError, ValueError):
+        payload = "{}"
+    result = allow_all_engine.settle_usage("prop-req", payload)
+    assert isinstance(result, dict)
+    assert isinstance(result["cost_usd_micros"], int)
+    assert result["cost_usd_micros"] >= 0
+    assert result["currency"] == "USD"
+    assert result["pricing_status"] in {"priced", "unpriced_model", "untallied", "disabled"}

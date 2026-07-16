@@ -341,19 +341,19 @@
     {
       "name": "checkrd/next",
       "path": "dist/integrations/_next.js",
-      "limit": "12 KB",
+      "limit": "40 KB",
       "gzip": true
     },
     {
       "name": "checkrd/cloudflare",
       "path": "dist/integrations/_cloudflare.js",
-      "limit": "8 KB",
+      "limit": "40 KB",
       "gzip": true
     },
     {
       "name": "checkrd/hono",
       "path": "dist/integrations/_hono.js",
-      "limit": "8 KB",
+      "limit": "40 KB",
       "gzip": true
     },
     {

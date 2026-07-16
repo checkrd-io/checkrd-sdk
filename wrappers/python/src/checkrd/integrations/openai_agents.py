@@ -76,6 +76,7 @@ from agents import (
 )
 from agents.tracing import Span, Trace, TracingProcessor
 
+from checkrd._genai_body import settle_cost_into
 from checkrd._state import _GlobalContext, get_context
 from checkrd.engine import EvalResult, WasmEngine
 from checkrd.sinks import TelemetrySink
@@ -129,11 +130,17 @@ class CheckrdTracingProcessor(TracingProcessor):
         engine: WasmEngine,
         agent_id: str,
         sink: Optional[TelemetrySink] = None,
+        cost_metering: bool = False,
         logger_: Optional[logging.Logger] = None,
     ) -> None:
         self._engine = engine
         self._agent_id = agent_id
         self._sink = sink
+        # Cost metering (M-12): when on AND a signed pricing bundle is installed,
+        # each ``generation`` span's token usage is settled in-WASM and the cost
+        # fields stamped before enqueue — parity with the httpx transport and the
+        # JS SDK. Default-off; threaded from the client config via ``from_global``.
+        self._cost_metering = cost_metering
         self._logger = logger_ or logger
 
     @classmethod
@@ -148,6 +155,7 @@ class CheckrdTracingProcessor(TracingProcessor):
             engine=ctx.engine,
             agent_id=ctx.settings.agent_id,
             sink=ctx.sink,
+            cost_metering=ctx.settings.cost_metering,
         )
 
     # ------------------------------------------------------------------
@@ -188,6 +196,21 @@ class CheckrdTracingProcessor(TracingProcessor):
             extra=extra,
             latency_ms=_span_latency_ms(span),
         )
+        # Cost metering (M-12): settle the span's token usage in-WASM and stamp
+        # the cost fields BEFORE enqueue. The Agents SDK invokes this processor
+        # synchronously in the agent's run loop (see the class docstring), so the
+        # settle runs on that calling thread — never the telemetry batcher's
+        # background thread — keeping the non-thread-safe wasmtime Store single-
+        # threaded. No-op for non-generation spans (no token usage);
+        # ``build_usage_input`` filters them. ``request_id`` on the event is the
+        # span's correlation id, reused here.
+        if self._cost_metering and self._engine is not None:
+            request_id = event.get("request_id")
+            settle_cost_into(
+                event,
+                request_id if isinstance(request_id, str) else "",
+                self._engine,
+            )
         self._enqueue_safe(event)
 
     def shutdown(self) -> None:

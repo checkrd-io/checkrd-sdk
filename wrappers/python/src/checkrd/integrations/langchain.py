@@ -77,6 +77,7 @@ from uuid import UUID
 # layer (their explicit ``from checkrd.integrations.langchain import ...``).
 from langchain_core.callbacks.base import BaseCallbackHandler
 
+from checkrd._genai_body import settle_cost_into
 from checkrd._state import _GlobalContext, get_context
 from checkrd.engine import EvalResult, WasmEngine
 from checkrd.exceptions import CheckrdPolicyDenied
@@ -193,6 +194,7 @@ class CheckrdCallbackHandler(BaseCallbackHandler):
         sink: Optional[TelemetrySink] = None,
         enforce: bool = True,
         dashboard_url: Optional[str] = None,
+        cost_metering: bool = False,
         logger_: Optional[logging.Logger] = None,
     ) -> None:
         super().__init__()
@@ -201,6 +203,12 @@ class CheckrdCallbackHandler(BaseCallbackHandler):
         self._sink = sink
         self._enforce = enforce
         self._dashboard_url = dashboard_url or ""
+        # Cost metering (M-12): when on AND a signed pricing bundle is installed
+        # on ``engine``, each LLM/chat_model step's token usage is settled
+        # in-WASM and the cost fields stamped on the event before enqueue —
+        # parity with the httpx transport and the JS SDK, which both already
+        # settle adapter spend. Default-off; threaded from the client config.
+        self._cost_metering = cost_metering
         self._logger = logger_ or logger
 
         # In-flight map: run_id -> (start_time_ns, kind, target,
@@ -250,6 +258,7 @@ class CheckrdCallbackHandler(BaseCallbackHandler):
             sink=ctx.sink,
             enforce=ctx.enforce,
             dashboard_url=ctx.settings.dashboard_url or "",
+            cost_metering=ctx.settings.cost_metering,
         )
 
     # ------------------------------------------------------------------
@@ -441,6 +450,17 @@ class CheckrdCallbackHandler(BaseCallbackHandler):
             event["gen_ai_output_tokens"] = extra["output_tokens"]
         if kind in ("llm", "chat_model"):
             event.setdefault("gen_ai_model", target)
+
+        # Cost metering (M-12): settle this step's token usage in-WASM and stamp
+        # the cost fields BEFORE enqueue. Runs on the LangChain callback thread —
+        # the same thread that called ``self._engine.evaluate(...)`` in ``_gate``
+        # — so the non-thread-safe wasmtime Store is only ever touched from one
+        # thread, never the batcher's background thread. The settle helper is a
+        # no-op for steps without token usage (tool/chain/retriever), so the gate
+        # is just ``cost_metering`` + an engine; ``build_usage_input`` filters
+        # the rest. ``run_id`` doubles as the request_id, matching ``_gate``.
+        if self._cost_metering and self._engine is not None:
+            settle_cost_into(event, str(run_id), self._engine)
 
         try:
             self._sink.enqueue(event)
@@ -722,16 +742,20 @@ class CheckrdCallbackHandler(BaseCallbackHandler):
         if self._sink is None:
             return
         tool = getattr(action, "tool", "unknown") or "unknown"
+        event = _make_agent_event(
+            run_id=run_id,
+            agent_id=self._agent_id,
+            kind="agent_action",
+            target=tool,
+            parent_run_id=parent_run_id,
+        )
+        # Cost-metering settle on the calling thread (no-op for agent-action
+        # events, which carry no token usage — kept uniform with the LLM
+        # enqueue site so a future tokened agent event prices automatically).
+        if self._cost_metering and self._engine is not None:
+            settle_cost_into(event, str(run_id), self._engine)
         try:
-            self._sink.enqueue(
-                _make_agent_event(
-                    run_id=run_id,
-                    agent_id=self._agent_id,
-                    kind="agent_action",
-                    target=tool,
-                    parent_run_id=parent_run_id,
-                )
-            )
+            self._sink.enqueue(event)
         except Exception:
             self._logger.warning(
                 "checkrd: telemetry enqueue failed for agent_action",

@@ -257,16 +257,65 @@ from checkrd.batcher import TelemetryBatcher as ControlPlaneSink  # noqa: E402
 # OpenTelemetry GenAI semantic-conventions version this SDK emits. Pinned
 # explicitly so collectors know exactly which convention the gen_ai.* span
 # attributes follow. `schema_url` is OTel's canonical mechanism for declaring
-# it on emitted telemetry. Migration posture is switch-over (emit the latest
-# attribute names) — never dual-emit; operators may still set
-# OTEL_SEMCONV_STABILITY_OPT_IN and the OTel SDK reads it directly (we never
-# override it). Bump in lockstep with the GenAI attribute names below.
+# it on emitted telemetry.
+#
+# We emit the latest (semconv 1.41.x) names unconditionally; the deprecated
+# `gen_ai.system` is deliberately not emitted. Operators may set
+# `OTEL_SEMCONV_STABILITY_OPT_IN`; the underlying OTel SDK still reads it for
+# its own instrumentation, but our manually-stamped attributes are already on
+# the latest, so it is a no-op for them.
+#
+# Bump in lockstep with the GenAI attribute names in
+# ``_apply_semconv_attributes`` below.
 GENAI_SEMCONV_VERSION = "1.41.0"
 OTEL_SCHEMA_URL = f"https://opentelemetry.io/schemas/{GENAI_SEMCONV_VERSION}"
 
 
+# Explicit histogram bucket boundaries for the two OTel GenAI *client* metric
+# instruments (semconv 1.41.x). These are the semconv-mandated advisory buckets;
+# they are the parity contract shared with the JS SDK and pinned in the golden
+# fixtures under ``schemas/genai-fixtures/metrics/``. Do NOT change either list
+# without regenerating those fixtures (and the JS SDK) in lockstep — the whole
+# point is that both runtimes export byte-identical histogram data points.
+#
+# ``gen_ai.client.token.usage`` — unit ``{token}``.
+TOKEN_BOUNDS: tuple[int, ...] = (
+    1,
+    4,
+    16,
+    64,
+    256,
+    1024,
+    4096,
+    16384,
+    65536,
+    262144,
+    1048576,
+    4194304,
+    16777216,
+    67108864,
+)
+# ``gen_ai.client.operation.duration`` — unit ``s`` (seconds).
+DURATION_BOUNDS: tuple[float, ...] = (
+    0.01,
+    0.02,
+    0.04,
+    0.08,
+    0.16,
+    0.32,
+    0.64,
+    1.28,
+    2.56,
+    5.12,
+    10.24,
+    20.48,
+    40.96,
+    81.92,
+)
+
+
 class OtlpSink:
-    """Export telemetry events as OTLP/HTTP traces to an external collector.
+    """Export telemetry events as OTLP/HTTP traces **and metrics** to a collector.
 
     This is the industry-standard way to get Checkrd data into existing
     observability stacks: Datadog, Honeycomb, Grafana, Axiom, New Relic,
@@ -274,12 +323,28 @@ class OtlpSink:
     receives traces directly from the SDK without routing through the
     Checkrd control plane.
 
-    **Requires** ``pip install checkrd[otlp]`` which pulls in
-    ``opentelemetry-exporter-otlp-proto-http``. If the dependency is
-    missing, ``__init__`` raises ``ImportError`` with an actionable message.
+    Every event produces one span (``/v1/traces``). GenAI events additionally
+    feed the two OTel GenAI *client* metric instruments (``/v1/metrics``):
 
-    Events are batched by the OTel SDK's ``BatchSpanProcessor`` with
-    configurable schedule (default: 5s or 512 spans, whichever first).
+    - ``gen_ai.client.token.usage`` — Histogram, unit ``{token}``, recorded
+      twice per call (``gen_ai.token.type`` = ``input`` / ``output``).
+    - ``gen_ai.client.operation.duration`` — Histogram, unit ``s`` = ``latency_ms
+      / 1000``.
+
+    Both instruments use the semconv-mandated explicit bucket boundaries
+    (``TOKEN_BOUNDS`` / ``DURATION_BOUNDS``), installed via OTel ``View``\\s so the
+    exported histograms match the shared golden fixtures byte-for-byte across the
+    Python and JS SDKs.
+
+    **Requires** ``pip install checkrd[otlp]`` which pulls in
+    ``opentelemetry-sdk`` and ``opentelemetry-exporter-otlp-proto-http``. If the
+    dependency is missing, ``__init__`` raises ``ImportError`` with an actionable
+    message.
+
+    Spans are batched by the OTel SDK's ``BatchSpanProcessor`` (default: 5s or
+    512 spans, whichever first); metrics are aggregated in-process and pushed by
+    a ``PeriodicExportingMetricReader`` (default 60s), with a final flush on
+    ``stop()``.
 
     Args:
         endpoint: OTLP/HTTP endpoint URL (e.g., ``https://otlp.datadoghq.com``).
@@ -319,35 +384,100 @@ class OtlpSink:
             from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
                 OTLPSpanExporter,
             )
+
+            # Metrics live in the *same* ``[otlp]`` extra (opentelemetry-sdk +
+            # opentelemetry-exporter-otlp-proto-http). Import them in the same
+            # guarded block so a missing dependency yields one actionable
+            # message rather than a partially-constructed sink.
+            from opentelemetry.sdk.metrics import MeterProvider
+            from opentelemetry.sdk.metrics.export import (
+                PeriodicExportingMetricReader,
+            )
+            from opentelemetry.sdk.metrics.view import (
+                ExplicitBucketHistogramAggregation,
+                View,
+            )
+            from opentelemetry.exporter.otlp.proto.http.metric_exporter import (
+                OTLPMetricExporter,
+            )
         except ImportError:
             raise ImportError(
-                "OtlpSink requires the OpenTelemetry OTLP exporter. "
-                "Install with: pip install checkrd[otlp]"
+                "OtlpSink requires the OpenTelemetry SDK + OTLP exporter "
+                "(traces and metrics). Install with: pip install checkrd[otlp]"
             ) from None
 
+        base = endpoint.rstrip("/")
         resource = Resource.create(
             {"service.name": service_name}, schema_url=OTEL_SCHEMA_URL
         )
-        exporter = OTLPSpanExporter(
-            endpoint=f"{endpoint.rstrip('/')}/v1/traces",
+
+        # --- Traces ---------------------------------------------------------
+        span_exporter = OTLPSpanExporter(
+            endpoint=f"{base}/v1/traces",
             headers=headers or {},
         )
         self._provider = TracerProvider(resource=resource)
-        self._provider.add_span_processor(BatchSpanProcessor(exporter))
+        self._provider.add_span_processor(BatchSpanProcessor(span_exporter))
         # schema_url pins the GenAI semconv version on this tracer's spans.
         self._tracer = self._provider.get_tracer(
             "checkrd.otlp_sink", schema_url=OTEL_SCHEMA_URL
         )
+
+        # --- Metrics --------------------------------------------------------
+        # Views install the semconv-mandated explicit bucket boundaries on each
+        # instrument. Without them the SDK's default exponential-histogram
+        # aggregation would produce different data points and break parity with
+        # the JS SDK / golden fixtures. ``instrument_name`` targets the exact
+        # instrument created below.
+        metric_exporter = OTLPMetricExporter(
+            endpoint=f"{base}/v1/metrics",
+            headers=headers or {},
+        )
+        self._meter_provider = MeterProvider(
+            resource=resource,
+            metric_readers=[PeriodicExportingMetricReader(metric_exporter)],
+            views=[
+                View(
+                    instrument_name="gen_ai.client.token.usage",
+                    aggregation=ExplicitBucketHistogramAggregation(
+                        boundaries=list(TOKEN_BOUNDS)
+                    ),
+                ),
+                View(
+                    instrument_name="gen_ai.client.operation.duration",
+                    aggregation=ExplicitBucketHistogramAggregation(
+                        boundaries=list(DURATION_BOUNDS)
+                    ),
+                ),
+            ],
+        )
+        self._token_usage, self._operation_duration = _create_genai_instruments(
+            self._meter_provider
+        )
         self._stopped = False
 
     def enqueue(self, event: dict[str, Any]) -> None:
-        """Translate a Checkrd telemetry event to an OTel span and export."""
+        """Translate a Checkrd event to an OTel span and GenAI metrics, export.
+
+        Span emission and metric recording are independent: a failure in one
+        must never suppress the other, and neither may propagate to the wrapped
+        HTTP call (telemetry is best-effort). Each is wrapped separately.
+        """
         if self._stopped:
             return
         try:
             self._emit_span(event)
         except Exception:  # noqa: BLE001
             logger.debug("OtlpSink: failed to emit span, dropping event", exc_info=True)
+        try:
+            _record_genai_metrics(
+                event, self._token_usage, self._operation_duration
+            )
+        except Exception:  # noqa: BLE001
+            logger.debug(
+                "OtlpSink: failed to record metrics, dropping event",
+                exc_info=True,
+            )
 
     def _emit_span(self, event: dict[str, Any]) -> None:
         """Create and immediately end an OTel span from a Checkrd event."""
@@ -359,32 +489,11 @@ class OtlpSink:
         kind = SpanKind.CLIENT  # Checkrd events represent outbound HTTP calls
 
         with self._tracer.start_as_current_span(span_name, kind=kind) as span:
-            # HTTP attributes
-            span.set_attribute("http.request.method", event.get("method", ""))
-            span.set_attribute(
-                "url.full", f"https://{event.get('url_host', '')}{event.get('url_path', '/')}"
-            )
-            if event.get("status_code") is not None:
-                span.set_attribute("http.response.status_code", event["status_code"])
-            if event.get("latency_ms") is not None:
-                span.set_attribute("checkrd.latency_ms", event["latency_ms"])
-
-            # GenAI attributes
-            if event.get("gen_ai_system"):
-                span.set_attribute("gen_ai.system", event["gen_ai_system"])
-            if event.get("gen_ai_model"):
-                span.set_attribute("gen_ai.request.model", event["gen_ai_model"])
-            if event.get("gen_ai_input_tokens") is not None:
-                span.set_attribute("gen_ai.usage.input_tokens", event["gen_ai_input_tokens"])
-            if event.get("gen_ai_output_tokens") is not None:
-                span.set_attribute("gen_ai.usage.output_tokens", event["gen_ai_output_tokens"])
-
-            # Checkrd-specific attributes
-            span.set_attribute("checkrd.agent_id", event.get("agent_id", ""))
-            if event.get("policy_result"):
-                span.set_attribute("checkrd.policy_result", event["policy_result"])
-            if event.get("deny_reason"):
-                span.set_attribute("checkrd.deny_reason", event["deny_reason"])
+            # HTTP semconv, GenAI semconv (latest 1.41.x names), and the
+            # ``checkrd.*`` namespace are all owned by the shared helper so
+            # this sink emits byte-identical attribute shapes to
+            # ``OTelSpanSink``. Do NOT re-stamp any of those attributes here.
+            _apply_semconv_attributes(span, event)
 
             # Status
             status_code = event.get("span_status_code", "UNSET")
@@ -394,14 +503,26 @@ class OtlpSink:
                 span.set_status(StatusCode.OK)
 
     def stop(self) -> None:
-        """Flush pending spans and shut down the OTLP exporter. Idempotent."""
+        """Flush + shut down both the span and metric pipelines. Idempotent.
+
+        ``MeterProvider.shutdown`` flushes the ``PeriodicExportingMetricReader``
+        (pushing any metrics accumulated since the last periodic export) before
+        releasing it, mirroring the ``TracerProvider`` shutdown. Both are
+        attempted independently so one failing does not skip the other.
+        """
         if self._stopped:
             return
         self._stopped = True
         try:
             self._provider.shutdown()
         except Exception:  # noqa: BLE001
-            logger.debug("OtlpSink: error during shutdown", exc_info=True)
+            logger.debug("OtlpSink: error during span-provider shutdown", exc_info=True)
+        try:
+            self._meter_provider.shutdown()
+        except Exception:  # noqa: BLE001
+            logger.debug(
+                "OtlpSink: error during meter-provider shutdown", exc_info=True
+            )
 
 
 __all__ = [
@@ -502,7 +623,16 @@ class OTelSpanSink:
                 ) from None
             from checkrd._version import __version__
 
-            tracer = trace.get_tracer("checkrd.sdk", __version__, OTEL_SCHEMA_URL)
+            # `schema_url` MUST be passed by keyword: the 3rd positional
+            # parameter of `trace.get_tracer` is `tracer_provider`, so a
+            # positional `OTEL_SCHEMA_URL` would (a) leave schema_url unset —
+            # silently dropping the R-4 semconv pin on this sink's spans — and
+            # (b) hand a `str` to the provider slot, crashing the documented
+            # `OTelSpanSink()` default with `AttributeError`. Provider stays
+            # None so the customer's globally-configured provider is used.
+            tracer = trace.get_tracer(
+                "checkrd.sdk", __version__, schema_url=OTEL_SCHEMA_URL
+            )
 
         self._tracer = tracer
         self._stopped = False
@@ -512,10 +642,11 @@ class OTelSpanSink:
 
         Span shape follows OTel HTTP semconv (``http.request.method``,
         ``url.full``, ``http.response.status_code``), OTel GenAI semconv
-        (``gen_ai.system``, ``gen_ai.request.model``, ``gen_ai.usage.*``),
-        and the ``checkrd.*`` namespace for policy-engine fields
-        (``checkrd.agent_id``, ``checkrd.policy_result``,
-        ``checkrd.matched_rule``, ``checkrd.deny_reason``).
+        (``gen_ai.provider.name``, ``gen_ai.operation.name``,
+        ``gen_ai.request.model``, ``gen_ai.usage.*``), and the ``checkrd.*``
+        namespace for policy-engine fields (``checkrd.agent_id``,
+        ``checkrd.policy_result``, ``checkrd.matched_rule``,
+        ``checkrd.deny_reason``).
         """
         if self._stopped:
             return
@@ -555,6 +686,142 @@ class OTelSpanSink:
     def stop(self) -> None:
         """Idempotent. The caller's TracerProvider handles flushing."""
         self._stopped = True
+
+
+# ---------------------------------------------------------------------------
+# GenAI metrics — the two OTel GenAI *client* instruments
+# ---------------------------------------------------------------------------
+#
+# Shared between :class:`OtlpSink` (which owns the MeterProvider) and the golden-
+# fixture tests (which wire the same two instruments to an in-memory reader).
+# Keeping instrument creation and recording in module-level helpers guarantees
+# the tested code path is exactly the shipped one — the parity contract with the
+# JS SDK lives in ``schemas/genai-fixtures/metrics/`` and is only meaningful if
+# production recording and the fixture harness call the *same* function.
+#
+# Instrument names / units / descriptions per OTel semconv 1.41.x. Bucket bounds
+# are installed by the caller via ``View`` (see ``OtlpSink.__init__`` and the
+# test harness) — ``create_histogram`` itself does not carry boundaries.
+
+TOKEN_USAGE_INSTRUMENT = "gen_ai.client.token.usage"
+OPERATION_DURATION_INSTRUMENT = "gen_ai.client.operation.duration"
+
+
+def _create_genai_instruments(meter_provider: Any) -> tuple[Any, Any]:
+    """Create the two GenAI client histogram instruments on ``meter_provider``.
+
+    Returns ``(token_usage, operation_duration)``. The caller is responsible for
+    having registered the ``ExplicitBucketHistogramAggregation`` Views that pin
+    the bucket boundaries — this helper only names the instruments so the Views'
+    ``instrument_name`` selectors match.
+    """
+    meter = meter_provider.get_meter("checkrd.otlp_sink", schema_url=OTEL_SCHEMA_URL)
+    token_usage = meter.create_histogram(
+        TOKEN_USAGE_INSTRUMENT,
+        unit="{token}",
+        description="Number of input and output tokens used per GenAI request.",
+    )
+    operation_duration = meter.create_histogram(
+        OPERATION_DURATION_INSTRUMENT,
+        unit="s",
+        description="GenAI operation duration.",
+    )
+    return token_usage, operation_duration
+
+
+def _genai_metric_attributes(event: dict[str, Any]) -> dict[str, Any]:
+    """Build the base attribute set for the GenAI metric data points.
+
+    Provider / operation / model, each omitted when its source key is absent
+    (the fixtures pin this — both SDKs must be identical on omission). Dotted
+    OTel-spec keys win over the flat wire-schema aliases the framework adapters
+    write; model prefers ``request.model`` then falls back to ``response.model``.
+    ``gen_ai.token.type`` is NOT added here — it is per-series on ``token.usage``.
+    """
+    attrs: dict[str, Any] = {}
+    for attr_name, source_keys in (
+        ("gen_ai.provider.name", ("gen_ai.provider.name", "gen_ai_system")),
+        ("gen_ai.operation.name", ("gen_ai.operation.name",)),
+        (
+            "gen_ai.request.model",
+            ("gen_ai.request.model", "gen_ai.response.model", "gen_ai_model"),
+        ),
+    ):
+        for source_key in source_keys:
+            value = event.get(source_key)
+            if value is not None:
+                attrs[attr_name] = value
+                break
+    return attrs
+
+
+def _extract_token_count(event: dict[str, Any], *source_keys: str) -> Optional[int]:
+    """First present, int-coercible token count among ``source_keys``, else None.
+
+    A non-numeric value (bad event) is treated as absent rather than raised —
+    metering must never break the host call.
+    """
+    for source_key in source_keys:
+        value = event.get(source_key)
+        if value is None:
+            continue
+        try:
+            return int(value)
+        except (TypeError, ValueError, OverflowError):
+            # OverflowError guards int(float("inf")); metering must never
+            # break the host call, so a non-finite/bad count is treated as absent.
+            return None
+    return None
+
+
+def _record_genai_metrics(
+    event: dict[str, Any],
+    token_usage: Any,
+    operation_duration: Any,
+) -> None:
+    """Record the two GenAI client metric instruments from a Checkrd event.
+
+    Recording rules (shared with the JS SDK, pinned by the golden fixtures):
+
+    - ``token.usage{input}`` records ``gen_ai.usage.input_tokens`` (fallback flat
+      ``gen_ai_input_tokens``) only when present; ``{output}`` records
+      ``gen_ai.usage.output_tokens`` (fallback ``gen_ai_output_tokens``).
+    - ``operation.duration`` records ``latency_ms / 1000`` for every event that
+      carries a latency, regardless of tokens.
+    - Negative token counts / durations are skipped: they are invalid data
+      (token counts and latency are inherently non-negative — the ingestion
+      validator enforces ``>= 0``), and OTel histograms reject a negative
+      amount anyway. Skipping keeps the emitted series clean and matches the
+      JS accumulator, which drops negatives identically.
+    - Never throws on a malformed / partial event.
+    """
+    base_attrs = _genai_metric_attributes(event)
+
+    input_tokens = _extract_token_count(
+        event, "gen_ai.usage.input_tokens", "gen_ai_input_tokens"
+    )
+    if input_tokens is not None and input_tokens >= 0:
+        token_usage.record(
+            input_tokens, {**base_attrs, "gen_ai.token.type": "input"}
+        )
+
+    output_tokens = _extract_token_count(
+        event, "gen_ai.usage.output_tokens", "gen_ai_output_tokens"
+    )
+    if output_tokens is not None and output_tokens >= 0:
+        token_usage.record(
+            output_tokens, {**base_attrs, "gen_ai.token.type": "output"}
+        )
+
+    latency_ms = event.get("latency_ms")
+    if latency_ms is not None:
+        duration_s: Optional[float]
+        try:
+            duration_s = float(latency_ms) / 1000.0
+        except (TypeError, ValueError):
+            duration_s = None
+        if duration_s is not None and duration_s >= 0:
+            operation_duration.record(duration_s, base_attrs)
 
 
 def _apply_semconv_attributes(span: Any, event: dict[str, Any]) -> None:
@@ -597,24 +864,42 @@ def _apply_semconv_attributes(span: Any, event: dict[str, Any]) -> None:
     #      gated by an explicit opt-in to keep PII surface bounded
     #      (see ``_genai_body``).
     #
-    # The transport layer writes these keys directly onto the
-    # telemetry event using the OTel-spec names, so the sink just
-    # passes them through. Iterating over a fixed list (rather than
-    # ``for k in event if k.startswith("gen_ai.")``) keeps the
-    # contract auditable — a dashboard query for a specific
-    # attribute name has a single source-of-truth.
-    for attr_name in (
-        "gen_ai.provider.name",
-        "gen_ai.operation.name",
-        "gen_ai.request.model",
-        "gen_ai.response.model",
-        "gen_ai.usage.input_tokens",
-        "gen_ai.usage.output_tokens",
-        "gen_ai.request.stream",
+    # Two event-key shapes feed these attributes, and BOTH must be covered so
+    # a span never loses its GenAI data depending on which path produced the
+    # event:
+    #   1. Dotted OTel-spec keys (``event["gen_ai.provider.name"]`` …) —
+    #      written by the httpx transport's URL derivation and the opt-in body
+    #      extractor (``_genai_body``).
+    #   2. Flat wire-schema keys (``event["gen_ai_system"]`` …) — written by
+    #      the framework adapters (LangChain, OpenAI Agents) so events already
+    #      match ``TelemetryEventInput`` (the ingestion schema). An adapter
+    #      handler built with ``sink=OtlpSink(...)`` routes these straight
+    #      here, so dropping them would silently lose chain/tool tokens.
+    # Each entry lists the dotted key first, then the flat alias; the first
+    # present value wins. The deprecated ``gen_ai_system`` alias maps onto the
+    # modern ``gen_ai.provider.name`` attribute — switch-over, never dual-emit.
+    # Iterating a fixed list (not ``startswith("gen_ai.")``) keeps the contract
+    # auditable: one mapping per emitted attribute name.
+    for attr_name, source_keys in (
+        ("gen_ai.provider.name", ("gen_ai.provider.name", "gen_ai_system")),
+        ("gen_ai.operation.name", ("gen_ai.operation.name",)),
+        ("gen_ai.request.model", ("gen_ai.request.model", "gen_ai_model")),
+        ("gen_ai.response.model", ("gen_ai.response.model",)),
+        (
+            "gen_ai.usage.input_tokens",
+            ("gen_ai.usage.input_tokens", "gen_ai_input_tokens"),
+        ),
+        (
+            "gen_ai.usage.output_tokens",
+            ("gen_ai.usage.output_tokens", "gen_ai_output_tokens"),
+        ),
+        ("gen_ai.request.stream", ("gen_ai.request.stream",)),
     ):
-        value = event.get(attr_name)
-        if value is not None:
-            span.set_attribute(attr_name, value)
+        for source_key in source_keys:
+            value = event.get(source_key)
+            if value is not None:
+                span.set_attribute(attr_name, value)
+                break
 
     # --- Checkrd namespace ---------------------------------------------
     agent_id = event.get("agent_id")

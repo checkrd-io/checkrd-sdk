@@ -34,14 +34,17 @@ export default defineConfig({
       thresholds: {
         lines: 80,
         statements: 80,
-        // Branch coverage threshold lowered from 75 → 65 after the
-        // vitest 2 → 4 bump. v8's branch detector got more thorough
-        // (counts implicit-else and nullish-coalescing as separate
-        // branches), so the same source now reports ~5pp lower.
-        // Lines/functions are unaffected. TODO: bring tests up on
-        // _cohere/_groq/_google_genai/_together adapters which have
-        // 0% branch coverage today (only happy-path tests).
-        branches: 65,
+        // Branch coverage was lowered from 75 → 65 after the vitest
+        // 2 → 4 bump (v8's branch detector got more thorough — it
+        // counts implicit-else and nullish-coalescing as separate
+        // branches — so the same source reported ~5pp lower). Raised
+        // back to 74 once the _cohere/_groq/_together/_google_genai
+        // adapters gained REAL instrumentation tests (construct-trap
+        // fetch-injection + telemetry + shape-guard + sealed-export
+        // paths), which moved those files from ~0% to ~80% branch
+        // coverage. Actual is ~75%; the floor keeps a small margin
+        // below it, matching the lines/statements/functions floors.
+        branches: 74,
         functions: 80,
       },
     },

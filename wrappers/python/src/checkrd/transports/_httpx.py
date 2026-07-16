@@ -10,10 +10,17 @@ from typing import Any, Optional
 
 import httpx
 
+from checkrd._genai import attributes_for_url, detect_operation, detect_provider
+from checkrd._genai_body import (
+    extract_request_attrs,
+    extract_response_attrs,
+    settle_cost_into,
+)
 from checkrd._settings import DEFAULT_SECURITY_MODE, SecurityMode
 from checkrd._version import __version__
 from checkrd.engine import EvalResult, WasmEngine
 from checkrd.exceptions import CheckrdPolicyDenied
+from checkrd.transports._stream_tap import STREAM_CAPTURE_PROVIDERS, install_stream_tap
 
 logger = logging.getLogger("checkrd")
 
@@ -279,6 +286,10 @@ def _enrich_telemetry(
     result: EvalResult,
     status_code: Optional[int] = None,
     latency_ms: Optional[int] = None,
+    *,
+    engine: Optional[WasmEngine] = None,
+    cost_metering: bool = False,
+    extra_attrs: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """Parse the WASM telemetry JSON and enrich with response data + span status.
 
@@ -292,6 +303,12 @@ def _enrich_telemetry(
     wired the SDK via ``checkrd.instrument_openai()``,
     ``Checkrd().wrap(httpx.Client())``, or a hand-rolled httpx transport
     pointed at AWS Bedrock — every code path goes through this function.
+
+    Cost metering (M-12): when ``cost_metering`` is on AND a signed pricing
+    bundle is installed in ``engine``, the call's usage is settled against the
+    in-WASM price table and the ``cost_usd_micros`` / ``currency`` /
+    ``pricing_bundle_version`` / ``pricing_status`` fields are stamped onto the
+    event. When off, or no bundle is installed, those fields are left unset.
     """
     import json
 
@@ -314,6 +331,24 @@ def _enrich_telemetry(
         for attr_name, attr_value in attributes_for_url(url_host, url_path).items():
             telemetry[attr_name] = attr_value
 
+    # Body-derived GenAI attributes (P1-15): the OTel ``gen_ai.usage.*`` token
+    # counts + model the transport extracted from the (non-streaming) response
+    # body, opt-in via ``extract_genai_body_attrs``. Merged BEFORE settle so the
+    # cost metering below has real usage to price. Empty / absent when the opt-in
+    # is off or the response carried no usage. (Streaming responses do NOT land
+    # here — their usage arrives out-of-band and is settled by the stream tap.)
+    if extra_attrs:
+        telemetry.update(extra_attrs)
+
+    # Cost metering (M-12): extract → settle → stamp cost fields. Inert unless
+    # the feature is on AND a price table is installed. The settle helper lives
+    # in ``checkrd._genai_body`` (no httpx dependency) so the framework adapters
+    # — which bypass this transport — can reach the same code path. It runs
+    # synchronously here on the request thread, sharing the engine with the
+    # ``evaluate()`` call above (the wasmtime Store is not thread-safe).
+    if cost_metering and engine is not None:
+        settle_cost_into(telemetry, result.request_id, engine)
+
     return telemetry
 
 
@@ -322,9 +357,20 @@ def _log_telemetry(
     status_code: Optional[int] = None,
     latency_ms: Optional[int] = None,
     batcher: Optional[Any] = None,
+    *,
+    engine: Optional[WasmEngine] = None,
+    cost_metering: bool = False,
+    extra_attrs: Optional[dict[str, Any]] = None,
 ) -> None:
     """Log telemetry event and optionally enqueue for control plane delivery."""
-    telemetry = _enrich_telemetry(result, status_code, latency_ms)
+    telemetry = _enrich_telemetry(
+        result,
+        status_code,
+        latency_ms,
+        engine=engine,
+        cost_metering=cost_metering,
+        extra_attrs=extra_attrs,
+    )
     if result.allowed:
         logger.info(
             "checkrd: %s allowed (status=%s, latency=%sms)",
@@ -424,6 +470,58 @@ def _record_last_eval() -> None:
     set_last_eval_at(datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
 
 
+def _handle_engine_error(
+    request: httpx.Request,
+    exc: BaseException,
+    security_mode: SecurityMode,
+) -> None:
+    """Resolve a policy-engine runtime failure per the caller's ``security_mode``.
+
+    ``engine.evaluate()`` runs a wasmtime instance on the hot path. A trap,
+    an OOM inside the sandbox, or any other internal fault raises here — and
+    that error must never be allowed to break the user's real API call in
+    ``permissive`` mode, nor to silently let the call through in ``strict``.
+
+    - ``permissive`` — fail **OPEN**. Log and return so the caller passes the
+      original request through unmodified (the pre-1.0 pass-through contract:
+      a broken security layer degrades to a no-op, it does not take the app
+      down). This mirrors how engine *creation* failures degrade in
+      permissive mode (``wrap()`` returns the client unwrapped).
+    - ``strict`` — fail **CLOSED**. Raise :class:`CheckrdPolicyDenied` so the
+      request is blocked exactly like a policy deny (the ASGI/WSGI middleware
+      renders it as a 403). Never returns in this mode.
+
+    The original exception is preserved in the log (``exc_info``) for
+    debugging in both modes.
+    """
+    if security_mode == "strict":
+        logger.error(
+            "checkrd: policy engine evaluation failed (%s); failing CLOSED "
+            "(security_mode='strict'). Request denied.",
+            exc,
+            exc_info=True,
+        )
+        raise CheckrdPolicyDenied(
+            reason="policy engine evaluation error (failing closed)",
+            request_id=str(uuid.uuid4()),
+            code="policy_engine_error",
+            url=str(request.url),
+            suggestion=(
+                "The policy engine raised an error while evaluating this "
+                "request. In strict mode the SDK fails closed and denies the "
+                "request. Inspect the logs for the underlying engine error, "
+                "or set security_mode='permissive' to pass requests through "
+                "unevaluated when the engine faults."
+            ),
+        )
+    logger.warning(
+        "checkrd: policy engine evaluation failed (%s); failing OPEN "
+        "(security_mode='permissive'). Request passed through unevaluated.",
+        exc,
+        exc_info=True,
+    )
+
+
 def _make_pre_event(request: httpx.Request, request_id: str) -> Any:
     """Build a CheckrdEvent for the before_request hook (pre-evaluation)."""
     from checkrd.hooks import CheckrdEvent
@@ -501,6 +599,164 @@ def _make_post_event(
     )
 
 
+# ---------------------------------------------------------------------------
+# Body-derived GenAI extraction (P1-15): non-streaming body + streaming tap
+# ---------------------------------------------------------------------------
+
+
+def _is_event_stream(response: httpx.Response) -> bool:
+    """True if the response is an SSE stream (tap it) vs a buffered body (read it)."""
+    ctype = response.headers.get("content-type", "")
+    return "text/event-stream" in ctype.lower()
+
+
+def _genai_request_model(provider: Optional[str], request: httpx.Request) -> Optional[str]:
+    """The request's declared model (for pricing), from the request body. Never raises."""
+    try:
+        body = request.content
+        attrs = extract_request_attrs(provider, body if body else None)
+    except Exception:
+        return None
+    model = attrs.get("gen_ai.request.model")
+    return model if isinstance(model, str) and model else None
+
+
+def _stream_base_attrs(provider: str, request: httpx.Request) -> dict[str, Any]:
+    """PII-safe base fields for the ``stream_completion`` event (no body/raw URL)."""
+    host = request.url.host or ""
+    path = request.url.path or ""
+    attrs: dict[str, Any] = {"url_host": host, "url_path": path, "method": request.method}
+    attrs.update(attributes_for_url(host, path))
+    model = _genai_request_model(provider, request)
+    if model is not None:
+        attrs["gen_ai.request.model"] = model
+    return attrs
+
+
+def _merge_response_genai_attrs(
+    provider: str,
+    request: httpx.Request,
+    body: Optional[bytes],
+    headers: Any,
+) -> dict[str, Any]:
+    """Dotted ``gen_ai.*`` attrs (model + usage) for a non-streaming response.
+
+    Merged with the request model so a provider whose response omits the model
+    (Cohere) still has a priced SKU. Never raises.
+    """
+    attrs = dict(extract_response_attrs(provider, body, headers))
+    model = _genai_request_model(provider, request)
+    if model is not None:
+        # The response model (what served the call) wins; request model backfills.
+        attrs.setdefault("gen_ai.request.model", model)
+    return attrs
+
+
+def _enrich_or_tap_sync(
+    request: httpx.Request,
+    response: httpx.Response,
+    result: EvalResult,
+    *,
+    engine: WasmEngine,
+    cost_metering: bool,
+    batcher: Optional[Any],
+    agent_id: str,
+    start_monotonic: float,
+) -> dict[str, Any]:
+    """Sync body-derived GenAI extraction.
+
+    Returns dotted ``gen_ai.*`` attrs to merge into the base event
+    (non-streaming), or ``{}`` after installing a lazy stream tap (streaming).
+    Fail-open: any error is swallowed so the user's request is never broken.
+    """
+    try:
+        provider = detect_provider(request.url.host or "")
+        if provider is None:
+            return {}
+        if _is_event_stream(response):
+            if provider in STREAM_CAPTURE_PROVIDERS:
+                install_stream_tap(
+                    response,
+                    provider=provider,
+                    base_attrs=_stream_base_attrs(provider, request),
+                    request_id=result.request_id,
+                    agent_id=agent_id,
+                    engine=engine,
+                    cost_metering=cost_metering,
+                    batcher=batcher,
+                    start_monotonic=start_monotonic,
+                    is_async=False,
+                )
+            return {}
+        # Only buffer the body for an actual inference endpoint (chat /
+        # completions / embeddings / messages / generateContent). Gating on the
+        # operation keeps us from reading a large non-inference response — a file
+        # download or model list on the same provider host — into memory just to
+        # find there is no usage to extract.
+        if detect_operation(request.url.path or "") is None:
+            return {}
+        # Non-streaming: buffer the body once (httpx caches it; the caller's
+        # response.json()/.content read the cache) and extract usage + model.
+        try:
+            body = response.read()
+        except Exception:
+            logger.debug(
+                "checkrd: response.read() for genai extraction failed", exc_info=True
+            )
+            return {}
+        return _merge_response_genai_attrs(provider, request, body, response.headers)
+    except Exception:
+        logger.debug("checkrd: genai body extraction failed (fail-open)", exc_info=True)
+        return {}
+
+
+async def _enrich_or_tap_async(
+    request: httpx.Request,
+    response: httpx.Response,
+    result: EvalResult,
+    *,
+    engine: WasmEngine,
+    cost_metering: bool,
+    batcher: Optional[Any],
+    agent_id: str,
+    start_monotonic: float,
+) -> dict[str, Any]:
+    """Async analogue of :func:`_enrich_or_tap_sync` (awaits the body read)."""
+    try:
+        provider = detect_provider(request.url.host or "")
+        if provider is None:
+            return {}
+        if _is_event_stream(response):
+            if provider in STREAM_CAPTURE_PROVIDERS:
+                install_stream_tap(
+                    response,
+                    provider=provider,
+                    base_attrs=_stream_base_attrs(provider, request),
+                    request_id=result.request_id,
+                    agent_id=agent_id,
+                    engine=engine,
+                    cost_metering=cost_metering,
+                    batcher=batcher,
+                    start_monotonic=start_monotonic,
+                    is_async=True,
+                )
+            return {}
+        # See the sync path: only inference endpoints get their body buffered.
+        if detect_operation(request.url.path or "") is None:
+            return {}
+        try:
+            body = await response.aread()
+        except Exception:
+            logger.debug(
+                "checkrd: response.aread() for genai extraction failed", exc_info=True
+            )
+            return {}
+        return _merge_response_genai_attrs(provider, request, body, response.headers)
+    except Exception:
+        logger.debug("checkrd: genai body extraction failed (fail-open)", exc_info=True)
+        return {}
+
+
 class CheckrdTransport(httpx.BaseTransport):
     """Sync httpx transport that evaluates requests against the Checkrd policy engine."""
 
@@ -519,6 +775,8 @@ class CheckrdTransport(httpx.BaseTransport):
         on_allow: Optional[Any] = None,
         before_request: Optional[Any] = None,
         security_mode: SecurityMode = DEFAULT_SECURITY_MODE,
+        cost_metering: bool = False,
+        extract_genai_body_attrs: bool = False,
     ) -> None:
         self._transport = transport
         self._engine = engine
@@ -530,6 +788,8 @@ class CheckrdTransport(httpx.BaseTransport):
         self._on_allow = on_allow
         self._before_request = before_request
         self._security_mode: SecurityMode = security_mode
+        self._cost_metering = cost_metering
+        self._extract_genai_body_attrs = extract_genai_body_attrs
 
     def handle_request(self, request: httpx.Request) -> httpx.Response:
         # Fail-closed: bodies over the WASM inspection limit must not silently
@@ -561,13 +821,27 @@ class CheckrdTransport(httpx.BaseTransport):
                 return self._transport.handle_request(request)
 
         eval_start = time.perf_counter_ns()
-        result = self._engine.evaluate(**eval_kwargs)
+        try:
+            result = self._engine.evaluate(**eval_kwargs)
+        except Exception as exc:
+            # Runtime engine fault (wasmtime trap, sandbox OOM, malformed core
+            # output, etc.). strict → raises CheckrdPolicyDenied (fail closed);
+            # permissive → logs and returns None so we pass the ORIGINAL
+            # request through unmodified below (fail open — never break the
+            # user's real API call).
+            _handle_engine_error(request, exc, self._security_mode)
+            return self._transport.handle_request(request)
         eval_us = (time.perf_counter_ns() - eval_start) / 1000
         _log_eval_debug(eval_kwargs["method"], str(request.url), result, eval_us)
         _record_last_eval()
 
         if not result.allowed:
-            _log_telemetry(result, batcher=self._batcher)
+            _log_telemetry(
+                result,
+                batcher=self._batcher,
+                engine=self._engine,
+                cost_metering=self._cost_metering,
+            )
             deny_reason = result.deny_reason or "denied by policy"
             rule_name = _parse_rule_name(deny_reason)
             dash_url = _build_dashboard_url(
@@ -620,11 +894,32 @@ class CheckrdTransport(httpx.BaseTransport):
         response = self._transport.handle_request(request)
         latency_ms = int((time.monotonic() - start) * 1000)
 
+        # Body-derived GenAI extraction (P1-15, opt-in). Non-streaming responses
+        # return the extracted usage/model to merge into the base event below
+        # (feeding the cost settle in ``_enrich_telemetry``); streaming responses
+        # get a lazy tap installed that emits a separate ``stream_completion``
+        # event when the stream ends. Off by default ⇒ zero-overhead no-op.
+        extra_attrs: dict[str, Any] = {}
+        if self._extract_genai_body_attrs:
+            extra_attrs = _enrich_or_tap_sync(
+                request,
+                response,
+                result,
+                engine=self._engine,
+                cost_metering=self._cost_metering,
+                batcher=self._batcher,
+                agent_id=self._agent_id,
+                start_monotonic=start,
+            )
+
         _log_telemetry(
             result,
             status_code=response.status_code,
             latency_ms=latency_ms,
             batcher=self._batcher,
+            engine=self._engine,
+            cost_metering=self._cost_metering,
+            extra_attrs=extra_attrs,
         )
         # Stamp the SDK's correlation request-id on the response's
         # extensions dict so callers can tie a specific call back to
@@ -689,6 +984,8 @@ class CheckrdAsyncTransport(httpx.AsyncBaseTransport):
         on_allow: Optional[Any] = None,
         before_request: Optional[Any] = None,
         security_mode: SecurityMode = DEFAULT_SECURITY_MODE,
+        cost_metering: bool = False,
+        extract_genai_body_attrs: bool = False,
     ) -> None:
         self._transport = transport
         self._engine = engine
@@ -700,6 +997,8 @@ class CheckrdAsyncTransport(httpx.AsyncBaseTransport):
         self._on_allow = on_allow
         self._before_request = before_request
         self._security_mode: SecurityMode = security_mode
+        self._cost_metering = cost_metering
+        self._extract_genai_body_attrs = extract_genai_body_attrs
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         oversized = _check_oversized_body(
@@ -727,13 +1026,26 @@ class CheckrdAsyncTransport(httpx.AsyncBaseTransport):
                 return await self._transport.handle_async_request(request)
 
         eval_start = time.perf_counter_ns()
-        result = self._engine.evaluate(**eval_kwargs)
+        try:
+            result = self._engine.evaluate(**eval_kwargs)
+        except Exception as exc:
+            # Runtime engine fault. strict → raises CheckrdPolicyDenied (fail
+            # closed); permissive → logs and returns None so we pass the
+            # ORIGINAL request through unmodified below (fail open — never
+            # break the user's real API call).
+            _handle_engine_error(request, exc, self._security_mode)
+            return await self._transport.handle_async_request(request)
         eval_us = (time.perf_counter_ns() - eval_start) / 1000
         _log_eval_debug(eval_kwargs["method"], str(request.url), result, eval_us)
         _record_last_eval()
 
         if not result.allowed:
-            _log_telemetry(result, batcher=self._batcher)
+            _log_telemetry(
+                result,
+                batcher=self._batcher,
+                engine=self._engine,
+                cost_metering=self._cost_metering,
+            )
             deny_reason = result.deny_reason or "denied by policy"
             rule_name = _parse_rule_name(deny_reason)
             dash_url = _build_dashboard_url(
@@ -784,11 +1096,28 @@ class CheckrdAsyncTransport(httpx.AsyncBaseTransport):
         response = await self._transport.handle_async_request(request)
         latency_ms = int((time.monotonic() - start) * 1000)
 
+        # Body-derived GenAI extraction (P1-15, opt-in). See the sync path.
+        extra_attrs: dict[str, Any] = {}
+        if self._extract_genai_body_attrs:
+            extra_attrs = await _enrich_or_tap_async(
+                request,
+                response,
+                result,
+                engine=self._engine,
+                cost_metering=self._cost_metering,
+                batcher=self._batcher,
+                agent_id=self._agent_id,
+                start_monotonic=start,
+            )
+
         _log_telemetry(
             result,
             status_code=response.status_code,
             latency_ms=latency_ms,
             batcher=self._batcher,
+            engine=self._engine,
+            cost_metering=self._cost_metering,
+            extra_attrs=extra_attrs,
         )
         _attach_request_id(response, result.request_id)
         return response

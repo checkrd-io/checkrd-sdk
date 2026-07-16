@@ -16,12 +16,13 @@ middleware adds is:
    second call is a no-op. Mirrors
    ``opentelemetry.instrumentation.fastapi.FastAPIInstrumentor``.
 
-2. **`CheckrdPolicyDenied` → 403 JSON**. When a denied request bubbles
-   up from a handler that uses a Checkrd-wrapped HTTP client, we
-   translate it into a Stripe-shaped error envelope with
-   ``request_id``, ``dashboard_url``, and remediation deep link
-   instead of letting the framework's default 500 page swallow the
-   useful diagnostics.
+2. **`CheckrdPolicyDenied` → 403 problem+json**. When a denied request
+   bubbles up from a handler that uses a Checkrd-wrapped HTTP client, we
+   translate it into an RFC 9457 ``application/problem+json`` document
+   (flat ``type``/``title``/``status``/``detail`` plus ``code``,
+   ``request_id``, and ``dashboard_url``) — the same shape the control
+   plane returns — instead of letting the framework's default 500 page
+   swallow the useful diagnostics.
 
 3. **Per-request logger context**. The Checkrd request id and policy
    decision land in ``logging`` extras so any structured-logging
@@ -62,7 +63,7 @@ import json
 import logging
 from typing import Any, Awaitable, Callable, Optional
 
-from checkrd.exceptions import CheckrdPolicyDenied
+from checkrd.exceptions import CheckrdPolicyDenied, policy_denied_problem
 
 logger = logging.getLogger("checkrd")
 
@@ -130,29 +131,21 @@ class CheckrdASGIMiddleware:
         send: ASGISend,
         exc: CheckrdPolicyDenied,
     ) -> None:
-        """Stripe-shaped 403 envelope when policy denies a downstream call.
+        """RFC 9457 problem+json 403 when policy denies a downstream call.
 
-        Matches the JS adapters' response shape so client code can rely
-        on a consistent error format across SDKs.
+        Matches the control plane's ``application/problem+json`` shape so
+        client code parses a single error format across the SDK, the API,
+        and the JS adapters.
         """
         body = json.dumps(
-            {
-                "error": {
-                    "type": "policy_denied",
-                    "message": exc.reason,
-                    "code": exc.code,
-                    "request_id": exc.request_id,
-                    "dashboard_url": exc.dashboard_url or self._dashboard_url,
-                    "docs_url": exc.docs_url,
-                },
-            },
+            policy_denied_problem(exc, self._dashboard_url),
         ).encode("utf-8")
         await send(
             {
                 "type": "http.response.start",
                 "status": 403,
                 "headers": [
-                    (b"content-type", b"application/json"),
+                    (b"content-type", b"application/problem+json"),
                     (b"content-length", str(len(body)).encode("ascii")),
                 ],
             },

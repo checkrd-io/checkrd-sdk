@@ -1,0 +1,49 @@
+[
+  {
+    "name": "bedrock_request_anthropic_on_bedrock",
+    "provider": "aws.bedrock",
+    "comment": "Claude-on-Bedrock request is Anthropic-shaped; model lives at the top level.",
+    "request": { "body": { "model": "anthropic.claude-sonnet-4-5-v1:0", "messages": [{ "role": "user", "content": "hi" }], "stream": false } },
+    "expected_request_attrs": { "gen_ai.request.model": "anthropic.claude-sonnet-4-5-v1:0", "gen_ai.request.stream": false }
+  },
+  {
+    "name": "bedrock_response_token_counts_from_headers",
+    "provider": "aws.bedrock",
+    "comment": "Token counts come from the x-amzn-bedrock-*-token-count response HEADERS (string values, parsed to int), which are authoritative. The body is ignored for token counts.",
+    "response": {
+      "headers": {
+        "x-amzn-bedrock-input-token-count": "1200",
+        "x-amzn-bedrock-output-token-count": "380",
+        "x-amzn-bedrock-invocation-latency": "742"
+      },
+      "body": { "usage": { "input_tokens": 1, "output_tokens": 1 } }
+    },
+    "expected_response_attrs": {
+      "gen_ai.usage.input_tokens": 1200,
+      "gen_ai.usage.output_tokens": 380
+    }
+  },
+  {
+    "name": "bedrock_response_header_case_insensitive",
+    "provider": "aws.bedrock",
+    "comment": "HTTP header names are case-insensitive; the extractor must match regardless of case.",
+    "response": { "headers": { "X-Amzn-Bedrock-Input-Token-Count": "55", "X-Amzn-Bedrock-Output-Token-Count": "22" } },
+    "expected_response_attrs": {
+      "gen_ai.usage.input_tokens": 55,
+      "gen_ai.usage.output_tokens": 22
+    }
+  },
+  {
+    "name": "bedrock_response_non_numeric_header_skipped",
+    "provider": "aws.bedrock",
+    "comment": "A non-numeric header value is skipped, not coerced or crashed on.",
+    "response": { "headers": { "x-amzn-bedrock-input-token-count": "n/a", "x-amzn-bedrock-output-token-count": "22" } },
+    "expected_response_attrs": { "gen_ai.usage.output_tokens": 22 }
+  },
+  {
+    "name": "bedrock_response_no_headers_empty",
+    "provider": "aws.bedrock",
+    "response": { "headers": {} },
+    "expected_response_attrs": {}
+  }
+]

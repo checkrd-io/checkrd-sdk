@@ -111,17 +111,33 @@ def test_anthropic_response_extracts_usage() -> None:
     }
 
 
-def test_aws_bedrock_uses_anthropic_shape() -> None:
-    """Anthropic-on-Bedrock returns the same envelope — extractor
-    routes ``aws.bedrock`` through the same code path."""
+def test_aws_bedrock_request_uses_anthropic_shape() -> None:
+    """Anthropic-on-Bedrock REQUEST is Anthropic-shaped (model at the
+    top level) — the request extractor routes ``aws.bedrock`` through
+    the same code path."""
     body = json.dumps(
         {
             "model": "anthropic.claude-3-haiku-20240307-v1:0",
-            "usage": {"input_tokens": 7, "output_tokens": 14},
+            "messages": [{"role": "user", "content": "hi"}],
+            "stream": False,
         }
     ).encode("utf-8")
-    assert extract_response_attrs("aws.bedrock", body) == {
-        "gen_ai.response.model": "anthropic.claude-3-haiku-20240307-v1:0",
+    assert extract_request_attrs("aws.bedrock", body) == {
+        "gen_ai.request.model": "anthropic.claude-3-haiku-20240307-v1:0",
+        "gen_ai.request.stream": False,
+    }
+
+
+def test_aws_bedrock_response_reads_token_counts_from_headers() -> None:
+    """Bedrock RESPONSE token counts come from the
+    ``x-amzn-bedrock-*-token-count`` HEADERS, not the body. The body is
+    ignored for counts (it may not even carry usage)."""
+    body = json.dumps({"usage": {"input_tokens": 1, "output_tokens": 1}}).encode()
+    headers = {
+        "x-amzn-bedrock-input-token-count": "7",
+        "x-amzn-bedrock-output-token-count": "14",
+    }
+    assert extract_response_attrs("aws.bedrock", body, headers) == {
         "gen_ai.usage.input_tokens": 7,
         "gen_ai.usage.output_tokens": 14,
     }

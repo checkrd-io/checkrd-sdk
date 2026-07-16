@@ -16,7 +16,8 @@
  */
 import { File, OpenFile, WASI } from "@bjorn3/browser_wasi_shim";
 
-import { CheckrdInitError, PolicySignatureError } from "./exceptions.js";
+import { CheckrdInitError, PolicySignatureError, PricingSignatureError } from "./exceptions.js";
+import { resolveBuiltin } from "./_builtin.js";
 import { EXPECTED_SHA256 } from "./_wasm_integrity.js";
 
 // ---------------------------------------------------------------------------
@@ -31,19 +32,12 @@ import { EXPECTED_SHA256 } from "./_wasm_integrity.js";
 // make the whole SDK fail to load on those runtimes even for callers
 // who never construct an engine there.
 //
-// Resolution strategy, ordered to cover every supported Node runtime
-// without pulling Node-only specifiers into the edge bundle:
-//
-//   1. `globalThis.process.getBuiltinModule(spec)` -- Node 22+ exposes
-//      this in both ESM and CJS. The spec string is read at call time
-//      so tsup never sees `node:fs` as a static import; the edge
-//      bundle stays runtime-neutral.
-//   2. `require(spec)` -- Node CJS and Bun. Covers older Node bundles
-//      that ship the SDK as CommonJS. (Node ESM has no `require`
-//      symbol; that branch falls through to strategy 3.)
-//   3. Throw a directional `CheckrdInitError` pointing at the async
-//      `Checkrd.create()` / `WasmEngine.create()` factories, which
-//      work on every runtime including Node 20 ESM and the edge.
+// Resolution goes through `resolveBuiltin` (`./_builtin.js`):
+// `getBuiltinModule` first (works in ESM), then `require` (Node CJS /
+// Bun), else `null`. Each loader below casts the result to its own
+// module shim and throws a directional `CheckrdInitError` pointing at
+// the async `Checkrd.create()` / `WasmEngine.create()` factories, which
+// work on every runtime including Node 20 ESM and the edge.
 interface NodeFsShim {
   readFileSync(path: string): Uint8Array;
 }
@@ -54,34 +48,6 @@ interface NodeCryptoShim {
 }
 interface NodeUrlShim {
   fileURLToPath(url: URL | string): string;
-}
-
-/**
- * Resolve a Node built-in module synchronously without a static
- * `import "node:..."` statement (which would force the whole bundle
- * to require Node). Returns `null` when no strategy is available;
- * the per-module loaders below cast the result and throw a
- * directional error.
- */
-function resolveBuiltin(spec: string): unknown {
-  // Strategy 1: Node 22+ `process.getBuiltinModule`.
-  try {
-    const proc = (globalThis as {
-      process?: { getBuiltinModule?: (spec: string) => unknown };
-    }).process;
-    const mod = proc?.getBuiltinModule?.(spec);
-    if (mod) return mod;
-  } catch {
-    // Fall through.
-  }
-  // Strategy 2: Node CJS / Bun `require`.
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports -- sync load on Node CJS / Bun
-    return require(spec) as unknown;
-  } catch {
-    // Fall through.
-  }
-  return null;
 }
 
 const ASYNC_HINT =
@@ -192,6 +158,66 @@ export interface WasmEngineCreateOptions extends WasmEngineOptions {
   wasm?: WasmSource;
 }
 
+/**
+ * Normalized token usage for one completed LLM call, fed to
+ * {@link WasmEngine.settleUsage}. Mirrors the WASM core's `UsageInput`
+ * (`crates/core/src/pricing.rs`) field-for-field.
+ *
+ * All counts are POST-normalization: `cacheReadTokens` / `cacheCreationTokens`
+ * are a *subset* of `inputTokens`, and `reasoningTokens` is already part of
+ * `outputTokens` (informational, billed at the output rate, never added
+ * separately). Every field is optional — the core defaults each to `0` /
+ * `null`, so a partial usage object still settles.
+ */
+export interface UsageInput {
+  /** OTel `gen_ai` provider name (`openai`, `anthropic`, …). */
+  provider?: string;
+  /** Model id used to resolve the priced SKU. */
+  model?: string;
+  /** Total prompt (input) tokens, inclusive of cache. */
+  input_tokens?: number;
+  /** Total completion (output) tokens, inclusive of reasoning. */
+  output_tokens?: number;
+  /** Cache-read (cache-hit) input tokens, a subset of `input_tokens`. */
+  cache_read_tokens?: number;
+  /** Cache-creation (cache-write) input tokens, a subset of `input_tokens`. */
+  cache_creation_tokens?: number;
+  /** Reasoning tokens, already part of `output_tokens` (informational). */
+  reasoning_tokens?: number;
+}
+
+/**
+ * Why a {@link SettleResult} has the cost it does. Snake-case so the wire
+ * value matches the WASM core's `PricingStatus` (`crates/core/src/pricing.rs`).
+ *
+ *   - `priced` — a SKU matched; `cost_usd_micros` is authoritative.
+ *   - `unpriced_model` — a bundle is installed but no SKU matched the model
+ *     (fail-open: the call is marked, never blocked).
+ *   - `disabled` — no signed pricing bundle is installed.
+ */
+export type PricingStatus = "priced" | "unpriced_model" | "disabled";
+
+/**
+ * Result of {@link WasmEngine.settleUsage}. Mirrors the WASM core's
+ * `SettleResult` JSON one-for-one. Money is integer micro-USD (millionths
+ * of a dollar) — never floating point — so the figure is byte-reproducible
+ * across implementations (ADR-003).
+ */
+export interface SettleResult {
+  /** Cost in micro-USD (`$1.23 == 1_230_000`). Saturated when `overflow`. */
+  cost_usd_micros: number;
+  /** ISO 4217 currency code. Always `"USD"` in v1. */
+  currency: string;
+  /** Version of the pricing bundle that priced the call. 0 when disabled. */
+  pricing_bundle_version: number;
+  /** Why the cost is what it is. */
+  pricing_status: PricingStatus;
+  /** True iff the cost arithmetic saturated; the figure is approximate. */
+  overflow: boolean;
+  /** Matched SKU's `sku_id`, when a SKU priced the call; else null. */
+  sku_id: string | null;
+}
+
 /** Signed telemetry envelope produced by {@link WasmEngine.signTelemetryBatch}. */
 export interface SignedBatch {
   content_digest: string;
@@ -248,6 +274,29 @@ interface WasmExports {
   ) => number;
   get_active_policy_version: () => bigint;
   set_initial_policy_version: (version: bigint) => number;
+  // --- Cost metering: signed pricing bundle FFI (M-3 / M-4) ---
+  // A faithful clone of the policy reload trio above plus a settle
+  // entrypoint. The pricing payload type is structurally separate from
+  // the policy one (DSSE PAE domain separation), so a policy signature
+  // can never be replayed as a price table and vice versa.
+  reload_pricing_signed: (
+    envelopePtr: number,
+    envelopeLen: number,
+    keysPtr: number,
+    keysLen: number,
+    nowUnixSecs: bigint,
+    maxAgeSecs: bigint,
+  ) => number;
+  get_active_pricing_version: () => bigint;
+  set_initial_pricing_version: (version: bigint) => number;
+  // PACKED bigint return (`ptr << 32 | len`), unpacked exactly like
+  // `evaluate_request` / `sign`.
+  settle_usage: (
+    requestIdPtr: number,
+    requestIdLen: number,
+    usagePtr: number,
+    usageLen: number,
+  ) => bigint;
   _initialize?: () => void;
   _start?: () => void;
 }
@@ -990,6 +1039,105 @@ export class WasmEngine {
   setInitialPolicyVersion(version: number): void {
     const rc = this.exports.set_initial_policy_version(BigInt(version));
     if (rc !== 0) throw new PolicySignatureError(rc);
+  }
+
+  // -------------------------------------------------------------------
+  // Cost metering: signed pricing bundle (M-3 / M-4)
+  // -------------------------------------------------------------------
+  //
+  // Structural clone of the policy-reload methods above. The pricing
+  // bundle gets its own DSSE payload type AND its own pinned trust list
+  // (`trustedPricingKeysJson()`), so a pricing key can never verify a
+  // policy bundle and a policy key can never verify a price table —
+  // TUF-style per-role key separation, defense-in-depth beyond the PAE
+  // payload-type binding.
+
+  /**
+   * Hot-reload a DSSE-signed pricing bundle with full verification. The
+   * trusted-keys JSON MUST be the pricing trust list
+   * ({@link trustedPricingKeysJson}), never the policy one — see the class
+   * note above on per-role key separation.
+   *
+   * Throws {@link PricingSignatureError} on any verification failure
+   * (FFI `-15`..`-24`).
+   */
+  reloadPricingSigned(opts: {
+    envelopeJson: string;
+    trustedKeysJson: string;
+    nowUnixSecs: number;
+    maxAgeSecs: number;
+  }): void {
+    const [ePtr, eLen] = this.writeString(opts.envelopeJson);
+    const [kPtr, kLen] = this.writeString(opts.trustedKeysJson);
+    let rc: number;
+    try {
+      rc = this.exports.reload_pricing_signed(
+        ePtr,
+        eLen,
+        kPtr,
+        kLen,
+        BigInt(opts.nowUnixSecs),
+        BigInt(opts.maxAgeSecs),
+      );
+    } finally {
+      this.dealloc(ePtr, eLen);
+      this.dealloc(kPtr, kLen);
+    }
+    if (rc !== 0) throw new PricingSignatureError(rc);
+  }
+
+  /** Monotonic pricing-version counter. 0 = no signed pricing bundle installed. */
+  getActivePricingVersion(): number {
+    return Number(this.exports.get_active_pricing_version());
+  }
+
+  /** One-shot restore of a persisted pricing version across process restarts. */
+  setInitialPricingVersion(version: number): void {
+    const rc = this.exports.set_initial_pricing_version(BigInt(version));
+    if (rc !== 0) throw new PricingSignatureError(rc);
+  }
+
+  /**
+   * Compute the cost of one completed LLM call from the active pricing
+   * bundle and the call's normalized token usage (M-4). `requestId` is
+   * carried for log/trace correlation only — it does not affect the cost.
+   *
+   * Fail-open by contract: never throws on arbitrary usage input. A
+   * missing price table yields `pricing_status: "disabled"`, an unknown
+   * model `"unpriced_model"`; neither blocks the call.
+   */
+  settleUsage(requestId: string, usage: UsageInput): SettleResult {
+    // Serialize with explicit nulls for the optional cache/reasoning
+    // counters absent — the WASM `UsageInput` uses `#[serde(default)]`
+    // on every field, so a missing key deserializes to 0 / None. We emit
+    // only the present fields (JSON.stringify drops `undefined`), which
+    // the core accepts.
+    const usageJson = JSON.stringify(usage);
+    const [rPtr, rLen] = this.writeString(requestId);
+    const [uPtr, uLen] = this.writeString(usageJson);
+    let packed: bigint;
+    try {
+      packed = this.exports.settle_usage(rPtr, rLen, uPtr, uLen);
+    } finally {
+      this.dealloc(rPtr, rLen);
+      this.dealloc(uPtr, uLen);
+    }
+    const [outPtr, outLen] = unpack(packed);
+    if (outPtr === 0 || outLen === 0) {
+      throw new CheckrdInitError("WASM settle_usage returned null");
+    }
+    const resultJson = this.readString(outPtr, outLen);
+    this.dealloc(outPtr, outLen);
+    try {
+      return JSON.parse(resultJson) as SettleResult;
+    } catch (err) {
+      const snippet =
+        resultJson.length > 200 ? `${resultJson.slice(0, 200)}…` : resultJson;
+      throw new CheckrdInitError(
+        `WASM settle_usage returned malformed JSON (${snippet})`,
+        { cause: err },
+      );
+    }
   }
 
   // -------------------------------------------------------------------

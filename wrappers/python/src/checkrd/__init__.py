@@ -311,6 +311,8 @@ def wrap(
     killswitch_file: Union[str, Path, None] = None,
     killswitch_poll_interval_secs: float = 5.0,
     security_mode: Optional[SecurityMode] = None,
+    cost_metering: Optional[bool] = None,
+    extract_genai_body_attrs: Optional[bool] = None,
     max_retries: int = 3,
     timeout: float = 30.0,
     connect_timeout: float = 5.0,
@@ -324,6 +326,17 @@ def wrap(
             :class:`CheckrdInitError` if the WASM engine cannot load.
             ``"permissive"`` logs a warning and returns the client
             unwrapped. Env-var override: ``CHECKRD_SECURITY_MODE``.
+        cost_metering: ``True`` enables per-call cost metering (M-12) — the
+            SDK settles each completed call against the in-WASM signed price
+            table and stamps the cost fields onto telemetry. **Default off**;
+            env-var override ``CHECKRD_COST_METERING``. Inert unless a signed
+            pricing bundle is installed.
+        extract_genai_body_attrs: ``True`` lets the transport read token counts +
+            model from LLM response bodies / SSE streams and stamp the OTel
+            ``gen_ai.usage.*`` attributes on telemetry — the usage that cost
+            metering prices. **Default off** (zero body/stream inspection, zero
+            PII surface); env-var override ``CHECKRD_EXTRACT_GENAI_BODY``. Only
+            operational counts + model are extracted, never prompts/completions.
         on_telemetry_drop: Optional ``(reason, count) -> None`` callback
             fired when the batcher drops events. ``reason`` is one of
             ``"backpressure"``, ``"signing_error"``, ``"send_error"``.
@@ -342,6 +355,8 @@ def wrap(
         telemetry_sink=telemetry_sink,
         security_mode=security_mode,
         on_telemetry_drop=on_telemetry_drop,
+        cost_metering=cost_metering,
+        extract_genai_body_attrs=extract_genai_body_attrs,
         max_retries=max_retries,
         timeout=timeout,
         connect_timeout=connect_timeout,
@@ -360,6 +375,8 @@ def wrap(
         on_allow=on_allow,
         before_request=before_request,
         security_mode=runtime.settings.security_mode,
+        cost_metering=runtime.settings.cost_metering,
+        extract_genai_body_attrs=runtime.settings.extract_genai_body_attrs,
     )
     _maybe_start_control(
         runtime.engine,
@@ -411,6 +428,8 @@ def wrap_async(
     killswitch_file: Union[str, Path, None] = None,
     killswitch_poll_interval_secs: float = 5.0,
     security_mode: Optional[SecurityMode] = None,
+    cost_metering: Optional[bool] = None,
+    extract_genai_body_attrs: Optional[bool] = None,
     use_async_batcher: bool = True,
     max_retries: int = 3,
     timeout: float = 30.0,
@@ -437,6 +456,8 @@ def wrap_async(
         telemetry_sink=telemetry_sink,
         security_mode=security_mode,
         on_telemetry_drop=on_telemetry_drop,
+        cost_metering=cost_metering,
+        extract_genai_body_attrs=extract_genai_body_attrs,
         use_async_batcher=use_async_batcher,
         max_retries=max_retries,
         timeout=timeout,
@@ -456,6 +477,8 @@ def wrap_async(
         on_allow=on_allow,
         before_request=before_request,
         security_mode=runtime.settings.security_mode,
+        cost_metering=runtime.settings.cost_metering,
+        extract_genai_body_attrs=runtime.settings.extract_genai_body_attrs,
     )
     # Async wrap path: use ``AsyncControlReceiver`` so the SSE
     # connection runs as an asyncio Task instead of paying a
@@ -652,6 +675,8 @@ def _build_runtime(
     security_mode: Optional[SecurityMode] = None,
     on_telemetry_drop: Optional[OnDropCallback] = None,
     api_version: Optional[str] = None,
+    cost_metering: Optional[bool] = None,
+    extract_genai_body_attrs: Optional[bool] = None,
     use_async_batcher: bool = False,
     max_retries: int = 3,
     timeout: float = 30.0,
@@ -673,6 +698,8 @@ def _build_runtime(
         debug=debug,
         security_mode=security_mode,
         api_version=api_version,
+        cost_metering=cost_metering,
+        extract_genai_body_attrs=extract_genai_body_attrs,
     )
     # Operator-facing PII banner fires BEFORE the disabled short-circuit.
     # Case we're guarding: operator turned on CHECKRD_DEBUG=1 AND has
@@ -810,6 +837,8 @@ def init(
     killswitch_file: Union[str, Path, None] = None,
     killswitch_poll_interval_secs: float = 5.0,
     security_mode: Optional[SecurityMode] = None,
+    cost_metering: Optional[bool] = None,
+    extract_genai_body_attrs: Optional[bool] = None,
     max_retries: int = 3,
     timeout: float = 30.0,
     connect_timeout: float = 5.0,
@@ -845,6 +874,8 @@ def init(
         debug=debug,
         security_mode=security_mode,
         on_telemetry_drop=on_telemetry_drop,
+        cost_metering=cost_metering,
+        extract_genai_body_attrs=extract_genai_body_attrs,
         max_retries=max_retries,
         timeout=timeout,
         connect_timeout=connect_timeout,

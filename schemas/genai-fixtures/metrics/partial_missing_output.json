@@ -1,0 +1,110 @@
+{
+  "name": "partial_missing_output",
+  "comment": "An event with only input tokens records the input series only; duration always records.",
+  "events": [
+    {
+      "gen_ai.provider.name": "cohere",
+      "gen_ai.operation.name": "chat",
+      "gen_ai.request.model": "command-r-plus",
+      "latency_ms": 800,
+      "gen_ai.usage.input_tokens": 300
+    }
+  ],
+  "expected": {
+    "gen_ai.client.token.usage": {
+      "unit": "{token}",
+      "bounds": [
+        1,
+        4,
+        16,
+        64,
+        256,
+        1024,
+        4096,
+        16384,
+        65536,
+        262144,
+        1048576,
+        4194304,
+        16777216,
+        67108864
+      ],
+      "data_points": [
+        {
+          "attributes": {
+            "gen_ai.provider.name": "cohere",
+            "gen_ai.operation.name": "chat",
+            "gen_ai.request.model": "command-r-plus",
+            "gen_ai.token.type": "input"
+          },
+          "count": 1,
+          "sum": 300,
+          "bucket_counts": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    "gen_ai.client.operation.duration": {
+      "unit": "s",
+      "bounds": [
+        0.01,
+        0.02,
+        0.04,
+        0.08,
+        0.16,
+        0.32,
+        0.64,
+        1.28,
+        2.56,
+        5.12,
+        10.24,
+        20.48,
+        40.96,
+        81.92
+      ],
+      "data_points": [
+        {
+          "attributes": {
+            "gen_ai.provider.name": "cohere",
+            "gen_ai.operation.name": "chat",
+            "gen_ai.request.model": "command-r-plus"
+          },
+          "count": 1,
+          "sum": 0.8,
+          "bucket_counts": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -131,6 +131,47 @@ class TestBatcherForkSafety:
         finally:
             batcher.stop()
 
+    def test_reinit_after_fork_resets_queue_bytes(self) -> None:
+        """The fork handler must zero ``_queue_bytes`` alongside ``_buffer``.
+
+        ``_queue_bytes`` is the byte accountant behind byte-backpressure. If
+        the child inherits the parent's byte total against a freshly-emptied
+        buffer, backpressure starts wrong and can drop events even though
+        nothing is queued. Regression guard for the reset omission.
+        """
+        from checkrd.batcher import TelemetryBatcher
+
+        engine = MagicMock()
+        engine.sign_telemetry_batch.return_value = {
+            "content_digest": "d",
+            "signature_input": "si",
+            "signature": "s",
+            "instance_id": "iid",
+            "expires": 0,
+        }
+        batcher = TelemetryBatcher(
+            base_url="http://localhost:8080",
+            api_key="ck_test_fake",
+            engine=engine,
+            signer_agent_id="test-agent",
+        )
+        try:
+            # Inflate the parent's byte accountant + buffer, as if events had
+            # been queued before the fork.
+            batcher._queue_bytes = 5_000_000
+            batcher._buffer.append({"event_id": "parent"})
+
+            # Simulate the child immediately after fork: PID differs, so the
+            # os.register_at_fork handler invokes _reinit_after_fork.
+            batcher._pid = -1
+            batcher._reinit_after_fork()
+
+            assert batcher._pid == os.getpid()
+            assert batcher._queue_bytes == 0
+            assert batcher._buffer == []
+        finally:
+            batcher.stop()
+
     def test_live_batchers_registry_tracks_construction(self) -> None:
         """New batchers register themselves in ``_LIVE_BATCHERS`` so the
         fork handler can find them. The set is held weakly — once a

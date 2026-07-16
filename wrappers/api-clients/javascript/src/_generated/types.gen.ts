@@ -521,6 +521,24 @@ export type ControlInit = {
     policy_envelope?: {
         [key: string]: unknown;
     };
+    /**
+     * SHA-256 of the active pricing bundle, lowercase hex. The price-table
+     * analogue of `active_policy_hash` — lets a reconnecting SDK skip the
+     * pricing install when nothing changed. `None` until a pricing bundle is
+     * active (M-14 wires the catalog storage that populates it; M-13 ships
+     * the wire field and the signing channel).
+     */
+    active_pricing_hash?: string | null;
+    /**
+     * DSSE-signed pricing envelope (`PricingBundle` payload type), identical
+     * to the one returned by `GET /v1/agents/{agent_id}/control/state`. The
+     * price-table analogue of `policy_envelope`; the SDK verifies it in-WASM
+     * against its pinned trust list before installing. `None` until a pricing
+     * catalog exists (M-14).
+     */
+    pricing_envelope?: {
+        [key: string]: unknown;
+    };
 };
 
 /**
@@ -564,6 +582,37 @@ export type ControlPolicyUpdatedEvent = {
 };
 
 /**
+ * `pricing_updated` SSE event payload — emitted whenever a new pricing
+ * bundle version is activated. The price-table analogue of
+ * [`ControlPolicyUpdatedEvent`].
+ *
+ * `pricing_envelope` is a DSSE envelope (`PricingBundle` payload type) that
+ * the SDK verifies in-WASM against its pinned trust list before installing.
+ * A tampered price table is an integrity attack on money, so it rides the
+ * same strong-from-the-ground-up distribution path as the policy bundle:
+ * there is no unsigned pricing path.
+ */
+export type ControlPricingUpdatedEvent = {
+    /**
+     * Monotonic pricing-bundle version. Used by the SDK to enforce rollback
+     * protection: a bundle with `version <= last_pricing_version` is rejected
+     * (the TUF "never replace with a lower version number" rule).
+     */
+    version: number;
+    /**
+     * SHA-256 of the pricing bundle, lowercase hex.
+     */
+    hash: string;
+    /**
+     * DSSE envelope wrapping the canonical `PricingBundle` JSON.
+     * Verified in-WASM by the SDK.
+     */
+    pricing_envelope: {
+        [key: string]: unknown;
+    };
+};
+
+/**
  * `GET /v1/agents/{agent_id}/control/state` response body — the
  * JSON polling fallback for SDKs that cannot hold an SSE
  * connection (e.g., serverless runtimes with hard request budgets).
@@ -589,6 +638,22 @@ export type ControlState = {
      * no unsigned distribution path.
      */
     policy_envelope?: {
+        [key: string]: unknown;
+    };
+    /**
+     * SHA-256 of the active pricing bundle, lowercase hex. Same value as
+     * `ControlInit.active_pricing_hash` so the SDK's hash-based idempotency
+     * cache works identically across the SSE and poll paths. `None` until a
+     * pricing bundle is active (M-14 wires the catalog storage).
+     */
+    active_pricing_hash?: string | null;
+    /**
+     * DSSE-signed pricing envelope. `None` until the agent's org has an
+     * active pricing catalog (M-14). The price-table analogue of
+     * `policy_envelope`: after the first pricing bundle exists this field is
+     * always present — there is no unsigned pricing distribution path.
+     */
+    pricing_envelope?: {
         [key: string]: unknown;
     };
 };
@@ -1384,6 +1449,16 @@ export type OrgStats = {
      * Sourced from Aurora, not ClickHouse.
      */
     total_agents: number;
+    /**
+     * M-16: total core-computed spend in the window, integer micro-USD.
+     * Divide by 1_000_000 for USD. 0 when no events were priced.
+     */
+    total_cost_micros: number;
+    /**
+     * M-16: events settled against a pricing bundle (`pricing_status='priced'`).
+     * `priced_calls / total_calls` is the %-priced coverage KPI.
+     */
+    priced_calls: number;
 };
 
 /**
@@ -2060,6 +2135,39 @@ export type TelemetryEventRow = {
      * recorded.
      */
     evaluation_path?: string | null;
+    /**
+     * OTel `gen_ai.operation.name` (e.g. `chat`, `embeddings`).
+     */
+    gen_ai_operation?: string | null;
+    /**
+     * Cache-read input token count.
+     */
+    gen_ai_cache_read_input_tokens?: number | null;
+    /**
+     * Cache-creation input token count.
+     */
+    gen_ai_cache_creation_input_tokens?: number | null;
+    /**
+     * Reasoning output token count.
+     */
+    gen_ai_reasoning_output_tokens?: number | null;
+    /**
+     * Cost in integer micro-USD, computed in the WASM core from the
+     * signed pricing bundle.
+     */
+    cost_usd_micros?: number | null;
+    /**
+     * ISO 4217 alphabetic currency code (constant `"USD"` in v1).
+     */
+    currency?: string | null;
+    /**
+     * Pricing-bundle version the cost was computed against.
+     */
+    pricing_bundle_version?: number | null;
+    /**
+     * `priced` | `unpriced_model` | `untallied` | `disabled`.
+     */
+    pricing_status?: string | null;
 };
 
 /**
@@ -2156,6 +2264,14 @@ export type TimeseriesBucket = {
     allowed: number;
     denied: number;
     error: number;
+    /**
+     * M-16: summed core-computed cost in this bucket, integer micro-USD.
+     */
+    cost_micros: number;
+    /**
+     * M-16: events in this bucket settled against a bundle (`pricing_status='priced'`).
+     */
+    priced: number;
 };
 
 /**

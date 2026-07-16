@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 from unittest.mock import Mock
 
@@ -666,6 +667,195 @@ class TestBuildEvalKwargsBodyExtraction:
         header_dict = dict(kwargs["headers"])
         assert header_dict["authorization"] == "Bearer tok"
         assert header_dict["accept"] == "application/json"
+
+
+class TestEngineRuntimeError:
+    """A runtime fault raised by ``engine.evaluate()`` on the hot path (a
+    wasmtime trap, a sandbox OOM, a null-pointer result) must honor
+    ``security_mode``:
+
+    - permissive → fail OPEN: the user's real API call still goes through
+      unbroken (the pass-through contract).
+    - strict     → fail CLOSED: the request is denied, exactly like a policy
+      deny, and never reaches upstream.
+
+    Before the fix, the unguarded ``evaluate()`` call let the trap propagate
+    out of the transport and break the user's call EVEN in permissive mode.
+    """
+
+    def test_sync_permissive_fails_open(
+        self, mock_transport: Mock, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        engine = Mock(spec=WasmEngine)
+        engine.evaluate.side_effect = RuntimeError("simulated wasmtime trap")
+        transport = CheckrdTransport(mock_transport, engine, security_mode="permissive")
+
+        request = httpx.Request("GET", "https://api.example.com/resource")
+        with caplog.at_level("WARNING", logger="checkrd"):
+            response = transport.handle_request(request)
+
+        # The engine was consulted (and blew up), but the upstream call still
+        # went through and returned unbroken.
+        engine.evaluate.assert_called_once()
+        assert response.status_code == 200
+        mock_transport.handle_request.assert_called_once()
+        assert any(
+            "permissive" in r.getMessage() or "OPEN" in r.getMessage()
+            for r in caplog.records
+        )
+
+    def test_sync_strict_fails_closed(self, mock_transport: Mock) -> None:
+        engine = Mock(spec=WasmEngine)
+        engine.evaluate.side_effect = RuntimeError("simulated wasmtime trap")
+        transport = CheckrdTransport(mock_transport, engine, security_mode="strict")
+
+        request = httpx.Request("GET", "https://api.example.com/resource")
+        with pytest.raises(CheckrdPolicyDenied) as exc_info:
+            transport.handle_request(request)
+
+        assert exc_info.value.code == "policy_engine_error"
+        # Fail-closed: the request must never have reached upstream.
+        mock_transport.handle_request.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_async_permissive_fails_open(
+        self, mock_async_transport: Mock, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        engine = Mock(spec=WasmEngine)
+        engine.evaluate.side_effect = RuntimeError("simulated wasmtime trap")
+        transport = CheckrdAsyncTransport(
+            mock_async_transport, engine, security_mode="permissive"
+        )
+
+        request = httpx.Request("GET", "https://api.example.com/resource")
+        with caplog.at_level("WARNING", logger="checkrd"):
+            response = await transport.handle_async_request(request)
+
+        engine.evaluate.assert_called_once()
+        assert response.status_code == 200
+        mock_async_transport.handle_async_request.assert_called_once()
+        assert any(
+            "permissive" in r.getMessage() or "OPEN" in r.getMessage()
+            for r in caplog.records
+        )
+
+    @pytest.mark.asyncio
+    async def test_async_strict_fails_closed(self, mock_async_transport: Mock) -> None:
+        engine = Mock(spec=WasmEngine)
+        engine.evaluate.side_effect = RuntimeError("simulated wasmtime trap")
+        transport = CheckrdAsyncTransport(
+            mock_async_transport, engine, security_mode="strict"
+        )
+
+        request = httpx.Request("GET", "https://api.example.com/resource")
+        with pytest.raises(CheckrdPolicyDenied) as exc_info:
+            await transport.handle_async_request(request)
+
+        assert exc_info.value.code == "policy_engine_error"
+        mock_async_transport.handle_async_request.assert_not_called()
+
+    def test_sync_default_mode_fails_closed(self, mock_transport: Mock) -> None:
+        """The default security_mode is strict, so an engine fault with no
+        explicit mode must also fail closed."""
+        engine = Mock(spec=WasmEngine)
+        engine.evaluate.side_effect = RuntimeError("boom")
+        transport = CheckrdTransport(mock_transport, engine)  # default mode
+
+        with pytest.raises(CheckrdPolicyDenied):
+            transport.handle_request(httpx.Request("GET", "https://api.example.com/x"))
+        mock_transport.handle_request.assert_not_called()
+
+
+class TestCostMeteringForwarding:
+    """The sync allow-path must settle cost when metering is wired, at parity
+    with the async allow-path and both deny-paths. Before the fix the sync
+    allow-path called ``_log_telemetry`` WITHOUT ``engine=``/``cost_metering=``,
+    so cost was silently dropped for every allowed sync request — the common
+    case (allowed LLM calls are exactly the ones with billable usage).
+    """
+
+    @staticmethod
+    def _priced_engine() -> Mock:
+        engine = Mock(spec=WasmEngine)
+        engine.evaluate.return_value = EvalResult(
+            allowed=True,
+            deny_reason=None,
+            telemetry_json=json.dumps(
+                {
+                    "request": {
+                        "url_host": "api.openai.com",
+                        "url_path": "/v1/chat/completions",
+                    },
+                    "gen_ai.response.model": "gpt-4o",
+                    "gen_ai.usage.input_tokens": 1000,
+                    "gen_ai.usage.output_tokens": 500,
+                }
+            ),
+            request_id="req-cost",
+        )
+        engine.get_active_pricing_version.return_value = 7
+        engine.settle_usage.return_value = {
+            "cost_usd_micros": 12_345,
+            "currency": "USD",
+            "pricing_bundle_version": 7,
+            "pricing_status": "priced",
+            "overflow": False,
+            "sku_id": "openai-gpt-4o",
+        }
+        return engine
+
+    def test_sync_allow_path_settles_cost_when_wired(self, mock_transport: Mock) -> None:
+        engine = self._priced_engine()
+        batcher = Mock()
+        transport = CheckrdTransport(
+            mock_transport, engine, batcher=batcher, cost_metering=True
+        )
+        request = httpx.Request("GET", "https://api.openai.com/v1/chat/completions")
+        transport.handle_request(request)
+
+        # The engine's price table was consulted and the usage settled.
+        engine.settle_usage.assert_called_once()
+        # The cost landed on the enqueued telemetry event.
+        assert batcher.enqueue.call_count == 1
+        enqueued = batcher.enqueue.call_args[0][0]
+        assert enqueued["cost_usd_micros"] == 12_345
+        assert enqueued["pricing_status"] == "priced"
+
+    def test_sync_allow_path_skips_cost_when_metering_off(self, mock_transport: Mock) -> None:
+        """Parity guard the other way: cost_metering off ⇒ the sync allow-path
+        must NOT touch the settle FFI or stamp cost fields."""
+        engine = self._priced_engine()
+        batcher = Mock()
+        transport = CheckrdTransport(
+            mock_transport, engine, batcher=batcher, cost_metering=False
+        )
+        transport.handle_request(
+            httpx.Request("GET", "https://api.openai.com/v1/chat/completions")
+        )
+
+        engine.settle_usage.assert_not_called()
+        enqueued = batcher.enqueue.call_args[0][0]
+        assert "cost_usd_micros" not in enqueued
+
+    @pytest.mark.asyncio
+    async def test_async_allow_path_settles_cost_when_wired(
+        self, mock_async_transport: Mock
+    ) -> None:
+        """Parity: the async allow-path already forwarded the metering wiring;
+        pin it so the two transports never diverge again."""
+        engine = self._priced_engine()
+        batcher = Mock()
+        transport = CheckrdAsyncTransport(
+            mock_async_transport, engine, batcher=batcher, cost_metering=True
+        )
+        request = httpx.Request("GET", "https://api.openai.com/v1/chat/completions")
+        await transport.handle_async_request(request)
+
+        engine.settle_usage.assert_called_once()
+        assert batcher.enqueue.call_count == 1
+        enqueued = batcher.enqueue.call_args[0][0]
+        assert enqueued["cost_usd_micros"] == 12_345
+        assert enqueued["pricing_status"] == "priced"
 
 
 class TestHeaderSanitization:

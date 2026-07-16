@@ -358,5 +358,13 @@ class HttpxClientInstrumentor(Instrumentor):
             on_allow=context.on_allow,
             before_request=context.before_request,
             security_mode=context.settings.security_mode,
+            # Cost metering + body/stream usage extraction (both default-off) so
+            # an instrumented vendor client (checkrd.instrument_openai(), etc.)
+            # meters cost identically to a ``checkrd.wrap()``-ed client — the
+            # transport is the same, so the same LLM calls should price the same
+            # way regardless of how the SDK was wired. Inert unless the operator
+            # opts in and a signed pricing bundle is installed.
+            cost_metering=context.settings.cost_metering,
+            extract_genai_body_attrs=context.settings.extract_genai_body_attrs,
         )
         http_client._transport = new_transport

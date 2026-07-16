@@ -46,6 +46,11 @@ dev = [
     "openapi-python-client>=0.21,<0.30",
     "ruff>=0.4",
     "mypy>=1.0",
+    # Test runner + httpx mock transport for the hand-written facade
+    # tests under tests/ (respx mirrors how OpenAI/Anthropic test theirs).
+    "pytest>=7",
+    "pytest-asyncio>=0.23",
+    "respx>=0.21",
 ]
 
 [tool.setuptools]

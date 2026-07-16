@@ -76,17 +76,59 @@ class TestCheckrdASGIMiddleware:
         assert status == 200
         assert body == b"hello"
 
-    def test_converts_policy_deny_to_403_json(self) -> None:
+    def test_converts_policy_deny_to_403_problem_json(self) -> None:
         wrapped = CheckrdASGIMiddleware(_deny_app)
         status, headers, body = asyncio.run(_drive_request(wrapped))
         assert status == 403
-        assert headers[b"content-type"] == b"application/json"
+        assert headers[b"content-type"] == b"application/problem+json"
+        # RFC 9457 flat document — no nested ``error`` envelope.
         payload = json.loads(body)
-        assert payload["error"]["type"] == "policy_denied"
-        assert payload["error"]["message"] == "blocked by rule 'no-deletes'"
-        assert payload["error"]["request_id"] == "req_abc"
-        assert payload["error"]["dashboard_url"] == "https://app.checkrd.io/events/req_abc"
-        assert payload["error"]["docs_url"].startswith("https://checkrd.io/errors/")
+        assert "error" not in payload
+        assert payload["type"] == "https://checkrd.io/errors/policy_denied"
+        assert payload["title"] == "Request denied by policy"
+        assert payload["status"] == 403
+        assert payload["detail"] == "blocked by rule 'no-deletes'"
+        assert payload["code"] == "policy_denied"
+        assert payload["request_id"] == "req_abc"
+        assert payload["dashboard_url"] == "https://app.checkrd.io/events/req_abc"
+
+    def test_problem_includes_rule_and_suggestion_extensions(self) -> None:
+        async def deny_rich(
+            scope: dict[str, Any],
+            receive: Any,
+            send: Any,
+        ) -> None:
+            raise CheckrdPolicyDenied(
+                reason="denied by rule 'no-deletes'",
+                request_id="req_abc",
+                rule_name="no-deletes",
+                suggestion="Use the soft-delete endpoint instead.",
+            )
+
+        wrapped = CheckrdASGIMiddleware(deny_rich)
+        _status, _headers, body = asyncio.run(_drive_request(wrapped))
+        payload = json.loads(body)
+        assert payload["rule_name"] == "no-deletes"
+        assert payload["suggestion"] == "Use the soft-delete endpoint instead."
+
+    def test_omits_extensions_when_absent(self) -> None:
+        # A default-deny carries no rule_name / suggestion — those
+        # extension members must be omitted, but dashboard_url stays
+        # (possibly None) so clients can rely on the key.
+        async def deny_bare(
+            scope: dict[str, Any],
+            receive: Any,
+            send: Any,
+        ) -> None:
+            raise CheckrdPolicyDenied(reason="blocked", request_id="r")
+
+        wrapped = CheckrdASGIMiddleware(deny_bare)
+        _status, _headers, body = asyncio.run(_drive_request(wrapped))
+        payload = json.loads(body)
+        assert "rule_name" not in payload
+        assert "suggestion" not in payload
+        assert "dashboard_url" in payload
+        assert payload["dashboard_url"] is None
 
     def test_preserves_dashboard_url_default(self) -> None:
         async def deny_no_dashboard(
@@ -105,7 +147,7 @@ class TestCheckrdASGIMiddleware:
         )
         _status, _headers, body = asyncio.run(_drive_request(wrapped))
         payload = json.loads(body)
-        assert payload["error"]["dashboard_url"] == "https://my.checkrd.example/"
+        assert payload["dashboard_url"] == "https://my.checkrd.example/"
 
     def test_skips_non_http_scopes(self) -> None:
         # Lifespan / websocket scopes pass straight through. We

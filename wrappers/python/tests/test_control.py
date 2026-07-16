@@ -7,14 +7,14 @@ import json
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Iterator, Optional
+from typing import Any, Iterator, Optional, Union
 from unittest.mock import Mock, patch
 
 import httpx
 import pytest
 
 from checkrd.control import AuthError, ControlReceiver, _INITIAL_BACKOFF, _MAX_BACKOFF
-from tests.conftest import wait_for
+from tests.conftest import requires_wasm, wait_for
 from checkrd.engine import WasmEngine
 from checkrd.exceptions import PolicySignatureError
 
@@ -51,8 +51,14 @@ def fake_sse_source(events: list[FakeSSE]) -> Iterator[Mock]:
     yield source
 
 
-def make_receiver(engine: Optional[Mock] = None) -> ControlReceiver:
-    """Create a ControlReceiver with defaults for testing."""
+def make_receiver(engine: Optional[Union[Mock, WasmEngine]] = None) -> ControlReceiver:
+    """Create a ControlReceiver with defaults for testing.
+
+    ``engine`` is a ``Mock(spec=WasmEngine)`` for the unit tests that assert on
+    FFI call args, or a real :class:`WasmEngine` for the pricing-consume tests
+    (``TestPricingConsume``) that prove the version goes live through the actual
+    DSSE verifier.
+    """
     return ControlReceiver(
         base_url="http://localhost:8080",
         agent_id="test-agent-id",
@@ -1222,3 +1228,545 @@ class TestPolicyVersionPersistence:
             receiver._handle_event(sse)  # must not raise
 
         engine.reload_policy_signed.assert_called_once()
+
+
+# ============================================================
+# Cost-metering consume path (M-14): pricing bundles go live
+# ============================================================
+#
+# These tests exercise the wiring that makes cost metering LIVE: the control
+# receiver installs the signed PRICING envelope the server delivers on `init`
+# / `pricing_updated` / poll, so `engine.get_active_pricing_version()` becomes
+# > 0 and the settle path runs. Unlike the policy tests above (which mock the
+# engine at the FFI boundary), these use a REAL WasmEngine so the headline
+# assertion — "version > 0 after a received bundle" — is proven end to end
+# through the actual DSSE verifier. The ephemeral signing key is pinned via the
+# pricing trust override, mirroring the interop pattern in test_pricing.py.
+
+_PRICING_PAYLOAD_TYPE = "application/vnd.checkrd.pricing-bundle+json"
+_POLICY_PAYLOAD_TYPE = "application/vnd.checkrd.policy-bundle+json"
+_PRICING_MAX_AGE_SECS = 86_400
+
+
+def _require_cryptography() -> None:
+    try:
+        import cryptography  # noqa: F401
+    except ImportError:
+        pytest.skip("PyCA cryptography not installed; skipping pricing-consume suite")
+
+
+def _pricing_keypair() -> tuple[bytes, bytes]:
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    sk = Ed25519PrivateKey.generate()
+    return sk.private_bytes_raw(), sk.public_key().public_bytes_raw()
+
+
+def _pae(payload_type: str, payload: bytes) -> bytes:
+    """DSSE PAE, reconstructed in pure Python (secure-systems-lab/dsse)."""
+    return (
+        b"DSSEv1 "
+        + str(len(payload_type)).encode()
+        + b" "
+        + payload_type.encode()
+        + b" "
+        + str(len(payload)).encode()
+        + b" "
+        + payload
+    )
+
+
+def _sample_pricing_skus() -> list[dict[str, Any]]:
+    """Byte-for-byte the anthropic catch-all SKU from crates/core sample_skus."""
+    return [
+        {
+            "sku_id": "anthropic-default",
+            "provider": "anthropic",
+            "model_match": "**",
+            "unit": "per_1m_tokens",
+            "input_usd_micros_per_unit": 1_000_000,
+            "output_usd_micros_per_unit": 5_000_000,
+            "cache_read_usd_micros_per_unit": None,
+            "cache_write_usd_micros_per_unit": None,
+            "default_max_output_tokens": 4096,
+            "effective_from": 1_700_000_000,
+            "deprecated_after": None,
+            "source": "list",
+        }
+    ]
+
+
+def _build_pricing_bundle_bytes(version: int, signed_at: Optional[int] = None) -> bytes:
+    bundle = {
+        "schema_version": 1,
+        "version": version,
+        "signed_at": int(time.time()) if signed_at is None else signed_at,
+        "rounding": "half_up",
+        "skus": _sample_pricing_skus(),
+    }
+    return json.dumps(bundle).encode()
+
+
+def _sign_pricing_envelope(
+    sk_bytes: bytes,
+    keyid: str,
+    payload_bytes: bytes,
+    payload_type: str = _PRICING_PAYLOAD_TYPE,
+) -> dict[str, Any]:
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    sig = Ed25519PrivateKey.from_private_bytes(sk_bytes).sign(_pae(payload_type, payload_bytes))
+    return {
+        "payloadType": payload_type,
+        "payload": base64.b64encode(payload_bytes).decode(),
+        "signatures": [{"keyid": keyid, "sig": base64.b64encode(sig).decode()}],
+    }
+
+
+def _pricing_trust_list(pk_bytes: bytes, keyid: str) -> list[dict[str, Any]]:
+    return [
+        {"keyid": keyid, "public_key_hex": pk_bytes.hex(), "valid_from": 0, "valid_until": 2**63}
+    ]
+
+
+def _real_engine() -> WasmEngine:
+    """A real WASM engine (permissive policy) for the pricing-consume tests."""
+    return WasmEngine(
+        policy_json=json.dumps(
+            {"agent": "t", "mode": "enforce", "default": "allow", "rules": []}
+        ),
+        agent_id="pricing-consume-agent",
+    )
+
+
+@requires_wasm
+class TestPricingConsume:
+    """The M-14 money path: received signed pricing bundles install and meter."""
+
+    @pytest.fixture(autouse=True)
+    def _sandbox_pricing_state(self, tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Redirect pricing-state persistence into tmp so tests never write to
+        the user's ~/.checkrd, and never leak state between tests."""
+        monkeypatch.setenv("CHECKRD_CONFIG_DIR", str(tmp_path))
+
+    def _pin_pricing_key(self, monkeypatch: pytest.MonkeyPatch, pk_bytes: bytes, keyid: str) -> None:
+        """Pin an ephemeral pricing key via the pricing trust override + gate."""
+        monkeypatch.setenv("CHECKRD_ALLOW_TRUST_OVERRIDE", "1")
+        monkeypatch.setenv(
+            "CHECKRD_PRICING_TRUST_OVERRIDE_JSON",
+            json.dumps(_pricing_trust_list(pk_bytes, keyid)),
+        )
+
+    def test_init_event_installs_pricing_bundle_version_goes_live(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """HEADLINE: a received ``init`` event carrying a valid signed
+        ``pricing_envelope`` results in ``get_active_pricing_version() ==``
+        the bundle version. This is the exact path that takes cost metering
+        from dormant (version 0) to live."""
+        _require_cryptography()
+        skb, pkb = _pricing_keypair()
+        self._pin_pricing_key(monkeypatch, pkb, "cp")
+
+        engine = _real_engine()
+        assert engine.get_active_pricing_version() == 0  # dormant before install
+
+        receiver = make_receiver(engine)
+        envelope = _sign_pricing_envelope(skb, "cp", _build_pricing_bundle_bytes(version=7))
+        sse = FakeSSE(
+            event="init",
+            data=json.dumps(
+                {
+                    "kill_switch_active": False,
+                    "pricing_envelope": envelope,
+                    "active_pricing_hash": "a" * 64,
+                }
+            ),
+        )
+        receiver._handle_event(sse)
+
+        # Cost metering is now LIVE.
+        assert engine.get_active_pricing_version() == 7
+        # And the settle path actually computes cost off the installed table.
+        settled = engine.settle_usage(
+            "req-live",
+            json.dumps(
+                {
+                    "provider": "anthropic",
+                    "model": "claude-sonnet-4-5",
+                    "input_tokens": 1000,
+                    "output_tokens": 0,
+                }
+            ),
+        )
+        assert settled["pricing_status"] == "priced"
+        assert settled["pricing_bundle_version"] == 7
+        assert settled["cost_usd_micros"] == 1000  # 1000 in @ $1/1M
+
+    def test_pricing_updated_installs_higher_version(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A ``pricing_updated`` SSE event installs a newer price table; the
+        active version advances."""
+        _require_cryptography()
+        skb, pkb = _pricing_keypair()
+        self._pin_pricing_key(monkeypatch, pkb, "cp")
+
+        engine = _real_engine()
+        receiver = make_receiver(engine)
+
+        # Bootstrap at v3 via init.
+        receiver._handle_event(
+            FakeSSE(
+                event="init",
+                data=json.dumps(
+                    {
+                        "kill_switch_active": False,
+                        "pricing_envelope": _sign_pricing_envelope(
+                            skb, "cp", _build_pricing_bundle_bytes(version=3)
+                        ),
+                        "active_pricing_hash": "a" * 64,
+                    }
+                ),
+            )
+        )
+        assert engine.get_active_pricing_version() == 3
+
+        # A higher version arrives on pricing_updated.
+        receiver._handle_event(
+            FakeSSE(
+                event="pricing_updated",
+                data=json.dumps(
+                    {
+                        "version": 9,
+                        "hash": "b" * 64,
+                        "pricing_envelope": _sign_pricing_envelope(
+                            skb, "cp", _build_pricing_bundle_bytes(version=9)
+                        ),
+                    }
+                ),
+            )
+        )
+        assert engine.get_active_pricing_version() == 9
+
+    def test_pricing_rollback_is_rejected_fail_open_no_raise(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A rollback (lower version) is rejected by the monotonic check; the
+        previous version stays and NO exception propagates (fail-open)."""
+        _require_cryptography()
+        skb, pkb = _pricing_keypair()
+        self._pin_pricing_key(monkeypatch, pkb, "cp")
+
+        engine = _real_engine()
+        receiver = make_receiver(engine)
+
+        receiver._handle_event(
+            FakeSSE(
+                event="pricing_updated",
+                data=json.dumps(
+                    {
+                        "version": 5,
+                        "hash": "a" * 64,
+                        "pricing_envelope": _sign_pricing_envelope(
+                            skb, "cp", _build_pricing_bundle_bytes(version=5)
+                        ),
+                    }
+                ),
+            )
+        )
+        assert engine.get_active_pricing_version() == 5
+
+        # Replay an older (v2) signed bundle → rollback.
+        with caplog.at_level("WARNING", logger="checkrd"):
+            receiver._handle_event(  # must NOT raise
+                FakeSSE(
+                    event="pricing_updated",
+                    data=json.dumps(
+                        {
+                            "version": 2,
+                            "hash": "c" * 64,  # different hash so no short-circuit
+                            "pricing_envelope": _sign_pricing_envelope(
+                                skb, "cp", _build_pricing_bundle_bytes(version=2)
+                            ),
+                        }
+                    ),
+                )
+            )
+
+        # Previous version untouched; rejection logged as a warning.
+        assert engine.get_active_pricing_version() == 5
+        assert any(
+            "pricing update rejected" in r.message and "fail-open" in r.message
+            for r in caplog.records
+        )
+
+    def test_identical_init_hash_short_circuits_ffi(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Hash-cache: a second identical envelope/hash does NOT re-invoke the
+        FFI install (same-hash short-circuit), mirroring the policy hash-cache.
+        We prove the short-circuit by spying on the engine's
+        reload_pricing_signed after the first install."""
+        _require_cryptography()
+        skb, pkb = _pricing_keypair()
+        self._pin_pricing_key(monkeypatch, pkb, "cp")
+
+        engine = _real_engine()
+        receiver = make_receiver(engine)
+
+        envelope = _sign_pricing_envelope(skb, "cp", _build_pricing_bundle_bytes(version=4))
+        init_data = json.dumps(
+            {
+                "kill_switch_active": False,
+                "pricing_envelope": envelope,
+                "active_pricing_hash": "d" * 64,
+            }
+        )
+        # First install (real FFI) → version live and hash cached.
+        receiver._handle_event(FakeSSE(event="init", data=init_data))
+        assert engine.get_active_pricing_version() == 4
+        assert receiver._last_installed_pricing_hash == "d" * 64
+
+        # Now wrap the real method to detect any second FFI call.
+        called = {"n": 0}
+        real_reload = engine.reload_pricing_signed
+
+        def counting_reload(*args: Any, **kwargs: Any) -> None:
+            called["n"] += 1
+            return real_reload(*args, **kwargs)
+
+        with patch.object(engine, "reload_pricing_signed", side_effect=counting_reload):
+            # Same hash again → must short-circuit, no FFI call.
+            receiver._handle_event(FakeSSE(event="init", data=init_data))
+
+        assert called["n"] == 0, "identical-hash re-apply must skip the FFI install"
+        assert engine.get_active_pricing_version() == 4  # unchanged
+
+    def test_trust_isolation_policy_key_cannot_install_pricing(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """SECURITY: a pricing bundle signed by a key that is in the POLICY
+        trust list but NOT the pricing trust list is REJECTED — proving
+        _apply_pricing_update verifies against the pricing roots, never the
+        policy roots. Fail-open: rejection logs a warning, does not raise, and
+        leaves metering dormant (version 0)."""
+        _require_cryptography()
+        skb, pkb = _pricing_keypair()
+
+        # Put the key in the POLICY trust list only. The pricing trust list is
+        # a DIFFERENT (disjoint) key so verification under pricing roots fails.
+        _other_sk, other_pk = _pricing_keypair()
+        monkeypatch.setenv("CHECKRD_ALLOW_TRUST_OVERRIDE", "1")
+        monkeypatch.setenv(
+            "CHECKRD_POLICY_TRUST_OVERRIDE_JSON",
+            json.dumps(_pricing_trust_list(pkb, "signer")),  # signer trusted for POLICY
+        )
+        monkeypatch.setenv(
+            "CHECKRD_PRICING_TRUST_OVERRIDE_JSON",
+            json.dumps(_pricing_trust_list(other_pk, "other")),  # a DIFFERENT pricing key
+        )
+
+        engine = _real_engine()
+        receiver = make_receiver(engine)
+
+        # Validly-signed pricing bundle, under the correct pricing payload type,
+        # by the signer that is trusted for POLICY only.
+        envelope = _sign_pricing_envelope(skb, "signer", _build_pricing_bundle_bytes(version=1))
+        with caplog.at_level("WARNING", logger="checkrd"):
+            receiver._handle_event(  # must NOT raise
+                FakeSSE(
+                    event="pricing_updated",
+                    data=json.dumps(
+                        {"version": 1, "hash": "e" * 64, "pricing_envelope": envelope}
+                    ),
+                )
+            )
+
+        # REJECTED under the pricing roots → metering stays dormant.
+        assert engine.get_active_pricing_version() == 0
+        assert any("pricing update rejected" in r.message for r in caplog.records)
+
+    def test_trust_isolation_floor_correct_pricing_key_installs(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Floor for the isolation test: the SAME bundle DOES install when the
+        signer IS the pinned pricing key — proving the rejection above is the
+        trust-root separation, not an unrelated parse/format failure."""
+        _require_cryptography()
+        skb, pkb = _pricing_keypair()
+        self._pin_pricing_key(monkeypatch, pkb, "signer")
+
+        engine = _real_engine()
+        receiver = make_receiver(engine)
+        envelope = _sign_pricing_envelope(skb, "signer", _build_pricing_bundle_bytes(version=1))
+        receiver._handle_event(
+            FakeSSE(
+                event="pricing_updated",
+                data=json.dumps({"version": 1, "hash": "e" * 64, "pricing_envelope": envelope}),
+            )
+        )
+        assert engine.get_active_pricing_version() == 1
+
+    def test_stale_pricing_bundle_fail_open_no_raise(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A stale (too-old ``signed_at``) pricing bundle logs a warning and
+        does NOT raise; the receiver keeps running and metering stays dormant."""
+        _require_cryptography()
+        skb, pkb = _pricing_keypair()
+        self._pin_pricing_key(monkeypatch, pkb, "cp")
+
+        engine = _real_engine()
+        receiver = make_receiver(engine)
+
+        now = int(time.time())
+        stale = _build_pricing_bundle_bytes(version=1, signed_at=now - 25 * 3600)
+        with caplog.at_level("WARNING", logger="checkrd"):
+            receiver._handle_event(  # must NOT raise
+                FakeSSE(
+                    event="pricing_updated",
+                    data=json.dumps(
+                        {
+                            "version": 1,
+                            "hash": "f" * 64,
+                            "pricing_envelope": _sign_pricing_envelope(skb, "cp", stale),
+                        }
+                    ),
+                )
+            )
+
+        assert engine.get_active_pricing_version() == 0  # nothing installed
+        assert any(
+            "pricing update rejected" in r.message and "fail-open" in r.message
+            for r in caplog.records
+        )
+        # The receiver must still process a subsequent valid event.
+        receiver._handle_event(
+            FakeSSE(
+                event="pricing_updated",
+                data=json.dumps(
+                    {
+                        "version": 2,
+                        "hash": "0" * 64,
+                        "pricing_envelope": _sign_pricing_envelope(
+                            skb, "cp", _build_pricing_bundle_bytes(version=2)
+                        ),
+                    }
+                ),
+            )
+        )
+        assert engine.get_active_pricing_version() == 2
+
+    def test_poll_response_installs_pricing(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The poll fallback path installs pricing too (edge/browser SDKs that
+        never hold an SSE stream rely on this)."""
+        _require_cryptography()
+        skb, pkb = _pricing_keypair()
+        self._pin_pricing_key(monkeypatch, pkb, "cp")
+
+        engine = _real_engine()
+        receiver = make_receiver(engine)
+
+        envelope = _sign_pricing_envelope(skb, "cp", _build_pricing_bundle_bytes(version=6))
+        mock_resp = Mock()
+        mock_resp.json.return_value = {
+            "kill_switch_active": False,
+            "pricing_envelope": envelope,
+            "active_pricing_hash": "a" * 64,
+        }
+        mock_resp.raise_for_status = Mock()
+
+        client_instance = Mock()
+        client_instance.get.return_value = mock_resp
+        client_instance.__enter__ = Mock(return_value=client_instance)
+        client_instance.__exit__ = Mock(return_value=False)
+
+        with patch("checkrd.control.httpx.Client", return_value=client_instance):
+            receiver._poll_once()
+
+        assert engine.get_active_pricing_version() == 6
+
+    def test_pricing_updated_without_envelope_is_dropped(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A ``pricing_updated`` event missing ``pricing_envelope`` is dropped
+        with a warning — there is no unsigned pricing distribution path."""
+        self._pin_pricing_key(monkeypatch, _pricing_keypair()[1], "cp")
+        engine = _real_engine()
+        receiver = make_receiver(engine)
+
+        receiver._handle_event(
+            FakeSSE(event="pricing_updated", data=json.dumps({"version": 1, "hash": "a" * 64}))
+        )
+        assert engine.get_active_pricing_version() == 0
+
+    def test_oversized_pricing_update_is_dropped(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """An oversized ``pricing_updated`` event is dropped before json.loads
+        (OOM guard), the same as policy events."""
+        engine = _real_engine()
+        receiver = make_receiver(engine)
+        oversized = "z" * (10 * 1024 * 1024 + 1)
+        receiver._handle_event(FakeSSE(event="pricing_updated", data=oversized))  # no raise/OOM
+        assert engine.get_active_pricing_version() == 0
+
+    def test_pricing_persists_version_across_restart(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+    ) -> None:
+        """After a live install, the version is persisted; a fresh engine
+        re-seeded from disk via ``start`` rejects a replayed older bundle —
+        the rollback defense survives restart. Proves _apply_pricing_update
+        writes the version to disk (version-only, no envelope)."""
+        _require_cryptography()
+        skb, pkb = _pricing_keypair()
+        self._pin_pricing_key(monkeypatch, pkb, "cp")
+
+        # --- run 1: install v9 via a received bundle; version persists.
+        engine1 = _real_engine()
+        receiver1 = make_receiver(engine1)
+        receiver1._handle_event(
+            FakeSSE(
+                event="pricing_updated",
+                data=json.dumps(
+                    {
+                        "version": 9,
+                        "hash": "a" * 64,
+                        "pricing_envelope": _sign_pricing_envelope(
+                            skb, "cp", _build_pricing_bundle_bytes(version=9)
+                        ),
+                    }
+                ),
+            )
+        )
+        assert engine1.get_active_pricing_version() == 9
+
+        from checkrd._pricing_state import load_persisted_pricing_version
+
+        assert load_persisted_pricing_version() == 9  # written to CHECKRD_CONFIG_DIR
+
+        # --- run 2: fresh engine, restore the high-water mark via start(),
+        #     then a replayed v5 is rejected fail-open (version stays 9).
+        engine2 = _real_engine()
+        assert engine2.get_active_pricing_version() == 0
+        receiver2 = make_receiver(engine2)
+        with patch.object(receiver2, "_run_loop", lambda: receiver2._stop.wait()):
+            receiver2.start()
+            try:
+                assert engine2.get_active_pricing_version() == 9  # seeded from disk
+                receiver2._handle_event(  # replayed older bundle, must not raise
+                    FakeSSE(
+                        event="pricing_updated",
+                        data=json.dumps(
+                            {
+                                "version": 5,
+                                "hash": "b" * 64,
+                                "pricing_envelope": _sign_pricing_envelope(
+                                    skb, "cp", _build_pricing_bundle_bytes(version=5)
+                                ),
+                            }
+                        ),
+                    )
+                )
+                assert engine2.get_active_pricing_version() == 9  # rollback rejected
+            finally:
+                receiver2.stop()

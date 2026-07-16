@@ -33,6 +33,10 @@ export type {
   EvaluateRequest,
   Keypair,
   SignedBatch,
+  // Cost metering (M-12)
+  UsageInput,
+  SettleResult,
+  PricingStatus,
   WasmEngineOptions,
   WasmEngineCreateOptions,
   WasmSource,

@@ -502,34 +502,58 @@ def cmd_policy_verify_key(args: argparse.Namespace) -> int:
 
 
 def cmd_policy_trust_status(args: argparse.Namespace) -> int:
-    """Report trust-list state; exit 1 only when an empty list ships against prod.
+    """Report policy AND pricing trust-list state; exit 1 on any prod misconfig.
 
-    Maps the four states from :func:`checkrd._trust.production_trust_status`
-    onto exit codes:
+    Reports two structurally separate trust roots (TUF-style per-role key
+    separation): the policy roots
+    (:func:`checkrd._trust.production_trust_status`) and the cost-metering
+    pricing roots (:func:`checkrd._trust.production_pricing_trust_status`).
 
-    - ``ok``, ``override``, ``empty_dev`` → exit 0
-    - ``empty_production``                → exit 1
+    Each maps the four states onto a partial exit code:
 
-    The override case prints a warning so the CI logs surface that the
-    workflow is using a non-production trust set; only empty-against-prod
-    fails the build.
+    - ``ok``, ``override``, ``empty_dev`` → 0
+    - ``empty_production``                → 1
+
+    The command exits 1 when *either* root is ``empty_production`` — it gates
+    tag-triggered publishes of an SDK that ships both signed policy bundles
+    and signed price tables, so neither anchor may be empty against a
+    production endpoint. The override case prints a warning so CI logs surface
+    a non-production trust set; only empty-against-prod fails the build.
     """
-    from checkrd._trust import production_trust_status
+    from checkrd._trust import production_pricing_trust_status, production_trust_status
 
-    level, message = production_trust_status(base_url=args.base_url)
+    policy_level, policy_message = production_trust_status(base_url=args.base_url)
+    pricing_level, pricing_message = production_pricing_trust_status(base_url=args.base_url)
+
+    exit_code = 1 if "empty_production" in (policy_level, pricing_level) else 0
 
     if args.output_json:
         print(
             json.dumps(
-                {"level": level, "message": message, "base_url": args.base_url},
+                {
+                    "base_url": args.base_url,
+                    "policy": {"level": policy_level, "message": policy_message},
+                    "pricing": {"level": pricing_level, "message": pricing_message},
+                    "exit_code": exit_code,
+                },
                 indent=2,
             )
         )
     else:
-        prefix = "ok:" if level == "ok" else f"{level}:"
-        print(f"{prefix} {message}")
+        policy_prefix = "ok:" if policy_level == "ok" else f"{policy_level}:"
+        print(f"policy {policy_prefix} {policy_message}")
+        pricing_prefix = "ok:" if pricing_level == "ok" else f"{pricing_level}:"
+        print(f"pricing {pricing_prefix} {pricing_message}")
+        if pricing_level == "empty_dev":
+            # Distinct from the policy case pre-1.0: an empty pricing list is
+            # expected until the first signed pricing release. Flag it as
+            # informational so operators don't read it as a regression.
+            print(
+                "pricing note: pricing roots are empty by design until the "
+                "first signed price-table release; this does not block dev/test."
+            )
 
-    return 1 if level == "empty_production" else 0
+    return exit_code
 
 
 if __name__ == "__main__":  # pragma: no cover

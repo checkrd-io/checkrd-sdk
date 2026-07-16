@@ -1,0 +1,60 @@
+[
+  {
+    "name": "anthropic_messages_request",
+    "provider": "anthropic",
+    "request": { "body": { "model": "claude-sonnet-4-5", "messages": [{ "role": "user", "content": "hi" }], "stream": false } },
+    "expected_request_attrs": { "gen_ai.request.model": "claude-sonnet-4-5", "gen_ai.request.stream": false }
+  },
+  {
+    "name": "anthropic_response_cache_excluded_normalized_to_inclusive",
+    "provider": "anthropic",
+    "comment": "Anthropic's input_tokens (300) EXCLUDES cache_read (1000) and cache_creation (200). The extractor normalizes input to the inclusive total 1500 so detail <= total, matching the core settle netting (fresh = 1500 - 1000 - 200 = 300).",
+    "response": {
+      "body": {
+        "model": "claude-sonnet-4-5",
+        "usage": {
+          "input_tokens": 300,
+          "output_tokens": 350,
+          "cache_read_input_tokens": 1000,
+          "cache_creation_input_tokens": 200
+        }
+      }
+    },
+    "expected_response_attrs": {
+      "gen_ai.response.model": "claude-sonnet-4-5",
+      "gen_ai.usage.input_tokens": 1500,
+      "gen_ai.usage.output_tokens": 350,
+      "gen_ai.usage.cache_read.input_tokens": 1000,
+      "gen_ai.usage.cache_creation.input_tokens": 200
+    }
+  },
+  {
+    "name": "anthropic_response_cache_read_only",
+    "provider": "anthropic",
+    "comment": "Only cache_read present; input normalized to 100 + 900 = 1000.",
+    "response": { "body": { "model": "claude-haiku-4", "usage": { "input_tokens": 100, "output_tokens": 60, "cache_read_input_tokens": 900 } } },
+    "expected_response_attrs": {
+      "gen_ai.response.model": "claude-haiku-4",
+      "gen_ai.usage.input_tokens": 1000,
+      "gen_ai.usage.output_tokens": 60,
+      "gen_ai.usage.cache_read.input_tokens": 900
+    }
+  },
+  {
+    "name": "anthropic_response_no_cache_fields",
+    "provider": "anthropic",
+    "comment": "No cache fields -> input is the raw input_tokens unchanged.",
+    "response": { "body": { "model": "claude-opus-4-1", "usage": { "input_tokens": 500, "output_tokens": 250 } } },
+    "expected_response_attrs": {
+      "gen_ai.response.model": "claude-opus-4-1",
+      "gen_ai.usage.input_tokens": 500,
+      "gen_ai.usage.output_tokens": 250
+    }
+  },
+  {
+    "name": "anthropic_malformed_usage_not_a_dict",
+    "provider": "anthropic",
+    "response": { "body": { "model": "claude-sonnet-4-5", "usage": "n/a" } },
+    "expected_response_attrs": { "gen_ai.response.model": "claude-sonnet-4-5" }
+  }
+]

@@ -89,6 +89,18 @@
     "span_status_message": {
       "type": ["string", "null"],
       "description": "OTEL span status description. Set for ERROR (upstream details) and denied requests (policy reason)."
-    }
+    },
+    "gen_ai_system": { "type": ["string", "null"], "description": "OTel gen_ai provider name (openai, anthropic, ...)." },
+    "gen_ai_model": { "type": ["string", "null"], "description": "OTel gen_ai.request.model identifier." },
+    "gen_ai_operation": { "type": ["string", "null"], "description": "OTel gen_ai.operation.name (chat, embeddings, generate_content, ...)." },
+    "gen_ai_input_tokens": { "type": ["integer", "null"], "description": "Input (prompt) token count." },
+    "gen_ai_output_tokens": { "type": ["integer", "null"], "description": "Output (completion) token count." },
+    "gen_ai_cache_read_input_tokens": { "type": ["integer", "null"], "description": "Cache-read input tokens; a subset of gen_ai_input_tokens after the OTel inclusion-rule normalization." },
+    "gen_ai_cache_creation_input_tokens": { "type": ["integer", "null"], "description": "Cache-creation input tokens." },
+    "gen_ai_reasoning_output_tokens": { "type": ["integer", "null"], "description": "Reasoning output tokens; a subset of gen_ai_output_tokens." },
+    "cost_usd_micros": { "type": ["integer", "null"], "description": "Per-call cost in integer micro-USD, computed in the WASM core from the signed pricing bundle (ADR-002/003)." },
+    "currency": { "type": ["string", "null"], "description": "ISO 4217 alphabetic currency code; 'USD' in v1." },
+    "pricing_bundle_version": { "type": ["integer", "null"], "description": "Pricing-bundle version the cost was computed against; required when pricing_status is 'priced'." },
+    "pricing_status": { "type": ["string", "null"], "enum": ["priced", "unpriced_model", "untallied", "disabled", null], "description": "Cost metering status for this call." }
   }
 }

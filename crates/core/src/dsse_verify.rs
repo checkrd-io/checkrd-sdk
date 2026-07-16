@@ -41,16 +41,20 @@
 //!   sweep test.
 //! - **Unknown signers**: the verifier requires a trusted public key in the
 //!   runtime-supplied list. Out-of-band keys are rejected.
+//! - **Policy-bundle rollback / replay**: a captured, previously-valid (more
+//!   permissive) policy bundle cannot be replayed on the SSE channel to
+//!   downgrade the active policy. The control plane wraps every policy in a
+//!   DSSE-signed `checkrd_shared::policy_bundle::PolicyBundle` that binds a
+//!   monotonically-increasing `version` and a `signed_at` timestamp into the
+//!   signed bytes; [`crate::interface::reload_policy_signed`] rejects any
+//!   bundle whose `version` is not strictly greater than the highest already
+//!   installed (FFI code `-11`) and any bundle outside the freshness window.
+//!   `verify_dsse_envelope` in this module proves authenticity; the reload
+//!   seam enforces monotonicity atomically with the install — the same
+//!   monotonic-version pattern OPA bundles and TUF snapshots use.
 //!
-//! What this module DOES NOT protect against (Phase 2 follow-ups):
+//! What this module DOES NOT protect against (open follow-ups):
 //!
-//! - **Replay of historically-valid policy bundles**: the envelope does not
-//!   bind a monotonic policy version, so an attacker who captured a
-//!   previously-valid (more permissive) policy could replay it on the SSE
-//!   channel and the SDK would install it. Phase 2 fix: include a `version`
-//!   field in the signed payload, and have the SDK persist the highest
-//!   version it has seen, rejecting any update with `version <= seen_max`.
-//!   This is the same monotonic-version pattern OPA bundles use.
 //! - **Trust-list rollback via SDK downgrade**: an attacker who can roll
 //!   back the SDK package to an older version with a stale trust list could
 //!   install a policy signed by a now-revoked key. Phase 2 fix: include the
@@ -67,6 +71,18 @@ use base64::Engine;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 
 use checkrd_shared::dsse::{pae, DsseEnvelope};
+
+/// Upper bound on how many signatures a single DSSE envelope may carry.
+///
+/// The verify loop tries every signature against every trusted key (one
+/// Ed25519 verification each), so an attacker who can place an envelope on the
+/// control-plane stream could otherwise force `signatures × trusted_keys`
+/// verifications and burn CPU inside the agent's process — a cheap asymmetric
+/// denial of service. A legitimate rotation-overlap bundle carries at most a
+/// couple of signatures; 16 is comfortably above any real multi-signer
+/// envelope. Beyond the cap we fail closed with the same "no valid signature"
+/// outcome an unverifiable envelope produces.
+const MAX_ENVELOPE_SIGNATURES: usize = 16;
 
 /// Decode base64 accepting either standard or URL-safe alphabet.
 ///
@@ -187,6 +203,14 @@ pub fn verify_dsse_envelope(
     // Rule 2: must have at least one signature.
     if envelope.signatures.is_empty() {
         return Err(VerifyError::NoSignatures);
+    }
+
+    // Bound the work an untrusted envelope can demand: an envelope with more
+    // than MAX_ENVELOPE_SIGNATURES signatures is rejected before any Ed25519
+    // verification runs, closing the `signatures × trusted_keys` amplification
+    // DoS. We fail closed with the same code an unverifiable envelope produces.
+    if envelope.signatures.len() > MAX_ENVELOPE_SIGNATURES {
+        return Err(VerifyError::SignatureInvalid);
     }
 
     // Rule 3: payload must base64-decode. We do this once because all
@@ -755,6 +779,101 @@ mod tests {
         let err = verify_dsse_envelope(&envelope, POLICY_BUNDLE_PAYLOAD_TYPE, &trusted, 1_000_000)
             .unwrap_err();
         assert!(matches!(err, VerifyError::SignatureInvalid));
+    }
+
+    // ----- Signature-count bound (DoS defense) --------------------------
+
+    #[test]
+    fn verify_accepts_at_signature_cap_and_rejects_above_it() {
+        // The signature-count cap (MAX_ENVELOPE_SIGNATURES) bounds the work an
+        // untrusted envelope can force. Exactly at the cap, a valid signature
+        // still verifies; one over the cap, the envelope is rejected before any
+        // crypto runs — even though it still carries a valid signature.
+        let key = make_signing_key();
+        let payload = b"agent: test\n";
+        let pae_bytes = pae(POLICY_BUNDLE_PAYLOAD_TYPE, payload);
+        use ed25519_dalek::Signer;
+        let valid = key.sign(&pae_bytes).to_bytes();
+        let trusted = vec![make_trusted(&key, "k")];
+
+        // Exactly at the cap: (cap - 1) bogus signatures + 1 valid → verifies.
+        let mut sigs: Vec<DsseSignature> = (0..MAX_ENVELOPE_SIGNATURES - 1)
+            .map(|_| DsseSignature {
+                keyid: "k".to_string(),
+                sig: B64.encode([0u8; 64]),
+            })
+            .collect();
+        sigs.push(DsseSignature {
+            keyid: "k".to_string(),
+            sig: B64.encode(valid),
+        });
+        assert_eq!(sigs.len(), MAX_ENVELOPE_SIGNATURES);
+        let at_cap = DsseEnvelope {
+            payload_type: POLICY_BUNDLE_PAYLOAD_TYPE.to_string(),
+            payload: B64.encode(payload),
+            signatures: sigs,
+        };
+        verify_dsse_envelope(&at_cap, POLICY_BUNDLE_PAYLOAD_TYPE, &trusted, 1_000_000)
+            .expect("an envelope at the signature cap with a valid sig must verify");
+
+        // One over the cap: `cap` bogus + 1 valid → rejected by the count guard
+        // even though a valid signature is present.
+        let mut sigs: Vec<DsseSignature> = (0..MAX_ENVELOPE_SIGNATURES)
+            .map(|_| DsseSignature {
+                keyid: "k".to_string(),
+                sig: B64.encode([0u8; 64]),
+            })
+            .collect();
+        sigs.push(DsseSignature {
+            keyid: "k".to_string(),
+            sig: B64.encode(valid),
+        });
+        assert_eq!(sigs.len(), MAX_ENVELOPE_SIGNATURES + 1);
+        let over_cap = DsseEnvelope {
+            payload_type: POLICY_BUNDLE_PAYLOAD_TYPE.to_string(),
+            payload: B64.encode(payload),
+            signatures: sigs,
+        };
+        let err = verify_dsse_envelope(&over_cap, POLICY_BUNDLE_PAYLOAD_TYPE, &trusted, 1_000_000)
+            .unwrap_err();
+        assert!(matches!(err, VerifyError::SignatureInvalid));
+    }
+
+    proptest::proptest! {
+        #![proptest_config(proptest::prelude::ProptestConfig::with_cases(16))]
+
+        /// An envelope padded with thousands of well-formed-but-bogus signatures
+        /// is rejected in bounded time by the signature-count cap, never running
+        /// the full `signatures × trusted_keys` Ed25519 sweep an attacker wants.
+        #[test]
+        fn proptest_verify_bounds_signature_count(n_sigs in 1000usize..6000) {
+            let key = make_signing_key();
+            let payload = b"x";
+            let signatures: Vec<DsseSignature> = (0..n_sigs)
+                .map(|_| DsseSignature {
+                    keyid: "k".to_string(),
+                    sig: B64.encode([0u8; 64]),
+                })
+                .collect();
+            let envelope = DsseEnvelope {
+                payload_type: POLICY_BUNDLE_PAYLOAD_TYPE.to_string(),
+                payload: B64.encode(payload),
+                signatures,
+            };
+            let trusted = vec![make_trusted(&key, "k")];
+
+            let start = std::time::Instant::now();
+            let err = verify_dsse_envelope(&envelope, POLICY_BUNDLE_PAYLOAD_TYPE, &trusted, 1_000_000)
+                .unwrap_err();
+            let elapsed = start.elapsed();
+
+            proptest::prop_assert!(matches!(err, VerifyError::SignatureInvalid));
+            proptest::prop_assert!(
+                elapsed < std::time::Duration::from_millis(500),
+                "signature-count cap must reject in bounded time; took {:?}",
+                elapsed
+            );
+        }
     }
 
     // ----- Hex decoder edge cases ---------------------------------------

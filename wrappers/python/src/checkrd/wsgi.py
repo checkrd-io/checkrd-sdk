@@ -7,8 +7,9 @@ and WSGI; for ASGI deployments use :class:`checkrd.asgi.CheckrdASGIMiddleware`
 instead — it has lower latency.
 
 The middleware traps ``CheckrdPolicyDenied`` raised from a downstream
-handler that uses a Checkrd-wrapped HTTP client, and emits a
-Stripe-shaped 403 JSON envelope identical to the ASGI middleware's.
+handler that uses a Checkrd-wrapped HTTP client, and emits an RFC 9457
+``application/problem+json`` 403 document identical to the ASGI
+middleware's.
 
 Example (Flask)::
 
@@ -47,7 +48,7 @@ import json
 import logging
 from typing import Any, Callable, Iterable, Optional
 
-from checkrd.exceptions import CheckrdPolicyDenied
+from checkrd.exceptions import CheckrdPolicyDenied, policy_denied_problem
 
 logger = logging.getLogger("checkrd")
 
@@ -68,8 +69,8 @@ class CheckrdWSGIMiddleware:
 
     Wraps a downstream WSGI app. The middleware's ``__call__``
     delegates the request, then catches a deny exception and emits
-    a JSON error response with the same shape the ASGI middleware
-    uses.
+    an RFC 9457 ``application/problem+json`` response with the same
+    shape the ASGI middleware uses.
 
     Note that classic WSGI is sync; if your handler raises *during*
     response streaming (after ``start_response`` has been called), we
@@ -126,21 +127,12 @@ class CheckrdWSGIMiddleware:
         exc: CheckrdPolicyDenied,
     ) -> Iterable[bytes]:
         body = json.dumps(
-            {
-                "error": {
-                    "type": "policy_denied",
-                    "message": exc.reason,
-                    "code": exc.code,
-                    "request_id": exc.request_id,
-                    "dashboard_url": exc.dashboard_url or self._dashboard_url,
-                    "docs_url": exc.docs_url,
-                },
-            },
+            policy_denied_problem(exc, self._dashboard_url),
         ).encode("utf-8")
         start_response(
             "403 Forbidden",
             [
-                ("Content-Type", "application/json"),
+                ("Content-Type", "application/problem+json"),
                 ("Content-Length", str(len(body))),
             ],
         )

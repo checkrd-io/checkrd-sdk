@@ -1,0 +1,47 @@
+[
+  {
+    "name": "anthropic_stream_message_start_and_delta_with_cache",
+    "provider": "anthropic",
+    "comment": "Input usage (incl. cache) arrives in message_start; cumulative output in the final message_delta. Same inclusive normalization as the body extractor: input 300 + cache_read 1000 + cache_creation 200 = 1500.",
+    "sse_frames": [
+      "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":300,\"output_tokens\":1,\"cache_read_input_tokens\":1000,\"cache_creation_input_tokens\":200}}}\n\n",
+      "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0}\n\n",
+      "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"hi\"}}\n\n",
+      "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":350}}\n\n",
+      "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+    ],
+    "complete": true,
+    "expected_usage_attrs": {
+      "gen_ai.usage.input_tokens": 1500,
+      "gen_ai.usage.output_tokens": 350,
+      "gen_ai.usage.cache_read.input_tokens": 1000,
+      "gen_ai.usage.cache_creation.input_tokens": 200
+    }
+  },
+  {
+    "name": "anthropic_stream_no_cache",
+    "provider": "anthropic",
+    "sse_frames": [
+      "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":500,\"output_tokens\":1}}}\n\n",
+      "event: message_delta\ndata: {\"type\":\"message_delta\",\"usage\":{\"output_tokens\":250}}\n\n",
+      "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+    ],
+    "complete": true,
+    "expected_usage_attrs": {
+      "gen_ai.usage.input_tokens": 500,
+      "gen_ai.usage.output_tokens": 250
+    }
+  },
+  {
+    "name": "anthropic_stream_abandoned_after_message_start",
+    "provider": "anthropic",
+    "comment": "Stream cut off after message_start but before the terminal message_delta. The output is never finalized, so the event is untallied (no partial estimate).",
+    "sse_frames": [
+      "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":300,\"output_tokens\":1}}}\n\n",
+      "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"par\"}}\n\n"
+    ],
+    "complete": false,
+    "expected_usage_attrs": {},
+    "expected_pricing_status": "untallied"
+  }
+]

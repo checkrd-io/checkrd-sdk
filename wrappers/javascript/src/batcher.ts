@@ -23,7 +23,7 @@
 import { defaultControlHeaders, fetchWithRetry } from "./_retry.js";
 import { APIUserAbortError } from "./exceptions.js";
 import type { Logger } from "./_logger.js";
-import type { WasmEngine } from "./engine.js";
+import type { UsageInput, WasmEngine } from "./engine.js";
 import { CircuitBreaker, type CircuitBreakerDiagnostics } from "./_circuit_breaker.js";
 import { VERSION } from "./_version.js";
 
@@ -83,6 +83,13 @@ function flattenEvent(event: TelemetryEvent): Record<string, unknown> {
     "gen_ai_model",
     "gen_ai_input_tokens",
     "gen_ai_output_tokens",
+    // Cost-metering fields (M-12), stamped by `maybeMeterCost` when cost
+    // metering is on and a pricing bundle is installed. Optional on the
+    // server's `TelemetryEventInput`; absent when metering is off.
+    "cost_usd_micros",
+    "currency",
+    "pricing_bundle_version",
+    "pricing_status",
     "matched_rule",
     "matched_rule_kind",
     "evaluation_path",
@@ -191,6 +198,90 @@ function isAllowedEvent(event: TelemetryEvent): boolean {
   const deny = (event as { deny_reason?: unknown }).deny_reason;
   if (typeof deny === "string" && deny.length > 0) return false;
   return true;
+}
+
+/**
+ * Read the first present number among `keys` on `event`, finite only.
+ * Mirrors `_genai_semconv.ts::firstNumber` so the cost path sources the
+ * exact same token counts the OTel sinks stamp.
+ */
+function firstEventNumber(
+  event: TelemetryEvent,
+  keys: readonly string[],
+): number | undefined {
+  for (const key of keys) {
+    const v = event[key];
+    if (typeof v === "number" && Number.isFinite(v)) return v;
+  }
+  return undefined;
+}
+
+/** Read the first present string among `keys` on `event`. */
+function firstEventString(
+  event: TelemetryEvent,
+  keys: readonly string[],
+): string | undefined {
+  for (const key of keys) {
+    const v = event[key];
+    if (typeof v === "string" && v.length > 0) return v;
+  }
+  return undefined;
+}
+
+/**
+ * Build the WASM `UsageInput` from an event's extracted GenAI attributes,
+ * or `null` when the event carries no usable token usage (no input AND no
+ * output count). The settle path skips events with no usage rather than
+ * stamping a $0 cost on, say, a plain policy-decision event.
+ *
+ * Sources both the dotted OTel-spec keys (transport / body extractor) and
+ * the flat wire-schema aliases (framework adapters), in the same priority
+ * order as `_genai_semconv.ts`, so the cost reconciles with the tokens the
+ * dashboards display. The provider/model glob the WASM SKU resolver uses
+ * come from `gen_ai.provider.name` / response-or-request model.
+ */
+export function buildUsageInput(event: TelemetryEvent): UsageInput | null {
+  const input = firstEventNumber(event, [
+    "gen_ai.usage.input_tokens",
+    "gen_ai_input_tokens",
+  ]);
+  const output = firstEventNumber(event, [
+    "gen_ai.usage.output_tokens",
+    "gen_ai_output_tokens",
+  ]);
+  // No token counts at all → nothing to price. (A 0 count is a real value
+  // and DOES settle — `0` is distinct from absent here.)
+  if (input === undefined && output === undefined) return null;
+
+  const usage: UsageInput = {};
+  const provider = firstEventString(event, [
+    "gen_ai.provider.name",
+    "gen_ai_system",
+  ]);
+  if (provider !== undefined) usage.provider = provider;
+  // Prefer the response model (authoritative for what actually served the
+  // call); fall back to the request model.
+  const model = firstEventString(event, [
+    "gen_ai.response.model",
+    "gen_ai.request.model",
+    "gen_ai_model",
+  ]);
+  if (model !== undefined) usage.model = model;
+  if (input !== undefined) usage.input_tokens = input;
+  if (output !== undefined) usage.output_tokens = output;
+  const cacheRead = firstEventNumber(event, [
+    "gen_ai.usage.cache_read.input_tokens",
+  ]);
+  if (cacheRead !== undefined) usage.cache_read_tokens = cacheRead;
+  const cacheCreation = firstEventNumber(event, [
+    "gen_ai.usage.cache_creation.input_tokens",
+  ]);
+  if (cacheCreation !== undefined) usage.cache_creation_tokens = cacheCreation;
+  const reasoning = firstEventNumber(event, [
+    "gen_ai.usage.reasoning.output_tokens",
+  ]);
+  if (reasoning !== undefined) usage.reasoning_tokens = reasoning;
+  return usage;
 }
 
 /**
@@ -318,6 +409,17 @@ export interface BatcherOptions {
    * before the event lands in the queue.
    */
   beforeSend?: BeforeSendHook;
+  /**
+   * Opt in to per-call cost metering (M-12). DEFAULT OFF. When `true` AND
+   * a signed pricing bundle is installed on `engine`
+   * (`engine.getActivePricingVersion() > 0`), each enqueued event has its
+   * normalized token usage settled in-WASM (`engine.settleUsage`) and the
+   * resulting `cost_usd_micros` / `currency` / `pricing_bundle_version` /
+   * `pricing_status` stamped onto the event. The entire settle path is
+   * inert when this is off or no engine / bundle is present — the cost
+   * fields stay unset and the wire shape is unchanged.
+   */
+  costMetering?: boolean;
 }
 
 /** Diagnostic counters returned from {@link TelemetryBatcher.diagnostics}. */
@@ -375,6 +477,7 @@ export class TelemetryBatcher {
   private readonly circuitBreaker: CircuitBreaker;
   private readonly backpressureWarnIntervalMs: number;
   private readonly beforeSend: BeforeSendHook | undefined;
+  private readonly costMetering: boolean;
   private parentPid: number;
 
   private queue: TelemetryEvent[] = [];
@@ -411,6 +514,7 @@ export class TelemetryBatcher {
     this.circuitBreaker = opts.circuitBreaker ?? new CircuitBreaker();
     this.backpressureWarnIntervalMs = opts.backpressureWarnIntervalMs ?? 60_000;
     this.beforeSend = opts.beforeSend;
+    this.costMetering = opts.costMetering ?? false;
     this.parentPid = currentPid();
   }
 
@@ -484,6 +588,13 @@ export class TelemetryBatcher {
         return;
       }
     }
+    // Cost metering (M-12): settle the call's token usage in-WASM and
+    // stamp the cost fields. Inert unless explicitly enabled AND a signed
+    // pricing bundle is installed — off / no-bundle leaves the event
+    // untouched (cost fields unset). Runs after sampling so a dropped
+    // event never pays the settle cost, and after `beforeSend` so it
+    // settles the final, hook-mutated usage.
+    this.maybeMeterCost(event);
     if (this.queue.length >= this.maxQueueSize) {
       this.droppedBackpressure += 1;
       this.warnBackpressureThrottled();
@@ -519,6 +630,47 @@ export class TelemetryBatcher {
           "control-plane latency",
       },
     );
+  }
+
+  /**
+   * Cost metering (M-12): settle the event's token usage in-WASM and stamp
+   * the cost fields. No-op unless cost metering is enabled, an engine is
+   * attached, and a signed pricing bundle is installed
+   * (`getActivePricingVersion() > 0`). Mutates `event` in place.
+   *
+   * Fully fail-soft: any failure to read the active version, build the
+   * usage, or settle is swallowed (logged at debug) and leaves the event
+   * untouched — cost metering is observability, never on the deny path, so
+   * it must never break telemetry delivery.
+   */
+  private maybeMeterCost(event: TelemetryEvent): void {
+    if (!this.costMetering || !this.engine) return;
+    try {
+      // Cheap gate first: skip the whole path when no bundle is installed.
+      if (this.engine.getActivePricingVersion() <= 0) return;
+      const usage = buildUsageInput(event);
+      if (usage === null) return;
+      const requestId =
+        typeof event.request_id === "string"
+          ? event.request_id
+          : typeof event.event_id === "string"
+            ? event.event_id
+            : "";
+      const result = this.engine.settleUsage(requestId, usage);
+      // Stamp the cost fields onto the event. These ride the wire
+      // alongside the GenAI semconv fields; the server's
+      // `TelemetryEventInput` carries them as optional cost columns.
+      // `TelemetryEvent` is already `Record<string, unknown>`, so the
+      // assignment is type-safe without a cast.
+      event.cost_usd_micros = result.cost_usd_micros;
+      event.currency = result.currency;
+      event.pricing_bundle_version = result.pricing_bundle_version;
+      event.pricing_status = result.pricing_status;
+    } catch (err) {
+      this.logger?.debug("checkrd: cost metering skipped (settle failed)", {
+        err,
+      });
+    }
   }
 
   /**

@@ -299,4 +299,202 @@ describe("edge-runtime smoke", () => {
     const message = r.message ?? "";
     expect(message).toMatch(/integrity|sha-?256|CompileError/i);
   });
+
+  it("runs the cost-metering pricing FFI inside the sandbox (edge-clean, M-12)", async () => {
+    // The pricing FFI bindings (`reloadPricingSigned` / `settleUsage`) and
+    // the trust accessors must not touch node:* — they ride the same
+    // marshalling helpers as `evaluate`. Signing here uses the runtime's
+    // own WebCrypto Ed25519 (present in WinterCG), and the trust list is
+    // passed DIRECTLY to the FFI (the env-backed accessor is exercised in
+    // the Node trust tests). Getting a priced `SettleResult` out of the
+    // EdgeVM proves the whole pricing path is edge-safe.
+    const vm = new EdgeVM();
+    const wasmBytes = await readFile(wasmPath);
+    (vm.context as unknown as {
+      wasmBytes: Uint8Array;
+      policy: string;
+    }).wasmBytes = new Uint8Array(wasmBytes);
+    (vm.context as unknown as { policy: string }).policy = JSON.stringify({
+      agent: "t",
+      mode: "enforce",
+      default: "deny",
+      rules: [],
+    });
+
+    const { createRequire } = await import("node:module");
+    const realRequire = createRequire(import.meta.url);
+    (vm.context as unknown as { __realRequire: typeof realRequire }).__realRequire =
+      realRequire;
+    vm.evaluate(`
+      globalThis.module = { exports: {} };
+      globalThis.exports = globalThis.module.exports;
+      globalThis.__filename = '/virtual/index.cjs';
+      globalThis.__dirname = '/virtual';
+      globalThis.require = (name) => {
+        if (name.startsWith('node:')) {
+          throw new Error('unexpected require(' + name + ') in edge bundle');
+        }
+        return globalThis.__realRequire(name);
+      };
+    `);
+    vm.evaluate(advancedBundleSource);
+    const outcome = await vm.evaluate<Promise<unknown>>(`
+      (async () => {
+        const adv = globalThis.module.exports;
+        const enc = new TextEncoder();
+        const b64 = (bytes) => {
+          let s = '';
+          for (const x of bytes) s += String.fromCharCode(x);
+          return btoa(s);
+        };
+        // PAE per the DSSE spec text.
+        const pae = (type, payload) => {
+          const prefix = enc.encode(
+            'DSSEv1 ' + type.length + ' ' + type + ' ' + payload.length + ' '
+          );
+          const out = new Uint8Array(prefix.length + payload.length);
+          out.set(prefix, 0);
+          out.set(payload, prefix.length);
+          return out;
+        };
+        const pair = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify']);
+        const pubRaw = new Uint8Array(await crypto.subtle.exportKey('raw', pair.publicKey));
+        const pubHex = Array.from(pubRaw, (x) => x.toString(16).padStart(2, '0')).join('');
+        const bundle = enc.encode(JSON.stringify({
+          schema_version: 1, version: 1, signed_at: Math.floor(Date.now()/1000),
+          rounding: 'half_up',
+          skus: [{
+            sku_id: 'sku-edge', provider: 'anthropic', model_match: 'claude-sonnet-*',
+            unit: 'per_1m_tokens',
+            input_usd_micros_per_unit: 3000000, output_usd_micros_per_unit: 15000000,
+            default_max_output_tokens: 8192, effective_from: 1700000000, source: 'list'
+          }]
+        }));
+        const PRICING_TYPE = 'application/vnd.checkrd.pricing-bundle+json';
+        const sig = new Uint8Array(await crypto.subtle.sign({ name: 'Ed25519' }, pair.privateKey, pae(PRICING_TYPE, bundle)));
+        const envelope = JSON.stringify({
+          payloadType: PRICING_TYPE,
+          payload: b64(bundle),
+          signatures: [{ keyid: 'edge-cp', sig: b64(sig) }],
+        });
+        const trusted = JSON.stringify([{ keyid: 'edge-cp', public_key_hex: pubHex, valid_from: 0, valid_until: 9007199254740991 }]);
+
+        const engine = await adv.WasmEngine.create(policy, 'edge-agent', { wasm: wasmBytes });
+        engine.reloadPricingSigned({
+          envelopeJson: envelope, trustedKeysJson: trusted,
+          nowUnixSecs: Math.floor(Date.now()/1000), maxAgeSecs: 86400,
+        });
+        const version = engine.getActivePricingVersion();
+        const settled = engine.settleUsage('edge-r', {
+          provider: 'anthropic', model: 'claude-sonnet-4',
+          input_tokens: 1000, output_tokens: 500,
+        });
+        return { version, cost: settled.cost_usd_micros, status: settled.pricing_status };
+      })()
+    `);
+    const r = outcome as { version: number; cost: number; status: string };
+    expect(r.version).toBe(1);
+    expect(r.status).toBe("priced");
+    // 1000 input @ $3/1M (3000) + 500 output @ $15/1M (7500) = 10_500 micros.
+    expect(r.cost).toBe(10_500);
+  });
+
+  it("drives the pricing-consume dispatcher (handleControlEvent) inside the sandbox (edge-clean, M-14)", async () => {
+    // The FFI edge test above proves `reloadPricingSigned` is edge-clean.
+    // This proves the LAYER ABOVE it — the control-event dispatcher's new
+    // `pricing_updated` install path (`installSignedPricing` in
+    // control.ts) — touches no `node:*` either. If any of the new pricing
+    // wiring pulled in a Node built-in, the throwing `require` below would
+    // turn it into a hard failure at bundle-eval time; getting a live
+    // `getActivePricingVersion()` out of a dispatched event confirms the
+    // whole path (dispatch → verify → install) is WinterCG-safe.
+    const vm = new EdgeVM();
+    const wasmBytes = await readFile(wasmPath);
+    (vm.context as unknown as { wasmBytes: Uint8Array; policy: string }).wasmBytes =
+      new Uint8Array(wasmBytes);
+    (vm.context as unknown as { policy: string }).policy = JSON.stringify({
+      agent: "t",
+      mode: "enforce",
+      default: "deny",
+      rules: [],
+    });
+
+    const { createRequire } = await import("node:module");
+    const realRequire = createRequire(import.meta.url);
+    (vm.context as unknown as { __realRequire: typeof realRequire }).__realRequire =
+      realRequire;
+    vm.evaluate(`
+      globalThis.module = { exports: {} };
+      globalThis.exports = globalThis.module.exports;
+      globalThis.__filename = '/virtual/index.cjs';
+      globalThis.__dirname = '/virtual';
+      globalThis.require = (name) => {
+        if (name.startsWith('node:')) {
+          throw new Error('unexpected require(' + name + ') in edge bundle');
+        }
+        return globalThis.__realRequire(name);
+      };
+    `);
+    vm.evaluate(advancedBundleSource);
+    const outcome = await vm.evaluate<Promise<unknown>>(`
+      (async () => {
+        const adv = globalThis.module.exports;
+        const enc = new TextEncoder();
+        const b64 = (bytes) => {
+          let s = '';
+          for (const x of bytes) s += String.fromCharCode(x);
+          return btoa(s);
+        };
+        const pae = (type, payload) => {
+          const prefix = enc.encode(
+            'DSSEv1 ' + type.length + ' ' + type + ' ' + payload.length + ' '
+          );
+          const out = new Uint8Array(prefix.length + payload.length);
+          out.set(prefix, 0);
+          out.set(payload, prefix.length);
+          return out;
+        };
+        const pair = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify']);
+        const pubRaw = new Uint8Array(await crypto.subtle.exportKey('raw', pair.publicKey));
+        const pubHex = Array.from(pubRaw, (x) => x.toString(16).padStart(2, '0')).join('');
+        const bundle = enc.encode(JSON.stringify({
+          schema_version: 1, version: 2, signed_at: Math.floor(Date.now()/1000),
+          rounding: 'half_up',
+          skus: [{
+            sku_id: 'sku-edge', provider: 'anthropic', model_match: 'claude-sonnet-*',
+            unit: 'per_1m_tokens',
+            input_usd_micros_per_unit: 3000000, output_usd_micros_per_unit: 15000000,
+            default_max_output_tokens: 8192, effective_from: 1700000000, source: 'list'
+          }]
+        }));
+        const PRICING_TYPE = 'application/vnd.checkrd.pricing-bundle+json';
+        const sig = new Uint8Array(await crypto.subtle.sign({ name: 'Ed25519' }, pair.privateKey, pae(PRICING_TYPE, bundle)));
+        const envelope = {
+          payloadType: PRICING_TYPE,
+          payload: b64(bundle),
+          signatures: [{ keyid: 'edge-cp', sig: b64(sig) }],
+        };
+        const trusted = JSON.stringify([{ keyid: 'edge-cp', public_key_hex: pubHex, valid_from: 0, valid_until: 9007199254740991 }]);
+
+        const engine = await adv.WasmEngine.create(policy, 'edge-agent', { wasm: wasmBytes });
+        // Dispatch a real pricing_updated event through the dispatcher.
+        adv.handleControlEvent(
+          engine,
+          'pricing_updated',
+          JSON.stringify({ version: 2, pricing_envelope: envelope }),
+          undefined,
+          undefined,
+          { loadTrustedKeys: () => trusted },
+        );
+        // install is fire-and-forget (async trust load); poll for it.
+        for (let i = 0; i < 50; i++) {
+          if (engine.getActivePricingVersion() > 0) break;
+          await new Promise((r) => setTimeout(r, 5));
+        }
+        return { version: engine.getActivePricingVersion() };
+      })()
+    `);
+    const r = outcome as { version: number };
+    expect(r.version).toBe(2);
+  });
 });

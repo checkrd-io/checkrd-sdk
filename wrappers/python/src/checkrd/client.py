@@ -87,6 +87,7 @@ class _ClientConfig:
     enforce: EnforceMode = "auto"
     security_mode: Optional[SecurityMode] = None
     api_version: Optional[str] = None
+    cost_metering: Optional[bool] = None
     telemetry_sink: Optional[TelemetrySink] = None
     on_deny: Optional[OnDenyHook] = None
     on_allow: Optional[OnAllowHook] = None
@@ -149,6 +150,7 @@ class Checkrd:
         enforce: EnforceMode = "auto",
         security_mode: Optional[SecurityMode] = None,
         api_version: Optional[str] = None,
+        cost_metering: Optional[bool] = None,
         telemetry_sink: Optional[TelemetrySink] = None,
         on_deny: Optional[OnDenyHook] = None,
         on_allow: Optional[OnAllowHook] = None,
@@ -180,6 +182,7 @@ class Checkrd:
             enforce=enforce,
             security_mode=security_mode,
             api_version=api_version,
+            cost_metering=cost_metering,
             telemetry_sink=telemetry_sink,
             on_deny=on_deny,
             on_allow=on_allow,
@@ -241,6 +244,7 @@ class Checkrd:
             enforce=self._config.enforce,
             security_mode=self._config.security_mode,
             api_version=self._config.api_version,
+            cost_metering=self._config.cost_metering,
         )
 
     # ---------------------------------------------------------------
@@ -304,6 +308,7 @@ class Checkrd:
             killswitch_file=c.killswitch_file,
             killswitch_poll_interval_secs=c.killswitch_poll_interval_secs,
             security_mode=c.security_mode,
+            cost_metering=c.cost_metering,
             max_retries=c.max_retries,
             timeout=c.timeout,
             connect_timeout=c.connect_timeout,
@@ -329,6 +334,7 @@ class Checkrd:
         enforce: Any = _SENTINEL,
         security_mode: Any = _SENTINEL,
         api_version: Any = _SENTINEL,
+        cost_metering: Any = _SENTINEL,
         telemetry_sink: Any = _SENTINEL,
         on_deny: Any = _SENTINEL,
         on_allow: Any = _SENTINEL,
@@ -369,6 +375,7 @@ class Checkrd:
             "enforce": enforce,
             "security_mode": security_mode,
             "api_version": api_version,
+            "cost_metering": cost_metering,
             "telemetry_sink": telemetry_sink,
             "on_deny": on_deny,
             "on_allow": on_allow,
@@ -585,6 +592,7 @@ class Checkrd:
             killswitch_file=c.killswitch_file,
             killswitch_poll_interval_secs=c.killswitch_poll_interval_secs,
             security_mode=c.security_mode,
+            cost_metering=c.cost_metering,
             max_retries=c.max_retries,
             timeout=c.timeout,
             connect_timeout=c.connect_timeout,
@@ -637,6 +645,7 @@ class AsyncCheckrd(Checkrd):
             killswitch_file=c.killswitch_file,
             killswitch_poll_interval_secs=c.killswitch_poll_interval_secs,
             security_mode=c.security_mode,
+            cost_metering=c.cost_metering,
             max_retries=c.max_retries,
             timeout=c.timeout,
             connect_timeout=c.connect_timeout,

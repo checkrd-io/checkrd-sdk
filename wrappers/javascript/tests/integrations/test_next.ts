@@ -65,22 +65,32 @@ describe("checkrdRoute", () => {
     expect(handler).toHaveBeenCalledOnce();
   });
 
-  it("maps CheckrdPolicyDenied to a 403 JSON response", async () => {
+  it("maps CheckrdPolicyDenied to a 403 problem+json response", async () => {
     const route = checkrdRoute(() => {
       throw new CheckrdPolicyDenied({
         reason: "disallowed",
         requestId: "req_xyz",
         url: "https://api.example.com/",
+        ruleName: "block-pii",
+        suggestion: "edit the rule to allow this request",
         dashboardUrl: "https://app.checkrd.io/events/req_xyz",
       });
     }, { policy: ALLOW_ALL, agentId: "test" });
     const res = await route(new Request("http://localhost/"));
     expect(res.status).toBe(403);
-    const body = await res.json() as { error: { type: string; message: string; request_id: string; dashboard_url: string } };
-    expect(body.error.type).toBe("policy_denied");
-    expect(body.error.message).toBe("disallowed");
-    expect(body.error.request_id).toBe("req_xyz");
-    expect(body.error.dashboard_url).toBe("https://app.checkrd.io/events/req_xyz");
+    expect(res.headers.get("content-type")).toBe("application/problem+json");
+    const body = (await res.json()) as Record<string, unknown>;
+    // Flat RFC 9457 shape — no nested `error` envelope.
+    expect(body.type).toBe("https://checkrd.io/errors/policy_denied");
+    expect(body.title).toBe("Request denied by policy");
+    expect(body.status).toBe(403);
+    expect(body.detail).toBe("disallowed");
+    expect(body.code).toBe("policy_denied");
+    expect(body.request_id).toBe("req_xyz");
+    expect(body.dashboard_url).toBe("https://app.checkrd.io/events/req_xyz");
+    expect(body.rule_name).toBe("block-pii");
+    expect(body.suggestion).toBe("edit the rule to allow this request");
+    expect(body).not.toHaveProperty("error");
   });
 
   it("lets non-policy errors propagate", async () => {

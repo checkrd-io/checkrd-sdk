@@ -195,6 +195,75 @@ class TestBackpressure:
 
 
 # ============================================================
+# Drain-loop resilience
+# ============================================================
+
+
+class TestRunLoopResilience:
+    """The background drain loop must survive a batch it can't send.
+
+    ``_send`` flattens + ``json.dumps``es the batch (and signs it via the
+    WASM core) BEFORE any of its own try/except handlers run. A
+    non-JSON-serializable event — e.g. a ``before_send`` that stamped a
+    ``set``/``datetime`` onto a pass-through wire field — or a signing trap
+    would otherwise escape ``_run`` and kill the daemon thread, silently
+    stopping ALL telemetry for the rest of the process's life.
+    """
+
+    @patch("checkrd.batcher.urlopen")
+    def test_non_serializable_event_does_not_kill_loop(
+        self, mock_urlopen: MagicMock
+    ) -> None:
+        mock_urlopen.return_value = _mock_urlopen()
+
+        def inject_bad(event: dict[str, Any], _hint: dict[str, object]) -> dict[str, Any]:
+            # An operator's before_send that stamps a non-JSON-serializable
+            # value onto a whitelisted, pass-through wire field (``latency_ms``).
+            # ``json.dumps`` in ``_send`` raises TypeError on this.
+            if event.get("event_id") == "req-poison":
+                event = dict(event)
+                event["latency_ms"] = {1, 2, 3}  # a set → not JSON serializable
+            return event
+
+        batcher = TelemetryBatcher(
+            base_url="http://localhost:8081",
+            api_key="ck_test_abc",
+            engine=_make_engine_for_batcher(),
+            signer_agent_id=_DEFAULT_SIGNER_AGENT_ID,
+            batch_size=1,  # each enqueue triggers the background loop to flush
+            flush_interval_secs=60.0,
+            before_send=inject_bad,
+        )
+        try:
+            thread = batcher._thread
+            assert thread is not None
+
+            # Poison event: the background _run loop drains it and _send raises
+            # TypeError inside json.dumps. The top-level guard must catch it,
+            # count the drop, and keep the loop alive.
+            batcher.enqueue(sample_event("req-poison"))
+            wait_for(lambda: batcher.diagnostics()["dropped_send_error"] >= 1)
+            assert thread.is_alive()
+            assert thread is batcher._thread  # same thread — never died/restarted
+
+            # The loop survived: a subsequent good event still flushes and ships.
+            batcher.enqueue(sample_event("req-good"))
+            wait_for(lambda: batcher.events_sent >= 1)
+        finally:
+            batcher.stop()
+            batcher._thread.join(timeout=10)
+            assert not batcher._thread.is_alive()
+
+        # The good event actually reached the wire; the poison one never did.
+        sent_ids: list[str] = []
+        for call in mock_urlopen.call_args_list:
+            body = json.loads(call[0][0].data)
+            sent_ids.extend(e["request_id"] for e in body["events"])
+        assert "req-good" in sent_ids
+        assert "req-poison" not in sent_ids
+
+
+# ============================================================
 # Event flattening
 # ============================================================
 
@@ -222,6 +291,71 @@ class TestEventFlattening:
         assert flat["span_status_code"] == "OK"
         # event_id renamed to request_id
         assert "event_id" not in flat
+
+    def test_flatten_maps_dotted_genai_to_flat_wire_keys(self) -> None:
+        """The transport stamps OTel-dotted ``gen_ai.*`` keys; the wire schema
+        declares flat underscore keys. Without this rename the transport's
+        extracted usage never reaches ingestion (P1-15)."""
+        event = {
+            "request_id": "req-genai",
+            "url_host": "api.openai.com",
+            "url_path": "/v1/chat/completions",
+            "method": "POST",
+            "gen_ai.provider.name": "openai",
+            "gen_ai.operation.name": "chat",
+            "gen_ai.response.model": "gpt-4o",
+            "gen_ai.usage.input_tokens": 1000,
+            "gen_ai.usage.output_tokens": 500,
+            "gen_ai.usage.cache_read.input_tokens": 800,
+            "gen_ai.usage.reasoning.output_tokens": 200,
+        }
+        flat = TelemetryBatcher._flatten_event(event)
+        assert flat["gen_ai_system"] == "openai"
+        assert flat["gen_ai_operation"] == "chat"
+        assert flat["gen_ai_model"] == "gpt-4o"
+        assert flat["gen_ai_input_tokens"] == 1000
+        assert flat["gen_ai_output_tokens"] == 500
+        assert flat["gen_ai_cache_read_input_tokens"] == 800
+        assert flat["gen_ai_reasoning_output_tokens"] == 200
+        # Dotted names must NOT leak onto the wire.
+        assert not any("." in k for k in flat)
+
+    def test_flatten_passes_through_cost_fields(self) -> None:
+        """Cost-metering fields must survive to the wire — the JS ``flattenEvent``
+        passes the same four; Python previously dropped them, so a settled cost
+        never reached the dashboard."""
+        event = {
+            "request_id": "req-cost",
+            "url_host": "api.openai.com",
+            "url_path": "/v1/chat/completions",
+            "method": "POST",
+            "cost_usd_micros": 12_345,
+            "currency": "USD",
+            "pricing_bundle_version": 7,
+            "pricing_status": "priced",
+        }
+        flat = TelemetryBatcher._flatten_event(event)
+        assert flat["cost_usd_micros"] == 12_345
+        assert flat["currency"] == "USD"
+        assert flat["pricing_bundle_version"] == 7
+        assert flat["pricing_status"] == "priced"
+
+    def test_flatten_flat_genai_key_wins_over_dotted(self) -> None:
+        """An adapter-supplied flat key is authoritative over the dotted source."""
+        event = {
+            "request_id": "r",
+            "url_host": "h",
+            "url_path": "/p",
+            "method": "POST",
+            "gen_ai_input_tokens": 11,
+            "gen_ai.usage.input_tokens": 99,
+            "gen_ai.response.model": "resp-model",
+            "gen_ai.request.model": "req-model",
+        }
+        flat = TelemetryBatcher._flatten_event(event)
+        assert flat["gen_ai_input_tokens"] == 11
+        # Response model wins over request model when both are present.
+        assert flat["gen_ai_model"] == "resp-model"
 
 
 # ============================================================

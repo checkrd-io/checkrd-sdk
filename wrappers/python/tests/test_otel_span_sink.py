@@ -366,3 +366,37 @@ def test_importerror_when_otel_missing(monkeypatch: pytest.MonkeyPatch) -> None:
             OTelSpanSink()
     finally:
         sys.modules.update(saved)
+
+
+def test_default_constructor_pins_schema_url_by_keyword(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``OTelSpanSink()`` (no explicit tracer) must pin the semconv
+    ``schema_url`` via the ``schema_url`` keyword. The 3rd positional
+    parameter of ``trace.get_tracer`` is ``tracer_provider``; passing the
+    URL there silently dropped the pin AND crashed the documented default
+    constructor with ``AttributeError`` (a ``str`` has no ``get_tracer``).
+    """
+    from opentelemetry import trace
+
+    from checkrd.sinks import OTEL_SCHEMA_URL
+
+    real_get_tracer = trace.get_tracer
+    captured: dict[str, Any] = {}
+
+    def spy_get_tracer(
+        name: str, version: Any = None, *args: Any, **kwargs: Any
+    ) -> Any:
+        captured["positional_after_version"] = args
+        captured["kwargs"] = kwargs
+        return real_get_tracer(name, version, *args, **kwargs)
+
+    monkeypatch.setattr(trace, "get_tracer", spy_get_tracer)
+
+    sink = OTelSpanSink()  # must not raise
+
+    assert sink._tracer is not None
+    # schema_url passed by keyword; nothing positional lands in the
+    # tracer_provider slot.
+    assert captured["kwargs"].get("schema_url") == OTEL_SCHEMA_URL
+    assert captured["positional_after_version"] == ()
